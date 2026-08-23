@@ -287,7 +287,7 @@ h1, h2, h3, p { margin: 0; }
 .tool-call-row.done .dot { background: var(--app-color-success); animation: none; }
 .tool-call-row.error .dot { background: var(--app-color-danger); animation: none; }
 .tool-call-row > svg { flex: 0 0 auto; color: var(--app-color-text-mute); }
-.tool-call-name { color: var(--app-color-text); font-family: Consolas, Monaco, monospace; font-weight: 600; }
+.tool-call-name { flex: 0 0 auto; overflow: hidden; color: var(--app-color-text); font-family: Consolas, Monaco, monospace; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
 .tool-call-args { overflow: hidden; color: var(--app-color-text-mute); font-family: Consolas, Monaco, monospace; text-overflow: ellipsis; white-space: nowrap; }
 
 /* 工具结果 */
