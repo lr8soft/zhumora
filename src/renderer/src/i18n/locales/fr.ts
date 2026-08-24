@@ -174,6 +174,8 @@ export default {
       maxRetries: 'Nouvelles tentatives',
       maxRetriesHint: "Nombre de tentatives après un échec. 0 = aucune tentative. L'attente passe de 1 s à 30 s maximum.",
       retriesUnlimited: 'Tentatives illimitées',
+      systemCerts: "Utiliser le magasin de certificats du système",
+      systemCertsHint: "Quand activé, les connexions LLM et MCP font confiance aux mêmes certificats que Chrome (magasin de certificats Windows). Pour des points de terminaison avec certificats auto-signés ou CA internes, importez d'abord le certificat dans le magasin système, puis activez cette option.",
       maxRounds: 'Max. rounds d\'outils',
       maxRoundsHint: 'Max. rounds de tool-call par conversation (défaut 20). Quand atteint, l\'agent s\'arrête et écrit un résumé texte. 0 = illimité (détection de boucle toujours active).',
       roundsUnlimited: 'Illimité',

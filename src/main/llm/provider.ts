@@ -4,6 +4,7 @@
 // ============================================================
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from '../../shared/types'
 import { log } from './logger'
+import { getFetch } from '../net/fetch'
 import { HttpError, getMaxRetries, isRetriableError, withRetry } from '../net/retry'
 
 export interface TokenUsage {
@@ -138,7 +139,7 @@ async function attemptStreamChat(
   resetIdleTimer()
 
   try {
-    const resp = await fetch(url, {
+    const resp = await getFetch()(url, {
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
@@ -249,7 +250,7 @@ export async function complete(
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
   return withRetry(
     async () => {
-      const resp = await fetch(url, {
+      const resp = await getFetch()(url, {
         method: 'POST',
         headers: {
           'Content-Type': 'application/json',

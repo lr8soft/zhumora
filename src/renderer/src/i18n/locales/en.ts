@@ -174,6 +174,8 @@ export default {
       maxRetries: 'Retries',
       maxRetriesHint: 'How many times to retry after a request fails. 0 = no retry. Delay grows from 1s up to 30s.',
       retriesUnlimited: 'Unlimited retries',
+      systemCerts: 'Use system certificate store',
+      systemCertsHint: 'When enabled, LLM and MCP connections trust the same CAs as Chrome (Windows certificate store). For endpoints with self-signed or internal CAs, import the certificate into your system store first, then enable this.',
       maxRounds: 'Max tool rounds',
       maxRoundsHint: 'Max tool-call rounds per conversation (default 20). When reached, the agent stops and writes a text-only summary. 0 = unlimited (loop detection still applies).',
       roundsUnlimited: 'Unlimited',

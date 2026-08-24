@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Brain, Check, FolderOpen, Globe, Monitor, Moon, RefreshCw, Repeat, Sun, Type, Wifi, Workflow } from 'lucide-react'
+import { Brain, Check, FolderOpen, Globe, Monitor, Moon, RefreshCw, Repeat, ShieldCheck, Sun, Type, Wifi, Workflow } from 'lucide-react'
 import { SUPPORTED_LANGUAGES, type AppLanguage, getEffectiveLanguage, storeLanguage } from '../../i18n'
 import { useAppStore, FONT_SIZE_OPTIONS, type Theme } from '../../store'
 
@@ -159,6 +159,22 @@ export function GeneralSettings() {
             </label>
           </div>
           <p className="form-hint">{t('settings.general.maxRetriesHint')}</p>
+        </div>
+
+        <div className="switch-row" style={{ marginTop: 12 }}>
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <ShieldCheck size={16} style={{ color: 'var(--app-color-primary-strong)', flex: '0 0 auto' }} />
+            <div>
+              <strong>{t('settings.general.systemCerts')}</strong>
+              <small>{t('settings.general.systemCertsHint')}</small>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            className="switch"
+            checked={settingsDraft.useSystemCerts === true}
+            onChange={(e) => updateSettingsDraft({ useSystemCerts: e.target.checked })}
+          />
         </div>
       </section>
 

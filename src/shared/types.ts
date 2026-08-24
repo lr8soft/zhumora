@@ -165,6 +165,13 @@ export interface AppSettings {
   maxRetries?: number
   /** 单次对话最大工具轮数（0 = 不限制，默认 20）。达到后强制停止并生成纯文本收尾总结 */
   maxRounds?: number
+  /**
+   * 使用操作系统证书库（默认 false）。
+   * 开启后所有出网请求（LLM / MCP / 上下文探测）走 Electron net.fetch（Chromium 网络栈，
+   * 信任 Windows 系统证书库，与 Chrome 一致），自签名证书 / 内网 CA 的端点即可正常连接。
+   * 关闭时走 Node 内置 fetch（打包的 Mozilla CA，不读系统证书库）。
+   */
+  useSystemCerts?: boolean
 }
 
 // ============================================================

@@ -174,6 +174,8 @@ export default {
       maxRetries: 'Reintentos',
       maxRetriesHint: 'Cuántas veces reintentar una petición fallida. 0 = sin reintento. La espera crece de 1 s hasta 30 s.',
       retriesUnlimited: 'Reintentos ilimitados',
+      systemCerts: 'Usar almacén de certificados del sistema',
+      systemCertsHint: 'Cuando está activado, las conexiones LLM y MCP confían en los mismos certificados que Chrome (almacén de certificados de Windows). Para puntos finales con certificados autofirmados o CAs internas, importa primero el certificado al almacén del sistema y luego activa esta opción.',
       maxRounds: 'Máx. rondas de herramientas',
       maxRoundsHint: 'Máx. rondas de tool-call por conversación (default 20). Al alcanzarlo, el agente se detiene y escribe un resumen de texto. 0 = ilimitado (detección de bucles sigue activa).',
       roundsUnlimited: 'Ilimitado',

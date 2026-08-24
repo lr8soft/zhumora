@@ -6,6 +6,7 @@ import { extractTextContent } from '../../shared/multimodal'
 import type { ChatMessage, ProviderConfig, UIMessage } from '../../shared/types'
 import { COMPACT_SUMMARY_PREFIX } from '../../shared/types'
 import { complete } from '../llm/provider'
+import { getFetch } from '../net/fetch'
 import { log } from '../llm/logger'
 import { planCompactByTokens } from './history'
 
@@ -73,7 +74,7 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
 
   // 尝试 1: GET /v1/models — llama.cpp 返回 data[].meta.n_ctx
   try {
-    const resp = await fetch(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(5000) })
+    const resp = await getFetch()(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(5000) })
     if (resp.ok) {
       const json: any = await resp.json()
       const models = json.data || json.models
@@ -95,7 +96,7 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
       // /props 可能在 baseUrl 根目录下，也可能在 /v1 下
       for (const propsUrl of [`${baseUrl.replace(/\/v1$/, '')}/props`, `${baseUrl}/../props`]) {
         try {
-          const resp = await fetch(propsUrl, { headers, signal: AbortSignal.timeout(5000) })
+          const resp = await getFetch()(propsUrl, { headers, signal: AbortSignal.timeout(5000) })
           if (resp.ok) {
             const json: any = await resp.json()
             const settings = json.default_generation_settings
@@ -118,7 +119,7 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
   if (nCtx === null) {
     try {
       const ollamaUrl = baseUrl.replace(/\/v1$/, '').replace(/\/api$/, '')
-      const resp = await fetch(`${ollamaUrl}/api/show`, {
+      const resp = await getFetch()(`${ollamaUrl}/api/show`, {
         method: 'POST',
         headers,
         body: JSON.stringify({ name: model }),

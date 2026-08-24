@@ -174,6 +174,8 @@ export default {
       maxRetries: 'Wiederholungen',
       maxRetriesHint: 'Wie oft eine fehlgeschlagene Anfrage erneut versucht wird. 0 = keine Wiederholung. Verzögerung steigt von 1 s bis 30 s.',
       retriesUnlimited: 'Unbegrenzt wiederholen',
+      systemCerts: 'System-Zertifikatsspeicher verwenden',
+      systemCertsHint: 'Wenn aktiviert, vertrauen LLM- und MCP-Verbindungen denselben Zertifikaten wie Chrome (Windows-Zertifikatsspeicher). Bei Endpunkten mit selbst signierten oder internen CAs zuerst das Zertifikat in den Systempeicher importieren, dann diese Option aktivieren.',
       maxRounds: 'Max. Tool-Runden',
       maxRoundsHint: 'Max. Tool-Call-Runden pro Konversation (Standard 20). Beim Erreichen stoppt der Agent und schreibt eine Text-Zusammenfassung. 0 = unbegrenzt (Schleifendetektion gilt weiterhin).',
       roundsUnlimited: 'Unbegrenzt',

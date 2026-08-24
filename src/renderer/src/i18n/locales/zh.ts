@@ -174,6 +174,8 @@ export default {
       maxRetries: '重试次数',
       maxRetriesHint: '请求失败后的重试次数，0 = 不重试。重试间隔递增（1s 起，最长 30s）。',
       retriesUnlimited: '无限重试',
+      systemCerts: '使用系统证书库',
+      systemCertsHint: '开启后 LLM 与 MCP 的连接信任与 Chrome 一致的证书来源（Windows 系统证书库）。端点使用自签名证书 / 内网 CA 时，把证书导入系统证书库后启用此项。',
       maxRounds: '最大工具轮数',
       maxRoundsHint: '单次对话最多允许多少轮工具调用（默认 20）。达到后 Agent 强制停止并输出纯文本收尾总结。0 = 不限制（循环检测仍然生效）。',
       roundsUnlimited: '不限制',

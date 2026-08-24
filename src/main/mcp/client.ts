@@ -11,6 +11,7 @@ import type { McpServerConfig, ToolDefinition } from '../../shared/types'
 import { registerTool, unregisterToolsBySource, type ToolHandler, type ToolContext } from '../tools/registry'
 import { log } from '../llm/logger'
 import { getMaxRetries, withRetry } from '../net/retry'
+import { getMcpFetch } from '../net/fetch'
 
 interface ActiveConnection {
   client: Client
@@ -130,12 +131,16 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
           ? new StreamableHTTPClientTransport(new URL(config.url!), {
               requestInit: {
                 headers: buildSseHeaders(config)
-              }
+              },
+              // 统一出口：开关开启时走 Electron net.fetch（系统证书库），兼容自签证书
+              fetch: getMcpFetch()
             })
           : new SSEClientTransport(new URL(config.url!), {
               requestInit: {
                 headers: buildSseHeaders(config)
-              }
+              },
+              // 同上；SSE 的 EventSource 内部 fetch 也以此为准
+              fetch: getMcpFetch()
             })
 
         const client = new Client(

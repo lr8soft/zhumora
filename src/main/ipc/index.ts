@@ -17,6 +17,7 @@ import { browserTools } from '../tools/browser'
 import { memoryTools } from '../tools/memory'
 import { desktopTools } from '../tools/desktop'
 import { reconnectAllMcpServers, connectMcpServer, disconnectMcpServer } from '../mcp/client'
+import { logCertModeChanged } from '../net/fetch'
 import { reloadSkills, getSkillsSystemPrompt } from '../skill/manager'
 import { getMemories, deleteMemory, clearAllMemories, updateMemoryImportance } from '../store/db'
 import { buildAgentCallbacks, buildPermissionCheck } from './agentCallbacks'
@@ -359,6 +360,18 @@ export function setupIpc(win: BrowserWindow): void {
         await reloadSkills(settings.skills)
       } catch (err) {
         console.error('Skills reload error:', err)
+      }
+    }
+    // 证书库开关变更：记录日志；MCP 需重连才切换到新出口（mcpServers 未变时也触发）
+    const certModeChanged = (settings.useSystemCerts === true) !== (prev.useSystemCerts === true)
+    if (certModeChanged) {
+      logCertModeChanged(settings.useSystemCerts === true)
+      if ((settings.mcpServers || []).some(c => c.enabled && c.type !== 'stdio')) {
+        try {
+          await reconnectAllMcpServers(settings.mcpServers)
+        } catch (err) {
+          console.error('MCP reconnect error (cert mode change):', err)
+        }
       }
     }
     return true
