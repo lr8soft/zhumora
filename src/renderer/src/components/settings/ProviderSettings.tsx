@@ -15,9 +15,9 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
     const newProv: ProviderConfig = {
       id,
       name: 'New Provider',
-      baseUrl: 'http://localhost:11434/v1',
+      baseUrl: 'https://api.zhuminet.com/v1',
       apiKey: '',
-      defaultModel: 'qwen2.5:14b',
+      defaultModel: 'gemma-4-26B-A4B-it-262K',
       enabled: true,
       temperature: undefined,
       reasoningEnabled: false,
