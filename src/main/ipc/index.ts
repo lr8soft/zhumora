@@ -17,6 +17,7 @@ import { browserTools } from '../tools/browser'
 import { memoryTools } from '../tools/memory'
 import { desktopTools } from '../tools/desktop'
 import { reconnectAllMcpServers, connectMcpServer, disconnectMcpServer } from '../mcp/client'
+import { mcpManagerTools } from '../mcp/managerTools'
 import { logCertModeChanged } from '../net/fetch'
 import { reloadSkills, getSkillsSystemPrompt } from '../skill/manager'
 import { getMemories, deleteMemory, clearAllMemories, updateMemoryImportance } from '../store/db'
@@ -85,6 +86,10 @@ export function setupIpc(win: BrowserWindow): void {
   }
   // 注册桌面控制工具
   for (const { name, handler } of desktopTools) {
+    registerTool(name, handler, 'builtin')
+  }
+  // 注册 MCP 自管理工具（add/update/remove 为 dangerous + alwaysConfirm：任何批准模式都弹窗）
+  for (const { name, handler } of mcpManagerTools) {
     registerTool(name, handler, 'builtin')
   }
 

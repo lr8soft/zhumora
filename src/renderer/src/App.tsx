@@ -289,6 +289,20 @@ export default function App() {
             x.id === sessionId ? { ...x, title } : x
           )
         }))
+      }),
+
+      // 设置被主进程侧修改（如 agent 通过 mcp_* 工具增删 MCP 服务器）→ 刷新设置页
+      window.api.settings.onChanged(() => {
+        useAppStore.getState().loadSettings().then(() => {
+          const cur = useAppStore.getState()
+          // 设置页正在编辑且有未保存修改 → 不动草稿（避免覆盖用户正在输入的内容）；
+          // 否则同步草稿，让设置页实时反映 agent 的变更（theme/fontSize 是 localStorage 项，保留当前值）
+          if (cur.view === 'settings' && !cur.isSettingsDirty) {
+            useAppStore.setState({
+              settingsDraft: { ...cur.settings, theme: cur.settingsDraft.theme, fontSize: cur.settingsDraft.fontSize }
+            })
+          }
+        })
       })
     ]
 

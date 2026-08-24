@@ -6,7 +6,7 @@ import type { AgentEventCallbacks } from '../agent/runner'
 import type { TokenUsage } from '../llm/provider'
 import type { PermissionLevel } from '../tools/registry'
 import type { AutoApproveMode } from '../../shared/types'
-import { getToolPermission } from '../tools/registry'
+import { getToolPermission, isAlwaysConfirm } from '../tools/registry'
 import * as db from '../store/db'
 import { log } from '../llm/logger'
 
@@ -169,20 +169,17 @@ export function buildPermissionCheck(
   return async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
     const level: PermissionLevel = getToolPermission(toolName)
     const mode = approveModeGetter()
+    // 强制弹窗工具（配置变更类，如 MCP 服务器增删改）：
+    // full 模式的语义是信任 agent 的日常操作，但不包括改变 agent 自身能力边界的操作
+    const mustConfirm = isAlwaysConfirm(toolName)
 
-    // full 模式：全部放行
-    if (mode === 'full') {
-      return true
-    }
-
-    // safe 工具在所有模式下都放行
-    if (level === 'safe') {
-      return true
-    }
-
-    // auto 模式：normal 也放行，仅 dangerous 需要弹窗
-    if (mode === 'auto' && level === 'normal') {
-      return true
+    if (!mustConfirm) {
+      // full 模式：全部放行
+      if (mode === 'full') return true
+      // safe 工具在所有模式下都放行
+      if (level === 'safe') return true
+      // auto 模式：normal 也放行，仅 dangerous 需要弹窗
+      if (mode === 'auto' && level === 'normal') return true
     }
 
     // 到达这里 = 需要弹窗确认：

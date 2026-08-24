@@ -147,7 +147,13 @@ const api = {
     pickFile: (): Promise<string | null> =>
       ipcRenderer.invoke('settings:pickFile'),
     openExternal: (url: string): Promise<boolean> =>
-      ipcRenderer.invoke('shell:openExternal', url)
+      ipcRenderer.invoke('shell:openExternal', url),
+    /** 主进程侧设置被修改（如 agent 增删 MCP 服务器）→ 前端重新拉取 */
+    onChanged: (cb: () => void) => {
+      const handler = () => cb()
+      ipcRenderer.on('settings:changed', handler)
+      return () => ipcRenderer.removeListener('settings:changed', handler)
+    }
   },
 
   // ============================================================

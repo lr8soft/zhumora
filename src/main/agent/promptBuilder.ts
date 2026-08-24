@@ -65,6 +65,10 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
   {
     label: 'Memory',
     tools: ['memory_search', 'memory_save', 'memory_list', 'memory_delete']
+  },
+  {
+    label: 'MCP Server Management',
+    tools: ['mcp_list_servers', 'mcp_add_server', 'mcp_update_server', 'mcp_remove_server']
   }
 ]
 
@@ -128,10 +132,7 @@ function buildMcpSection(): string {
   const connectedServers = mcpStatus.filter(s => s.connected)
   const disconnectedServers = mcpStatus.filter(s => !s.connected)
 
-  if (connectedServers.length === 0 && disconnectedServers.length === 0) {
-    return ''
-  }
-
+  // 即使没有 MCP 服务器，也要输出（自管理指南段落有用）
   const lines: string[] = ['\n\n## MCP Tools (External integrations)']
 
   if (connectedServers.length > 0) {
@@ -144,6 +145,9 @@ function buildMcpSection(): string {
         lines.push(`- **${t.function.name}**: ${desc} (params: ${params})`)
       }
     }
+    lines.push('\nWhen a user\'s request could benefit from an MCP tool, prefer using it over built-in tools.')
+  } else {
+    lines.push('No MCP servers are currently connected.')
   }
 
   if (disconnectedServers.length > 0) {
@@ -151,7 +155,20 @@ function buildMcpSection(): string {
     lines.push(`\nNote: The following MCP servers are not currently connected (still connecting or failed): ${names}. Their tools are temporarily unavailable.`)
   }
 
-  lines.push('\nWhen a user\'s request could benefit from an MCP tool, prefer using it over built-in tools.')
+  // 自管理指南：仅当工具确实注册了才输出
+  const allBuiltins = getToolsBySource('builtin')
+  const hasManager = allBuiltins.some(t => t.function.name === 'mcp_add_server')
+  if (hasManager) {
+    lines.push(`
+### MCP Self-Management
+You can manage MCP servers yourself: mcp_list_servers / mcp_add_server / mcp_update_server / mcp_remove_server.
+These are DANGEROUS — the user is ALWAYS asked to approve (even in full-auto mode), and the approval dialog shows the complete config.
+Rules:
+- Only do this when the USER explicitly asks, or when a needed capability is clearly missing and you propose it first.
+- BEFORE mcp_add_server, tell the user exactly what will happen: for stdio, the exact command + args that will be executed on their machine; for sse/streamable-http, the URL to be contacted.
+- Prefer well-known public MCP servers (e.g. @modelcontextprotocol/server-*, @playwright/mcp, fetch).
+- If a connection fails, the server is saved but disabled — fix the config with mcp_update_server or remove it with mcp_remove_server.`)
+  }
 
   return lines.join('\n')
 }

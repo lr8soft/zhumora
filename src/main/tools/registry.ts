@@ -28,6 +28,12 @@ export interface ToolHandler {
   execute: (args: Record<string, unknown>, ctx: ToolContext) => Promise<string>
   /** 权限等级，默认 normal */
   permission?: PermissionLevel
+  /**
+   * 强制弹窗确认：即使 full（全自动批准）模式也弹窗。
+   * 用于"配置变更类"工具（如 MCP 服务器增删改）——
+   * full 模式的语义是信任 agent 的日常操作，但不包括改变 agent 自身能力边界的操作。
+   */
+  alwaysConfirm?: boolean
 }
 
 /**
@@ -79,4 +85,9 @@ export function clearTools(source?: string) {
 export function getToolPermission(name: string): PermissionLevel {
   const entry = registry.get(name)
   return entry?.handler.permission || 'normal'
+}
+
+/** 工具是否强制弹窗（full 模式也不放行） */
+export function isAlwaysConfirm(name: string): boolean {
+  return registry.get(name)?.handler.alwaysConfirm === true
 }
