@@ -70,8 +70,10 @@ export function initDatabase(): void {
       request_count INTEGER NOT NULL DEFAULT 0,
       PRIMARY KEY (model, bucket_start)
     );
-
-    CREATE INDEX IF NOT EXISTS idx_token_usage_bucket ON token_usage(bucket_start);
+    -- 注意：token_usage 的索引在下方"结构迁移"之后再建。
+    -- 若库里有旧结构 token_usage（无 bucket_start 列），上面的 CREATE IF NOT EXISTS
+    -- 会跳过，必须等迁移把表重建为新结构后才能建 bucket_start 索引，
+    -- 否则 "no such column: bucket_start"。
 
     -- compactions：上下文压缩状态（每会话一行，始终为最新一次压缩）。
     -- 压缩只影响"发给 LLM 的上下文"，不删除/不改写 messages 表，
@@ -104,9 +106,11 @@ export function initDatabase(): void {
         GROUP BY model, (created_at / 1800000) * 1800000;
       DROP TABLE token_usage;
       ALTER TABLE token_usage_new RENAME TO token_usage;
-      CREATE INDEX IF NOT EXISTS idx_token_usage_bucket ON token_usage(bucket_start);
     `)
   }
+
+  // token_usage 索引：无论新库还是迁移后的旧库，此时表已是新结构（含 bucket_start）
+  db!.exec('CREATE INDEX IF NOT EXISTS idx_token_usage_bucket ON token_usage(bucket_start)')
 
   // 迁移：给 sessions 加 workspace_path 列（如果不存在）
   const columns = db!.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
