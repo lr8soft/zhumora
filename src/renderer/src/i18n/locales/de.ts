@@ -111,7 +111,7 @@ export default {
       contextWindowAuto: 'Auto',
       contextWindowDetect: 'Kontextfenster erkennen',
       contextWindowDetected: 'Erkannt',
-      contextWindowHint: 'Max. Tokens des Modells. Wird bei Eingabe der Base URL automatisch erkannt (manuell überschreibbar; 0 = jedes Mal erkennen). Auto-Komprimierung bei 81% Nutzung – sie wirkt nur auf den an das Modell gesendeten Kontext, deine sichtbare Historie wird nie gelöscht.'
+      contextWindowHint: 'Max. Tokens des Modells. Wird bei Eingabe der Base URL automatisch erkannt (manuell überschreibbar; 0 = jedes Mal erkennen).'
     },
     mcp: {
       hint: 'Konfigurieren Sie MCP-Server (Model Context Protocol) für erweiterte Tool-Fähigkeiten.',

@@ -111,7 +111,7 @@ export default {
       contextWindowAuto: '自动',
       contextWindowDetect: '探测上下文窗口',
       contextWindowDetected: '已识别',
-      contextWindowHint: '模型最大 token 数。填写 Base URL 后自动识别（可手动覆盖；0 = 每次自动检测）。上下文使用超过 81% 时自动压缩，压缩只影响发给模型的上下文，不会删除你看到的历史。'
+      contextWindowHint: '模型最大 token 数。填写 Base URL 后自动识别（可手动覆盖；0 = 每次自动检测）。'
     },
     mcp: {
       hint: '配置 MCP (Model Context Protocol) 服务器以扩展工具能力。',

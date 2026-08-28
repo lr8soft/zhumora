@@ -201,10 +201,11 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
           {/* Context Window */}
           <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center' }}>
             <label className="form-label">{t('settings.providers.contextWindow')}</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
               <input
                 type="number"
                 className="input-field"
+                style={{ flex: 1, minWidth: 0, width: 'auto' }}
                 value={p.contextWindow || 0}
                 min={0}
                 step={1024}
@@ -212,15 +213,16 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
                 placeholder="0"
               />
               {detected[p.id] > 0 && (
-                <span className="form-hint" style={{ whiteSpace: 'nowrap' }}>
+                <span className="form-hint" style={{ whiteSpace: 'nowrap', flex: 'none' }}>
                   {t('settings.providers.contextWindowDetected')}: {detected[p.id].toLocaleString()}
                 </span>
               )}
-              {detecting[p.id] && <Loader2 size={13} className="spin" />}
+              {detecting[p.id] && <Loader2 size={13} className="spin" style={{ flex: 'none' }} />}
               <button
                 onClick={() => void detectContextWindow(i)}
                 className="link-button"
                 title={t('settings.providers.contextWindowDetect')}
+                style={{ whiteSpace: 'nowrap', flex: 'none' }}
               >
                 <RefreshCw size={12} style={{ verticalAlign: -1, marginRight: 3 }} />
                 {t('settings.providers.contextWindowAuto')}

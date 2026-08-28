@@ -111,7 +111,7 @@ export default {
       contextWindowAuto: 'Auto',
       contextWindowDetect: 'Detect context window',
       contextWindowDetected: 'Detected',
-      contextWindowHint: 'Max tokens for the model. Auto-detected when you fill in the Base URL (you can override it; 0 = re-detect each time). Auto compact triggers at 81% usage and only affects the context sent to the model — your visible history is never deleted.'
+      contextWindowHint: 'Max tokens for the model. Auto-detected when you fill in the Base URL (you can override it; 0 = re-detect each time).'
     },
     mcp: {
       hint: 'Configure MCP (Model Context Protocol) servers for extended tool capabilities.',

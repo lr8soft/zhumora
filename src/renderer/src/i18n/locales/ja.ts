@@ -111,7 +111,7 @@ export default {
       contextWindowAuto: '自動',
       contextWindowDetect: 'コンテキストウィンドウを検出',
       contextWindowDetected: '検出済み',
-      contextWindowHint: 'モデルの最大トークン数。Base URL を入力すると自動検出（手動で上書き可；0 = 毎回検出）。使用率81%で自動圧縮。圧縮はモデルに送るコンテキストのみに効き、表示される履歴は削除されません。'
+      contextWindowHint: 'モデルの最大トークン数。Base URL を入力すると自動検出（手動で上書き可；0 = 毎回検出）。'
     },
     mcp: {
       hint: 'MCP (Model Context Protocol) サーバーを設定してツール機能を拡張。',
