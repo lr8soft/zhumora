@@ -68,7 +68,9 @@ export default {
     expand: 'Ausklappen'
   },
   compact: {
-    label: 'Kontext-Zusammenfassung'
+    label: 'Kontext-Zusammenfassung',
+    folded: 'Frühere Historie im LLM-Kontext zusammengefasst',
+    foldedHint: 'Nachrichten vor diesem Punkt wurden für das Modell zu einer Zusammenfassung zusammengefasst, um Kontextplatz zu sparen. Deine vollständige Historie wird hier weiterhin angezeigt und nie gelöscht.'
   },
   settings: {
     title: 'Einstellungen',
@@ -107,7 +109,9 @@ export default {
       activate: 'Klicken zum Aktivieren',
       contextWindow: 'Kontextfenster',
       contextWindowAuto: 'Auto',
-      contextWindowHint: 'Max. Tokens des Modells (0 = Auto-Erkennung). Auto-Komprimierung bei 81% Nutzung.'
+      contextWindowDetect: 'Kontextfenster erkennen',
+      contextWindowDetected: 'Erkannt',
+      contextWindowHint: 'Max. Tokens des Modells. Wird bei Eingabe der Base URL automatisch erkannt (manuell überschreibbar; 0 = jedes Mal erkennen). Auto-Komprimierung bei 81% Nutzung – sie wirkt nur auf den an das Modell gesendeten Kontext, deine sichtbare Historie wird nie gelöscht.'
     },
     mcp: {
       hint: 'Konfigurieren Sie MCP-Server (Model Context Protocol) für erweiterte Tool-Fähigkeiten.',
@@ -185,14 +189,17 @@ export default {
       memoryHint: 'Erfasst automatisch Präferenzen und Fakten aus Gesprächen, damit der Agent zukünftige Antworten personalisieren kann.'
     },
     usage: {
-      hint: 'Token-Nutzungsstatistiken. Input/Output-Tokens werden automatisch für jeden LLM-Aufruf erfasst.',
+      hint: 'Token-Nutzungsstatistiken. Erfassung in 30-Minuten-Buckets, zusammengefasst über alle Sitzungen.',
       noData: 'Noch keine Nutzungsdaten. Daten werden nach dem Senden von Nachrichten erfasst.',
       model: 'Modell',
       inputTokens: 'Input-Tokens',
       outputTokens: 'Output-Tokens',
       totalTokens: 'Gesamt-Tokens',
       requests: 'Anfragen',
-      dailyChart: 'Täglicher Nutzungstrend (Letzte 30 Tage)'
+      chart30m: '30 Min',
+      chartDay: 'Täglich',
+      chart30mHint: '30-Minuten-Intervall; jeder Punkt = Summe aller Modellaufrufe in diesem Halbstundenfenster',
+      chartDayHint: 'Nach Kalendertag aggregiert für langfristige Trends'
     }
   }
 }

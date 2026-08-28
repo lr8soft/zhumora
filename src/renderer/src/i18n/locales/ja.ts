@@ -68,7 +68,9 @@ export default {
     expand: '展開'
   },
   compact: {
-    label: 'コンテキスト要約'
+    label: 'コンテキスト要約',
+    folded: 'ここより前の履歴は LLM コンテキストで折りたたまれました',
+    foldedHint: 'この時点より前のメッセージは、モデルへのコンテキスト容量を節約するために要約にまとめられました。画面には完全な履歴が引き続き表示され、削除されることはありません。'
   },
   settings: {
     title: '設定',
@@ -107,7 +109,9 @@ export default {
       activate: 'クリックしてアクティブ化',
       contextWindow: 'コンテキストウィンドウ',
       contextWindowAuto: '自動',
-      contextWindowHint: 'モデルの最大トークン数（0 = プリセットから自動検出）。使用率81%で自動圧縮。'
+      contextWindowDetect: 'コンテキストウィンドウを検出',
+      contextWindowDetected: '検出済み',
+      contextWindowHint: 'モデルの最大トークン数。Base URL を入力すると自動検出（手動で上書き可；0 = 毎回検出）。使用率81%で自動圧縮。圧縮はモデルに送るコンテキストのみに効き、表示される履歴は削除されません。'
     },
     mcp: {
       hint: 'MCP (Model Context Protocol) サーバーを設定してツール機能を拡張。',
@@ -185,14 +189,17 @@ export default {
       memoryHint: '会話から設定や事実を自動で記録し、エージェントが以降の応答を個人化します。'
     },
     usage: {
-      hint: 'トークン使用量統計。各LLM呼び出しのinput/outputトークンが自動記録されます。',
+      hint: 'トークン使用量統計。30分ごとにデータポイントを記録し、セッション間で集計します。',
       noData: '使用量データがありません。メッセージ送信後に自動記録されます。',
       model: 'モデル',
       inputTokens: '入力トークン',
       outputTokens: '出力トークン',
       totalTokens: '合計トークン',
       requests: 'リクエスト数',
-      dailyChart: '日次使用量推移 (過去30日間)'
+      chart30m: '30分',
+      chartDay: '日別',
+      chart30mHint: '30分間隔の記録。各点はその半時間内の全モデル呼び出しの合計使用量',
+      chartDayHint: '自然日単位で集計し、長期トレンドを確認'
     }
   }
 }

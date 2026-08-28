@@ -68,7 +68,9 @@ export default {
     expand: 'Expand'
   },
   compact: {
-    label: 'Context Summary'
+    label: 'Context Summary',
+    folded: 'Earlier history folded in LLM context',
+    foldedHint: 'Messages before this point were merged into a summary for the model to save context space. Your full history is still shown here and is never deleted.'
   },
   settings: {
     title: 'Settings',
@@ -107,7 +109,9 @@ export default {
       activate: 'Click to activate',
       contextWindow: 'Context Window',
       contextWindowAuto: 'Auto',
-      contextWindowHint: 'Max tokens for the model (0 = auto-detect from API). Auto compact triggers at 81% usage.'
+      contextWindowDetect: 'Detect context window',
+      contextWindowDetected: 'Detected',
+      contextWindowHint: 'Max tokens for the model. Auto-detected when you fill in the Base URL (you can override it; 0 = re-detect each time). Auto compact triggers at 81% usage and only affects the context sent to the model — your visible history is never deleted.'
     },
     mcp: {
       hint: 'Configure MCP (Model Context Protocol) servers for extended tool capabilities.',
@@ -185,14 +189,17 @@ export default {
       memoryHint: 'Automatically capture preferences and facts from conversations so the agent can personalize future replies.'
     },
     usage: {
-      hint: 'Token usage statistics. Input/output tokens are recorded for each LLM call automatically.',
+      hint: 'Token usage statistics. Recorded in 30-minute buckets, aggregated across sessions.',
       noData: 'No usage data yet. Data will be recorded after you send messages.',
       model: 'Model',
       inputTokens: 'Input Tokens',
       outputTokens: 'Output Tokens',
       totalTokens: 'Total Tokens',
       requests: 'Requests',
-      dailyChart: 'Daily Usage Trend (Last 30 Days)'
+      chart30m: '30 min',
+      chartDay: 'By day',
+      chart30mHint: '30-minute recording interval; each point = total usage across all model calls in that half-hour',
+      chartDayHint: 'Aggregated by calendar day for long-term trends'
     }
   }
 }

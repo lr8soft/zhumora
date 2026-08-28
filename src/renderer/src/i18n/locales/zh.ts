@@ -68,7 +68,9 @@ export default {
     expand: '展开'
   },
   compact: {
-    label: '上下文摘要'
+    label: '上下文摘要',
+    folded: '以上历史已在 LLM 上下文中折叠',
+    foldedHint: '此处之前的消息在发送给模型时已被合并为一段摘要以节省上下文空间。界面上完整历史仍然保留，不会被删除。'
   },
   settings: {
     title: '设置',
@@ -107,7 +109,9 @@ export default {
       activate: '点击切换为当前',
       contextWindow: '上下文窗口',
       contextWindowAuto: '自动',
-      contextWindowHint: '模型最大 token 数（0 = 从 API 自动检测）。上下文使用超过 81% 时自动压缩。'
+      contextWindowDetect: '探测上下文窗口',
+      contextWindowDetected: '已识别',
+      contextWindowHint: '模型最大 token 数。填写 Base URL 后自动识别（可手动覆盖；0 = 每次自动检测）。上下文使用超过 81% 时自动压缩，压缩只影响发给模型的上下文，不会删除你看到的历史。'
     },
     mcp: {
       hint: '配置 MCP (Model Context Protocol) 服务器以扩展工具能力。',
@@ -185,14 +189,17 @@ export default {
       memoryHint: '从对话中自动沉淀偏好与事实，让 agent 在后续对话中个性化回应。',
     },
     usage: {
-      hint: 'Token 用量统计。每次 LLM 调用的 input/output tokens 自动记录。',
+      hint: 'Token 用量统计。每 30 分钟一个数据点，跨会话汇总。',
       noData: '暂无用量数据。发送消息后将自动记录。',
       model: '模型',
       inputTokens: '输入 Tokens',
       outputTokens: '输出 Tokens',
       totalTokens: '总 Tokens',
       requests: '请求次数',
-      dailyChart: '每日用量趋势 (近 30 天)'
+      chart30m: '30 分钟',
+      chartDay: '按天',
+      chart30mHint: '记录间隔为 30 分钟，每个点 = 该半小时内所有模型调用的累计用量',
+      chartDayHint: '按自然日聚合，便于查看长期趋势'
     }
   }
 }

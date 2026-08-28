@@ -59,19 +59,54 @@ export function initDatabase(): void {
     CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entries(category);
     CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_entries(importance DESC);
 
+    -- token_usage：30 分钟桶（全局，不随会话删除）。
+    -- 每次 LLM 调用把 input/output 累加进当前 30 分钟桶（upsert），
+    -- 一个 (model, bucket_start) = 一个数据点。
     CREATE TABLE IF NOT EXISTS token_usage (
-      id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL,
       model TEXT NOT NULL,
+      bucket_start INTEGER NOT NULL,
       input_tokens INTEGER NOT NULL DEFAULT 0,
       output_tokens INTEGER NOT NULL DEFAULT 0,
-      created_at INTEGER NOT NULL,
-      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+      request_count INTEGER NOT NULL DEFAULT 0,
+      PRIMARY KEY (model, bucket_start)
     );
 
-    CREATE INDEX IF NOT EXISTS idx_token_usage_session ON token_usage(session_id);
-    CREATE INDEX IF NOT EXISTS idx_token_usage_created ON token_usage(created_at);
+    CREATE INDEX IF NOT EXISTS idx_token_usage_bucket ON token_usage(bucket_start);
+
+    -- compactions：上下文压缩状态（每会话一行，始终为最新一次压缩）。
+    -- 压缩只影响"发给 LLM 的上下文"，不删除/不改写 messages 表，
+    -- 用户侧始终能看到完整历史。up_to_message_id 之前的消息在构建
+    -- LLM 上下文时会被替换为 summary。
+    CREATE TABLE IF NOT EXISTS compactions (
+      session_id TEXT PRIMARY KEY,
+      up_to_message_id TEXT NOT NULL,
+      summary TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
   `)
+
+  // 迁移：token_usage 旧结构（每次调用一行、session 级联）→ 新结构（30 分钟桶、全局）。
+  // 旧库有 session_id 列且无 bucket_start 列时执行；新库直接跳过。
+  const tuCols = db!.prepare("PRAGMA table_info(token_usage)").all() as { name: string }[]
+  if (tuCols.some(c => c.name === 'session_id') && !tuCols.some(c => c.name === 'bucket_start')) {
+    db!.exec(`
+      CREATE TABLE token_usage_new (
+        model TEXT NOT NULL,
+        bucket_start INTEGER NOT NULL,
+        input_tokens INTEGER NOT NULL DEFAULT 0,
+        output_tokens INTEGER NOT NULL DEFAULT 0,
+        request_count INTEGER NOT NULL DEFAULT 0,
+        PRIMARY KEY (model, bucket_start)
+      );
+      INSERT INTO token_usage_new (model, bucket_start, input_tokens, output_tokens, request_count)
+        SELECT model, (created_at / 1800000) * 1800000, SUM(input_tokens), SUM(output_tokens), COUNT(*)
+        FROM token_usage
+        GROUP BY model, (created_at / 1800000) * 1800000;
+      DROP TABLE token_usage;
+      ALTER TABLE token_usage_new RENAME TO token_usage;
+      CREATE INDEX IF NOT EXISTS idx_token_usage_bucket ON token_usage(bucket_start);
+    `)
+  }
 
   // 迁移：给 sessions 加 workspace_path 列（如果不存在）
   const columns = db!.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
@@ -141,9 +176,8 @@ export function updateSessionWorkspace(id: string, workspacePath: string): void 
 }
 
 export function deleteSession(id: string): void {
-  // 外键级联开启后，删除 session 会自动删除关联的 messages 和 token_usage
-  // 但为兼容旧数据库（可能未启用 foreign_keys），手动删除关联数据
-  db!.prepare('DELETE FROM token_usage WHERE session_id = ?').run(id)
+  // 删除会话时清理压缩状态（token_usage 是全局桶，不随会话删除）
+  db!.prepare('DELETE FROM compactions WHERE session_id = ?').run(id)
   db!.prepare('DELETE FROM messages WHERE session_id = ?').run(id)
   db!.prepare('DELETE FROM sessions WHERE id = ?').run(id)
 }
@@ -192,12 +226,6 @@ export function updateMessageContent(id: string, content: string, status?: strin
   } else {
     db!.prepare('UPDATE messages SET content = ? WHERE id = ?').run(content, id)
   }
-}
-
-/** 删除某会话的全部消息（手动压缩后重建会话历史时使用） */
-export function deleteMessages(sessionId: string): void {
-  db!.prepare('DELETE FROM messages WHERE session_id = ?').run(sessionId)
-  touchSession(sessionId)
 }
 
 // ============================================================
@@ -323,22 +351,31 @@ export function updateMemoryImportance(id: string, importance: number): void {
 }
 
 // ============================================================
-// Token Usage 操作
+// Token Usage 操作 — 30 分钟桶
+//
+// 记录粒度：每 30 分钟一个数据点（bucket_start = 桶起点毫秒时间戳，
+// 按 1800000ms 对齐）。每次 LLM 调用把用量累加进当前桶（upsert）。
+// 桶是全局的（不随会话删除），用量统计跨会话汇总。
 // ============================================================
 
-export interface TokenUsageRecord {
-  id: string
-  sessionId: string
-  model: string
-  inputTokens: number
-  outputTokens: number
-  createdAt: number
+export const TOKEN_USAGE_BUCKET_MS = 30 * 60 * 1000 // 30 分钟
+
+/** 把任意时间戳对齐到 30 分钟桶起点 */
+export function bucketStartOf(ts: number): number {
+  return Math.floor(ts / TOKEN_USAGE_BUCKET_MS) * TOKEN_USAGE_BUCKET_MS
 }
 
-export function addTokenUsage(record: Omit<TokenUsageRecord, 'id'>): void {
-  const id = genId()
-  db!.prepare('INSERT INTO token_usage (id, session_id, model, input_tokens, output_tokens, created_at) VALUES (?, ?, ?, ?, ?, ?)')
-    .run(id, record.sessionId, record.model, record.inputTokens, record.outputTokens, record.createdAt)
+/** 累加一次 LLM 调用到当前 30 分钟桶 */
+export function addTokenUsage(model: string, inputTokens: number, outputTokens: number, createdAt: number = Date.now()): void {
+  const bucket = bucketStartOf(createdAt)
+  db!.prepare(`
+    INSERT INTO token_usage (model, bucket_start, input_tokens, output_tokens, request_count)
+    VALUES (?, ?, ?, ?, 1)
+    ON CONFLICT(model, bucket_start) DO UPDATE SET
+      input_tokens = input_tokens + excluded.input_tokens,
+      output_tokens = output_tokens + excluded.output_tokens,
+      request_count = request_count + 1
+  `).run(model, bucket, inputTokens, outputTokens)
 }
 
 export interface TokenUsageSummary {
@@ -350,7 +387,7 @@ export interface TokenUsageSummary {
 
 export function getTokenUsageSummary(): TokenUsageSummary[] {
   const rows = db!.prepare(`
-    SELECT model, SUM(input_tokens) as total_input, SUM(output_tokens) as total_output, COUNT(*) as count
+    SELECT model, SUM(input_tokens) as total_input, SUM(output_tokens) as total_output, SUM(request_count) as count
     FROM token_usage
     GROUP BY model
     ORDER BY total_input + total_output DESC
@@ -363,29 +400,67 @@ export function getTokenUsageSummary(): TokenUsageSummary[] {
   }))
 }
 
-export interface TokenUsageDaily {
-  date: string
+export interface TokenUsageBucket {
+  /** 桶起点（毫秒时间戳，对齐 30 分钟） */
+  bucketStart: number
   model: string
   inputTokens: number
   outputTokens: number
+  requestCount: number
 }
 
-export function getTokenUsageDaily(days: number = 30): TokenUsageDaily[] {
-  const since = Date.now() - days * 24 * 60 * 60 * 1000
+/**
+ * 查询最近 N 天的 30 分钟桶（图表数据源）。
+ * 每个 (model, 桶) 一行；无调用的桶没有行，由前端补齐空桶（断点）。
+ */
+export function getTokenUsageBuckets(days: number = 7): TokenUsageBucket[] {
+  const since = bucketStartOf(Date.now() - days * 24 * 60 * 60 * 1000)
   const rows = db!.prepare(`
-    SELECT date(created_at / 1000, 'unixepoch', 'localtime') as day,
-           model,
-           SUM(input_tokens) as input_tokens,
-           SUM(output_tokens) as output_tokens
+    SELECT model, bucket_start, input_tokens, output_tokens, request_count
     FROM token_usage
-    WHERE created_at >= ?
-    GROUP BY day, model
-    ORDER BY day ASC
+    WHERE bucket_start >= ?
+    ORDER BY bucket_start ASC
   `).all(since) as any[]
   return rows.map(r => ({
-    date: r.day,
+    bucketStart: r.bucket_start,
     model: r.model,
     inputTokens: r.input_tokens,
-    outputTokens: r.output_tokens
+    outputTokens: r.output_tokens,
+    requestCount: r.request_count
   }))
+}
+
+// ============================================================
+// 上下文压缩状态 — compactions
+// 压缩只记录"边界 + 摘要"，不改写 messages 表（用户历史完整保留）。
+// ============================================================
+
+export interface CompactionRecord {
+  sessionId: string
+  /** 该消息（含）之前的所有消息在构建 LLM 上下文时被 summary 替换 */
+  upToMessageId: string
+  summary: string
+  createdAt: number
+}
+
+export function setSessionCompaction(record: CompactionRecord): void {
+  db!.prepare(`
+    INSERT INTO compactions (session_id, up_to_message_id, summary, created_at)
+    VALUES (?, ?, ?, ?)
+    ON CONFLICT(session_id) DO UPDATE SET
+      up_to_message_id = excluded.up_to_message_id,
+      summary = excluded.summary,
+      created_at = excluded.created_at
+  `).run(record.sessionId, record.upToMessageId, record.summary, record.createdAt)
+}
+
+export function getSessionCompaction(sessionId: string): CompactionRecord | null {
+  const row = db!.prepare('SELECT * FROM compactions WHERE session_id = ?').get(sessionId) as any
+  if (!row) return null
+  return {
+    sessionId: row.session_id,
+    upToMessageId: row.up_to_message_id,
+    summary: row.summary,
+    createdAt: row.created_at
+  }
 }

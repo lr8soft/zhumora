@@ -79,6 +79,13 @@ interface CompactNotice {
   error?: string
 }
 
+/** 会话的上下文压缩标记（LLM 上下文中已折叠的边界；消息表不变，完整历史仍可见） */
+interface CompactionMarker {
+  /** 该消息（含）之前的历史在发给 LLM 时被摘要折叠 */
+  upToMessageId: string
+  summary?: string
+}
+
 /** loadMessages 进行中的去重（避免同一会话的并发拉取互相覆盖） */
 const loadingMessages = new Map<string, Promise<void>>()
 
@@ -113,6 +120,9 @@ interface AppState {
   // 消息 — 按会话缓存（sessionId → 消息数组），未打开过的会话没有缓存
   messages: Record<string, UIMessage[]>
   loadMessages: (sessionId: string) => Promise<void>
+  // 压缩标记 — 按会话缓存（sessionId → 边界）；null/无条目 = 该会话未压缩
+  compactionMarkers: Record<string, CompactionMarker | null>
+  loadCompaction: (sessionId: string) => Promise<void>
 
   // Agent 状态 — 按会话隔离，支持多会话并行
   runningIds: Set<string>
@@ -182,6 +192,10 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (id && get().messages[id] === undefined) {
       void get().loadMessages(id)
     }
+    // 压缩标记未加载过才拉取（用于渲染"历史已折叠"标记）
+    if (id && get().compactionMarkers[id] === undefined) {
+      void get().loadCompaction(id)
+    }
   },
   loadSessions: async () => {
     const sessions = await api.session.list()
@@ -216,7 +230,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     set((s) => {
       const messages = { ...s.messages }
       delete messages[id]
-      return { sessions: newSessions, activeSessionId: newActiveId, messages }
+      const compactionMarkers = { ...s.compactionMarkers }
+      delete compactionMarkers[id]
+      return { sessions: newSessions, activeSessionId: newActiveId, messages, compactionMarkers }
     })
     if (newActiveId) void get().loadMessages(newActiveId)
   },
@@ -234,6 +250,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ---- 消息（按会话缓存） ----
   messages: {},
+  compactionMarkers: {},
   loadMessages: (sessionId) => {
     const inflight = loadingMessages.get(sessionId)
     if (inflight) return inflight
@@ -247,6 +264,14 @@ export const useAppStore = create<AppState>((set, get) => ({
     })()
     loadingMessages.set(sessionId, p)
     return p
+  },
+  loadCompaction: async (sessionId) => {
+    try {
+      const c = await api.session.compaction(sessionId)
+      set((s) => ({ compactionMarkers: { ...s.compactionMarkers, [sessionId]: c } }))
+    } catch {
+      // 忽略：无压缩或 IPC 异常时保持无标记
+    }
   },
 
   // ---- Agent 运行状态（按会话，支持并行） ----
@@ -428,9 +453,9 @@ export const useAppStore = create<AppState>((set, get) => ({
         }, 6000)
         return
       }
-      // 主进程压缩成功后会广播 agent:compact → App.tsx 设置 compactNotice 展示提示
-      // 这里刷新消息缓存：早期消息已被摘要替换
-      await get().loadMessages(sid)
+      // 主进程压缩成功后会广播 agent:compact → App.tsx 设置 compactNotice +
+      // 更新 compactionMarkers（消息表不变，无需重拉消息）
+      await get().loadCompaction(sid)
     } finally {
       set({ isCompacting: false })
     }

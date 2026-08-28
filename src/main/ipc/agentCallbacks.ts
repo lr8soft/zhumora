@@ -63,9 +63,12 @@ export function buildAgentCallbacks(
       }
       db.addMessage(toolMsg)
       sender.send('agent:tool_result', { sessionId, toolCallId, toolName, result, isError, durationMs })
+      // 返回落库 id：runner 把它记进 workingIds，供压缩边界定位
+      return toolMsg.id
     },
     onAssistantMessage: (content, toolCalls) => {
       // 本轮结束：复用流式 token 的 messageId 落库（纯工具轮无文本时不落空消息）
+      let persistedId: string | null = null
       if (content || toolCalls.length > 0) {
         const msgId = ensureRoundMsgId()
         db.addMessage({
@@ -77,6 +80,7 @@ export function buildAgentCallbacks(
           timestamp: Date.now(),
           status: 'done' as const
         })
+        persistedId = msgId
       }
       streamingMsgId = roundMsgId
       streamingContent = content || ''
@@ -84,15 +88,12 @@ export function buildAgentCallbacks(
       roundMsgId = null
       // 通知前端：本轮 assistant 消息已收尾（UI 据此把流式消息置为 done）
       sender.send('agent:assistant_message', { sessionId, messageId: streamingMsgId || '', content, toolCalls, phase: 'end' })
+      // 返回落库 id（未落库返回 null）：runner 据此对齐 workingIds
+      return persistedId
     },
     onTokenUsage: (usage: TokenUsage, model: string) => {
-      db.addTokenUsage({
-        sessionId,
-        model,
-        inputTokens: usage.prompt_tokens,
-        outputTokens: usage.completion_tokens,
-        createdAt: Date.now()
-      })
+      // 30 分钟桶累加（全局用量统计，不再按 session 存）
+      db.addTokenUsage(model, usage.prompt_tokens, usage.completion_tokens, Date.now())
     },
     onComplete: () => {
       // 如果最后一轮没有 toolCalls（纯文本回复），onAssistantMessage 已存
@@ -139,7 +140,8 @@ export function buildAgentCallbacks(
       sender.send('agent:retry', { sessionId, failedAttempt, maxRetries })
     },
     onCompact: (info) => {
-      // source=auto：agent 运行中的自动压缩（只影响 LLM 工作上下文，DB 未变）
+      // source=auto：agent 运行中的自动压缩（只影响 LLM 上下文，消息表不变；
+      // 但压缩状态已持久化 → 前端用 boundaryMessageId 更新"历史已折叠"标记）
       sender.send('agent:compact', { sessionId, source: 'auto', ...info })
     }
   }

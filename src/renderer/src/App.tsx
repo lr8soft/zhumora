@@ -252,8 +252,16 @@ export default function App() {
       }),
 
       // 上下文压缩通知（按会话；仅当当前显示该会话时展示提示）
-      window.api.agent.onCompact(({ sessionId, source, beforeTokens, afterTokens, compressedCount, keptCount }) => {
+      // 压缩不删除消息 → 消息表不变，无需刷新消息缓存；
+      // 只需更新"历史已折叠"标记位置（boundaryMessageId）供 UI 渲染。
+      window.api.agent.onCompact(({ sessionId, source, boundaryMessageId, beforeTokens, afterTokens, compressedCount, keptCount }) => {
         const st = useAppStore.getState()
+        // 更新压缩标记（auto / manual 都会持久化压缩状态）
+        if (boundaryMessageId) {
+          useAppStore.setState((s) => ({
+            compactionMarkers: { ...s.compactionMarkers, [sessionId]: { upToMessageId: boundaryMessageId } }
+          }))
+        }
         if (st.activeSessionId === sessionId) {
           useAppStore.setState((s) => ({
             compactNotices: {
@@ -268,11 +276,6 @@ export default function App() {
               return { compactNotices: rest }
             })
           }, 8000)
-          // 仅手动压缩会重建 DB 历史 → 刷新消息缓存。
-          // 自动压缩发生在运行中，只影响 LLM 工作上下文，此时刷新会冲掉流式中的 UI 状态。
-          if (source === 'manual') {
-            void st.loadMessages(sessionId)
-          }
         }
         if (source === 'manual') {
           void st.loadSessions()

@@ -1,5 +1,6 @@
+import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Circle, CircleDot, Plus, Trash2 } from 'lucide-react'
+import { Circle, CircleDot, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react'
 import type { ProviderConfig } from '@shared/types'
 
 interface Props {
@@ -10,6 +11,34 @@ interface Props {
 
 export function ProviderSettings({ providers, activeId, onChange }: Props) {
   const { t } = useTranslation()
+  // 上下文窗口探测状态（按 provider id）：填/改 Base URL 时自动识别
+  const [detecting, setDetecting] = useState<Record<string, boolean>>({})
+  const [detected, setDetected] = useState<Record<string, number>>({})
+
+  /** 探测上下文窗口（手动配置优先；否则 API 探测 → 启发式 → 默认值） */
+  const detectContextWindow = async (idx: number) => {
+    const p = providers[idx]
+    if (!p?.baseUrl || detecting[p.id]) return
+    setDetecting((s) => ({ ...s, [p.id]: true }))
+    try {
+      const res = await window.api.provider.detectContextWindow(p, p.defaultModel)
+      if (typeof res.detected === 'number') {
+        setDetected((s) => ({ ...s, [p.id]: res.detected! }))
+        // 用户未手动填写（0）→ 把探测值回填到输入框，让限制真实生效
+        if (!p.contextWindow || p.contextWindow <= 0) {
+          updateProvider(idx, { contextWindow: res.detected })
+        }
+      }
+    } catch {
+      // 探测失败：保持 0（自动），不阻塞用户
+    } finally {
+      setDetecting((s) => {
+        const next = { ...s }
+        delete next[p.id]
+        return next
+      })
+    }
+  }
   const addProvider = () => {
     const id = `prov-${Date.now()}`
     const newProv: ProviderConfig = {
@@ -95,6 +124,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
                 className="input-field mono"
                 value={p.baseUrl}
                 onChange={(e) => updateProvider(i, { baseUrl: e.target.value })}
+                onBlur={() => void detectContextWindow(i)}
               />
             </div>
             <div className="form-field span-2">
@@ -171,21 +201,31 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
           {/* Context Window */}
           <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center' }}>
             <label className="form-label">{t('settings.providers.contextWindow')}</label>
-            <input
-              type="number"
-              className="input-field"
-              value={p.contextWindow || 0}
-              min={0}
-              step={1024}
-              onChange={(e) => updateProvider(i, { contextWindow: parseInt(e.target.value) || 0 })}
-              placeholder="0"
-            />
-            <button
-              onClick={() => updateProvider(i, { contextWindow: 0 })}
-              className="link-button"
-            >
-              {t('settings.providers.contextWindowAuto')}
-            </button>
+            <div style={{ display: 'flex', alignItems: 'center', gap: 8 }}>
+              <input
+                type="number"
+                className="input-field"
+                value={p.contextWindow || 0}
+                min={0}
+                step={1024}
+                onChange={(e) => updateProvider(i, { contextWindow: parseInt(e.target.value) || 0 })}
+                placeholder="0"
+              />
+              {detected[p.id] > 0 && (
+                <span className="form-hint" style={{ whiteSpace: 'nowrap' }}>
+                  {t('settings.providers.contextWindowDetected')}: {detected[p.id].toLocaleString()}
+                </span>
+              )}
+              {detecting[p.id] && <Loader2 size={13} className="spin" />}
+              <button
+                onClick={() => void detectContextWindow(i)}
+                className="link-button"
+                title={t('settings.providers.contextWindowDetect')}
+              >
+                <RefreshCw size={12} style={{ verticalAlign: -1, marginRight: 3 }} />
+                {t('settings.providers.contextWindowAuto')}
+              </button>
+            </div>
           </div>
           <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.contextWindowHint')}</p>
         </div>

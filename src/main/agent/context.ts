@@ -1,16 +1,27 @@
 // ============================================================
-// 上下文管理 — Token 估算 + Auto Compact
-// 当上下文使用超过阈值时自动压缩对话历史
+// 上下文管理 — Token 估算 + Auto Compact + 上下文窗口探测
+//
+// 关键设计（对齐 Cline / opencode）：
+// 压缩只影响"发给 LLM 的上下文"，绝不删除/改写数据库里的消息。
+// 用户侧始终能看到完整历史。压缩状态持久化为一条记录：
+//   { upToMessageId, summary }  —— upToMessageId 之前的消息在构建
+//   LLM 上下文时被 summary 替换，之后的消息原样保留。
+// 多次压缩是增量的：新摘要会把旧摘要一并折叠进去。
 // ============================================================
 import { extractTextContent } from '../../shared/multimodal'
-import type { ChatMessage, ProviderConfig, UIMessage } from '../../shared/types'
+import type { ChatMessage, ProviderConfig } from '../../shared/types'
 import { COMPACT_SUMMARY_PREFIX } from '../../shared/types'
 import { complete } from '../llm/provider'
 import { getFetch } from '../net/fetch'
 import { log } from '../llm/logger'
-import { planCompactByTokens } from './history'
+import { planCompactByTokens, buildEffectiveConversation, type CompactionState } from './history'
 
-// 默认上下文窗口（API 未返回时的 fallback）
+// 纯函数 buildEffectiveConversation 与 CompactionState 定义在 ./history，
+// 这里再导出，方便 runner / ipc 从 context 统一引用
+export { buildEffectiveConversation }
+export type { CompactionState }
+
+// 默认上下文窗口（API 未返回、启发式也未命中时的 fallback）
 const DEFAULT_CONTEXT_WINDOW = 32768
 
 // ===== Cline 对齐的压缩常量 =====
@@ -40,15 +51,94 @@ export function getPreserveTokenBudget(contextWindow: number): number {
 // 缓存：provider+model → contextWindow
 const contextWindowCache = new Map<string, number>()
 
+// ============================================================
+// 上下文窗口探测
+// ============================================================
+
+/**
+ * 已知模型的上下文窗口启发式表（API 未报告时的兜底）。
+ * 键用小写子串匹配（对 defaultModel 做 includes 判断）。
+ * 值单位为 token。宁可给一个合理的上限，也绝不返回 0/"不限制"。
+ */
+const MODEL_CONTEXT_HEURISTICS: Array<[pattern: string, tokens: number]> = [
+  // OpenAI
+  ['o1-preview', 128000],
+  ['o1-mini', 128000],
+  ['o1', 200000],
+  ['o3-mini', 200000],
+  ['o3', 200000],
+  ['o4-mini', 200000],
+  ['gpt-4o-mini', 128000],
+  ['gpt-4o', 128000],
+  ['gpt-4-turbo', 128000],
+  ['gpt-4.1-mini', 128000],
+  ['gpt-4.1', 128000],
+  ['gpt-4', 128000],
+  ['gpt-3.5-turbo-16k', 16385],
+  ['gpt-3.5-turbo', 16385],
+  // Anthropic
+  ['claude-sonnet-4', 200000],
+  ['claude-opus-4', 200000],
+  ['claude-3-7-sonnet', 200000],
+  ['claude-3-5-sonnet', 200000],
+  ['claude-3-5-haiku', 200000],
+  ['claude-3-opus', 200000],
+  ['claude-3-haiku', 200000],
+  // Google
+  ['gemini-2.5', 1048576],
+  ['gemini-2.0', 1048576],
+  ['gemini-1.5-pro', 1048576],
+  ['gemini-1.5-flash', 1048576],
+  ['gemini-pro', 1048576],
+  ['gemini-flash', 1048576],
+  // DeepSeek
+  ['deepseek-reasoner', 65536],
+  ['deepseek-chat', 65536],
+  ['deepseek-v3', 65536],
+  ['deepseek', 65536],
+  // Qwen
+  ['qwen2.5-coder', 131072],
+  ['qwen3', 131072],
+  ['qwen-max', 32768],
+  ['qwen-plus', 131072],
+  ['qwen', 131072],
+  // 通用大模型
+  ['llama-4', 1048576],
+  ['llama-3.1-405b', 131072],
+  ['llama-3.1', 131072],
+  ['llama-3', 131072],
+  ['mistral-large', 131072],
+  ['mistral', 32768],
+  ['mixtral', 32768],
+  ['glm-4', 131072],
+  ['glm', 131072],
+  ['yi-34b', 16384],
+  ['command-r', 131072]
+]
+
+/** 根据模型名匹配启发式表，命中返回 token 数，否则 null */
+export function heuristicContextWindow(model: string): number | null {
+  if (!model) return null
+  const m = model.toLowerCase()
+  // 更长的 pattern 优先（避免 'o1' 抢先匹配 'o3'）
+  const sorted = [...MODEL_CONTEXT_HEURISTICS].sort((a, b) => b[0].length - a[0].length)
+  for (const [pattern, tokens] of sorted) {
+    if (m.includes(pattern)) return tokens
+  }
+  return null
+}
+
 /**
  * 从 API 动态获取模型的上下文窗口大小
  *
  * 尝试顺序：
  * 1. 用户在 ProviderConfig.contextWindow 手动配置 → 直接使用
- * 2. GET /v1/models → data[0].meta.n_ctx（llama.cpp 扩展字段）
+ * 2. GET /v1/models → 匹配模型名的条目：meta.n_ctx（llama.cpp）/
+ *    context_length（OpenRouter 等）/ max_context_length / limit_context
  * 3. GET /props → default_generation_settings.n_ctx（llama.cpp 专有端点）
- * 4. POST /api/show → model_info.<arch>.context_length（Ollama 专有端点）
- * 5. 以上都失败 → DEFAULT_CONTEXT_WINDOW
+ * 4. POST /api/show → model_info.<arch>.context_length（Ollama 专有端点，按模型名精确匹配）
+ * 5. 模型名启发式表（常见商用模型）
+ * 6. 以上都失败 → DEFAULT_CONTEXT_WINDOW（保守兜底，绝不返回 0）
  */
 export async function fetchContextWindow(provider: ProviderConfig, modelOverride?: string): Promise<number> {
   // 用户手动配置优先
@@ -72,18 +162,22 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
 
   let nCtx: number | null = null
 
-  // 尝试 1: GET /v1/models — llama.cpp 返回 data[].meta.n_ctx
+  // 尝试 1: GET /models — 精确匹配模型名（不再盲取 models[0]）
+  // llama.cpp: data[].meta.n_ctx；OpenRouter/部分网关: data[].context_length
   try {
     const resp = await getFetch()(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(5000) })
     if (resp.ok) {
       const json: any = await resp.json()
       const models = json.data || json.models
       if (Array.isArray(models) && models.length > 0) {
-        const meta = models[0].meta
-        if (meta && typeof meta.n_ctx === 'number' && meta.n_ctx > 0) {
-          nCtx = meta.n_ctx
-          log('info', `Context window from /v1/models: n_ctx=${nCtx}`)
-        }
+        // 优先找与 model 完全一致或后缀匹配的条目
+        const target =
+          models.find(mm => mm.id === model) ||
+          models.find(mm => typeof mm.id === 'string' && mm.id.toLowerCase().includes(model.toLowerCase())) ||
+          models.find(mm => typeof model === 'string' && model.toLowerCase().includes(mm.id.toLowerCase())) ||
+          models[0]
+        nCtx = pickContextLength(target)
+        if (nCtx) log('info', `Context window from /models (${target.id || models[0].id}): ${nCtx}`)
       }
     }
   } catch {
@@ -92,30 +186,25 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
 
   // 尝试 2: GET /props — llama.cpp 专有端点
   if (nCtx === null) {
-    try {
-      // /props 可能在 baseUrl 根目录下，也可能在 /v1 下
-      for (const propsUrl of [`${baseUrl.replace(/\/v1$/, '')}/props`, `${baseUrl}/../props`]) {
-        try {
-          const resp = await getFetch()(propsUrl, { headers, signal: AbortSignal.timeout(5000) })
-          if (resp.ok) {
-            const json: any = await resp.json()
-            const settings = json.default_generation_settings
-            if (settings && typeof settings.n_ctx === 'number' && settings.n_ctx > 0) {
-              nCtx = settings.n_ctx
-              log('info', `Context window from /props: n_ctx=${nCtx}`)
-              break
-            }
+    for (const propsUrl of [`${baseUrl.replace(/\/v1$/, '')}/props`, `${baseUrl.replace(/\/v1$/, '')}/v1/props`]) {
+      try {
+        const resp = await getFetch()(propsUrl, { headers, signal: AbortSignal.timeout(5000) })
+        if (resp.ok) {
+          const json: any = await resp.json()
+          const settings = json.default_generation_settings
+          if (settings && typeof settings.n_ctx === 'number' && settings.n_ctx > 0) {
+            nCtx = settings.n_ctx
+            log('info', `Context window from /props: n_ctx=${nCtx}`)
+            break
           }
-        } catch {
-          continue
         }
+      } catch {
+        continue
       }
-    } catch {
-      // 忽略
     }
   }
 
-  // 尝试 3: POST /api/show — Ollama 专有端点
+  // 尝试 3: POST /api/show — Ollama 专有端点（按模型名精确匹配）
   if (nCtx === null) {
     try {
       const ollamaUrl = baseUrl.replace(/\/v1$/, '').replace(/\/api$/, '')
@@ -129,7 +218,6 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
         const json: any = await resp.json()
         const modelInfo = json.model_info
         if (modelInfo) {
-          // 查找 <arch>.context_length 字段
           for (const [key, value] of Object.entries(modelInfo)) {
             if (key.endsWith('.context_length') && typeof value === 'number' && value > 0) {
               nCtx = value
@@ -144,7 +232,16 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
     }
   }
 
-  if (nCtx !== null) {
+  // 尝试 4: 模型名启发式表
+  if (nCtx === null) {
+    const heuristic = heuristicContextWindow(model)
+    if (heuristic) {
+      nCtx = heuristic
+      log('info', `Context window from heuristic for "${model}": ${nCtx}`)
+    }
+  }
+
+  if (nCtx !== null && nCtx > 0) {
     contextWindowCache.set(cacheKey, nCtx)
     return nCtx
   }
@@ -154,23 +251,36 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
   return DEFAULT_CONTEXT_WINDOW
 }
 
+/** 从 /models 的单个条目里提取上下文长度（多种字段命名兼容） */
+function pickContextLength(entry: any): number | null {
+  if (!entry) return null
+  const candidates = [
+    entry.meta?.n_ctx,
+    entry.context_length,
+    entry.max_context_length,
+    entry.limit_context,
+    entry.contextLength,
+    entry.max_input_tokens
+  ]
+  for (const c of candidates) {
+    if (typeof c === 'number' && c > 0) return Math.floor(c)
+  }
+  return null
+}
+
 /**
- * 获取上下文窗口大小（同步版本，使用缓存或手动配置）
- * 首次调用前应先调用 fetchContextWindow
+ * 获取上下文窗口大小（同步版本，使用缓存 / 手动配置 / 启发式 / 默认）
+ * 首次调用前应先调用 fetchContextWindow 以填充缓存
  */
 export function getContextWindow(provider: ProviderConfig, modelOverride?: string): number {
   if (provider.contextWindow && provider.contextWindow > 0) {
     return provider.contextWindow
   }
-
   const model = modelOverride || provider.defaultModel
   const cacheKey = `${provider.baseUrl}::${model}`
   const cached = contextWindowCache.get(cacheKey)
-  if (cached) {
-    return cached
-  }
-
-  return DEFAULT_CONTEXT_WINDOW
+  if (cached) return cached
+  return heuristicContextWindow(model) ?? DEFAULT_CONTEXT_WINDOW
 }
 
 // CJK（中日韩）字符范围：这些字符约 1 token/字，而拉丁字符约 4 字符/token。
@@ -189,12 +299,10 @@ export function estimateMessageTokens(msg: ChatMessage): number {
   let tokens = 4 // 元数据开销（role/name/分隔符等，约 16 字符 ≈ 4 tokens）
   if (msg.content) {
     if (Array.isArray(msg.content)) {
-      // 多模态 content parts（如截图）
       for (const part of msg.content) {
         if (part.type === 'text') {
           tokens += estimateTextTokens(part.text)
         } else if (part.type === 'image_url') {
-          // base64 图片：粗略估算（沿用原口径 base64 长度 / 24，实际取决于模型视觉编码）
           const url = part.image_url?.url || ''
           const b64Start = url.indexOf('base64,')
           const b64 = b64Start >= 0 ? url.length - b64Start - 7 : url.length
@@ -216,10 +324,7 @@ export function estimateMessageTokens(msg: ChatMessage): number {
   return tokens
 }
 
-/**
- * 估算消息列表的 token 数（CJK 感知）
- * 对中文/日文等 CJK 文本按 1 token/字估算，避免 chars/4 的严重低估
- */
+/** 估算消息列表的 token 数（CJK 感知） */
 export function estimateTokens(messages: ChatMessage[]): number {
   let total = 0
   for (const m of messages) total += estimateMessageTokens(m)
@@ -229,7 +334,6 @@ export function estimateTokens(messages: ChatMessage[]): number {
 /**
  * 检查是否需要触发 auto compact
  * 阈值 = contextWindow × INPUT_RATIO(0.9) × TRIGGER_RATIO(0.9) = 81%
- * （Cline 对齐：先按输入占比算可用预算，再在预算上用触发比例）
  */
 export function needsCompact(
   messages: ChatMessage[],
@@ -241,74 +345,26 @@ export function needsCompact(
   return used >= threshold
 }
 
-/** autoCompact 返回值：压缩后的消息 + 压缩详情（用于通知前端） */
-export interface CompactResult {
-  messages: ChatMessage[]
-  info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number }
-  /**
-   * 被保留的原始 UI 消息（带 id/timestamp），仅当调用方传入 uiMessages 时提供。
-   * 手动压缩写回 DB 时使用：摘要消息 + 这些保留消息 重建会话历史。
-   */
-  keptUiMessages?: UIMessage[]
-}
+// ============================================================
+// 压缩核心 — 只生成摘要 + 边界，不触碰数据库
+//
+// 注：buildEffectiveConversation 与 CompactionState（纯函数/类型）定义在 ./history，
+// 便于单元测试；本文件顶部已 import 并再导出。
+// ============================================================
 
-/** 截断超长文本用于摘要输入（Cline: TOOL_RESULT_CHAR_LIMIT） */
+/** 截断超长文本用于摘要输入 */
 function truncateForSummary(text: string, limit: number): string {
   if (text.length <= limit) return text
   return `${text.slice(0, limit)}\n...[truncated ${text.length - limit} chars]`
 }
 
-/**
- * 执行 auto compact：将早期消息压缩为摘要，保留最近 N 条
- *
- * @param uiMessages 可选。与 messages 同源的原始 UI 消息（DB 行，带 id/timestamp），
- *                   用于在压缩后把保留部分原样写回数据库（手动压缩场景）。
- * @param contextWindow 模型上下文窗口大小，用于计算保留 token 预算
- */
-export async function autoCompact(
-  messages: ChatMessage[],
-  provider: ProviderConfig,
-  modelOverride?: string,
-  uiMessages?: UIMessage[],
-  contextWindow?: number
-): Promise<CompactResult> {
-  // 分离 system 消息和对话消息
-  const systemMsgs: ChatMessage[] = []
-  const conversationMsgs: ChatMessage[] = []
-  for (const msg of messages) {
-    if (msg.role === 'system') {
-      systemMsgs.push(msg)
-    } else {
-      conversationMsgs.push(msg)
-    }
-  }
-
-  if (conversationMsgs.length <= 4) {
-    log('info', 'Auto compact: not enough messages to compress')
-    return { messages, info: { beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: conversationMsgs.length } }
-  }
-
-  // 按 token 预算规划切分（Cline 风格）
-  const cw = contextWindow || getContextWindow(provider, modelOverride)
-  const preserveBudget = getPreserveTokenBudget(cw)
-  const { toCompress, toKeep } = planCompactByTokens(conversationMsgs, preserveBudget, estimateMessageTokens)
-  if (toCompress.length === 0) {
-    log('info', 'Auto compact: no safe boundary to split, skipping')
-    return { messages, info: { beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: conversationMsgs.length } }
-  }
-
-  // 与 toKeep 对应的原始 UI 消息（toKeep 是 conversationMsgs 的后缀，
-  // uiMessages 与 conversationMsgs 同序（排除 system），取尾部即可）
-  const keptUiMessages = uiMessages?.filter(m => m.role !== 'system').slice(-toKeep.length)
-
-  log('info', `Auto compact: compressing ${toCompress.length} messages, keeping ${toKeep.length} recent (budget=${preserveBudget} tokens)`)
-
-  const summaryInput = toCompress.map(m => {
+/** 把待压缩消息序列化为摘要输入文本（工具结果 / 单条文本各自截断） */
+function toSummaryInput(toCompress: ChatMessage[]): string {
+  return toCompress.map(m => {
     let text = `[${m.role}]`
     if (m.name) text += ` (${m.name})`
     if (m.content) {
       if (Array.isArray(m.content)) {
-        // 多模态 content：提取文本部分，图片标记为 [image]
         const imageCount = m.content.filter(part => part.type === 'image_url').length
         const textPart = extractTextContent(m.content)
         if (textPart) text += `: ${truncateForSummary(textPart, m.role === 'tool' ? TOOL_RESULT_CHAR_LIMIT : MAX_SINGLE_MSG_CHARS)}`
@@ -323,48 +379,106 @@ export async function autoCompact(
     }
     return text
   }).join('\n\n')
+}
 
+/** 调用 LLM 生成摘要（增量压缩时输入里含旧摘要，会被一并折叠） */
+async function generateSummary(toCompress: ChatMessage[], provider: ProviderConfig, modelOverride?: string): Promise<string | null> {
+  const summaryInput = toSummaryInput(toCompress)
   const summaryPrompt: ChatMessage[] = [
     {
       role: 'system',
-      content: 'You are a conversation summarizer. Summarize the following conversation history concisely, preserving key context, decisions, file paths, code snippets, and important findings. Output a single paragraph summary. Do not include pleasantries. Be specific about technical details.'
+      content: 'You are a conversation summarizer. Summarize the following conversation history concisely, preserving key context, decisions, file paths, code snippets, and important findings. If the input already contains a prior "[Auto Compact Summary]", fold it into the new summary. Output a single paragraph summary. Do not include pleasantries. Be specific about technical details.'
     },
     {
       role: 'user',
       content: `Summarize this conversation history:\n\n${summaryInput}`
     }
   ]
-
   try {
     const summary = await complete(provider, summaryPrompt, modelOverride, 800)
     log('info', `Auto compact: summary generated (${summary.length} chars)`)
-
-    const compactedMessages: ChatMessage[] = [
-      ...systemMsgs,
-      {
-        role: 'user',
-        content: `${COMPACT_SUMMARY_PREFIX}\n${summary}`
-      },
-      ...toKeep
-    ]
-
-    const beforeTokens = estimateTokens([...systemMsgs, ...conversationMsgs])
-    const afterTokens = estimateTokens(compactedMessages)
-    log('info', `Auto compact: ${beforeTokens} → ${afterTokens} tokens (saved ${beforeTokens - afterTokens})`)
-
-    return {
-      messages: compactedMessages,
-      info: { beforeTokens, afterTokens, compressedCount: toCompress.length, keptCount: toKeep.length },
-      keptUiMessages
-    }
+    return summary
   } catch (err) {
-    log('error', `Auto compact failed: ${(err as Error).message}`)
-    const fallback: ChatMessage[] = [...systemMsgs, ...toKeep]
-    log('warn', 'Auto compact: falling back to simple truncation')
+    log('error', `Auto compact: summary generation failed: ${(err as Error).message}`)
+    return null
+  }
+}
+
+/**
+ * 规划 + 执行一次 auto compact（纯函数，不写库）。
+ *
+ * 输入是"当前发给 LLM 的对话上下文"（effective，可能以旧摘要开头），
+ * 输出新的摘要文本 + 保留段（toKeep，effective 的后缀）+ toKeep 在
+ * effective 中的起点下标 keptOffset。调用方据此把新边界映射回完整
+ * 历史（keptFromIndex + keptOffset）并持久化 CompactionState。
+ *
+ * @returns
+ *   summary          新生成的摘要（LLM 失败时为 null，调用方退化为截断）
+ *   toKeep           保留的最近消息（effective 的后缀）
+ *   keptOffset       toKeep 在 effective 中的起始下标
+ *   beforeTokens     压缩前 token 估算
+ *   afterTokens      压缩后 token 估算
+ *   compressedCount  被折叠进摘要的消息条数
+ *   keptCount        保留的消息条数
+ */
+export async function planAutoCompact(
+  effective: ChatMessage[],
+  provider: ProviderConfig,
+  modelOverride?: string,
+  contextWindow?: number
+): Promise<{
+  summary: string | null
+  toKeep: ChatMessage[]
+  keptOffset: number
+  beforeTokens: number
+  afterTokens: number
+  compressedCount: number
+  keptCount: number
+}> {
+  const cw = contextWindow && contextWindow > 0
+    ? contextWindow
+    : getContextWindow(provider, modelOverride)
+  const preserveBudget = getPreserveTokenBudget(cw)
+  const { toCompress, toKeep } = planCompactByTokens(effective, preserveBudget, estimateMessageTokens)
+  const keptOffset = toCompress.length
+
+  if (toCompress.length === 0) {
     return {
-      messages: fallback,
-      info: { beforeTokens: estimateTokens([...systemMsgs, ...conversationMsgs]), afterTokens: estimateTokens(fallback), compressedCount: toCompress.length, keptCount: toKeep.length },
-      keptUiMessages
+      summary: null,
+      toKeep: effective,
+      keptOffset: 0,
+      beforeTokens: estimateTokens(effective),
+      afterTokens: estimateTokens(effective),
+      compressedCount: 0,
+      keptCount: effective.length
     }
   }
+
+  log('info', `Auto compact: compressing ${toCompress.length} messages, keeping ${toKeep.length} recent (budget=${preserveBudget} tokens)`)
+
+  const beforeTokens = estimateTokens(effective)
+  const summary = await generateSummary(toCompress, provider, modelOverride)
+
+  // LLM 失败 → 退化为截断（丢弃旧摘要与新消息，只保留 toKeep），
+  // 摘要文本置 null：调用方持久化时保留旧摘要或写一个占位。
+  const afterTokens = summary
+    ? estimateTokens([{ role: 'user', content: `${COMPACT_SUMMARY_PREFIX}\n${summary}` }, ...toKeep])
+    : estimateTokens(toKeep)
+
+  log('info', `Auto compact: ${beforeTokens} → ${afterTokens} tokens (saved ${beforeTokens - afterTokens})`)
+
+  return {
+    summary,
+    toKeep,
+    keptOffset,
+    beforeTokens,
+    afterTokens,
+    compressedCount: toCompress.length,
+    keptCount: toKeep.length
+  }
+}
+
+/** 构造摘要消息（role=user，带固定前缀供 UI 识别渲染为折叠摘要块） */
+export function makeSummaryMessage(summary: string): ChatMessage {
+  return { role: 'user', content: `${COMPACT_SUMMARY_PREFIX}\n${summary}` }
 }

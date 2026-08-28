@@ -68,7 +68,9 @@ export default {
     expand: 'Développer'
   },
   compact: {
-    label: "Résumé du contexte"
+    label: "Résumé du contexte",
+    folded: "Historique antérieur plié dans le contexte LLM",
+    foldedHint: "Les messages avant ce point ont été fusionnés en un résumé pour le modèle afin d'économiser l'espace de contexte. Votre historique complet reste affiché ici et n'est jamais supprimé."
   },
   settings: {
     title: 'Paramètres',
@@ -107,7 +109,9 @@ export default {
       activate: 'Cliquez pour activer',
       contextWindow: 'Fenêtre de Contexte',
       contextWindowAuto: 'Auto',
-      contextWindowHint: "Tokens max du modèle (0 = auto-détection). Compression auto à 81% d'utilisation."
+      contextWindowDetect: 'Détecter la fenêtre de contexte',
+      contextWindowDetected: 'Détecté',
+      contextWindowHint: "Tokens max du modèle. Détection auto lors de la saisie de l'URL de base (modifiable ; 0 = détecter à chaque fois). La compression auto se déclenche à 81% d'utilisation et n'affecte que le contexte envoyé au modèle — votre historique visible n'est jamais supprimé."
     },
     mcp: {
       hint: "Configurez les serveurs MCP (Model Context Protocol) pour des capacités d'outils étendues.",
@@ -185,14 +189,17 @@ export default {
       memoryHint: 'Capture automatiquement les préférences et les faits des conversations pour personnaliser les réponses futures.'
     },
     usage: {
-      hint: "Statistiques d'utilisation des tokens. Les tokens input/output sont enregistrés automatiquement pour chaque appel LLM.",
+      hint: "Statistiques d'utilisation des tokens. Enregistré par blocs de 30 minutes, agrégé entre les sessions.",
       noData: "Aucune donnée d'utilisation. Les données seront enregistrées après l'envoi de messages.",
       model: 'Modèle',
       inputTokens: 'Tokens d\'Entrée',
       outputTokens: 'Tokens de Sortie',
       totalTokens: 'Total Tokens',
       requests: 'Requêtes',
-      dailyChart: 'Tendance Quotidienne (30 Derniers Jours)'
+      chart30m: '30 min',
+      chartDay: 'Par jour',
+      chart30mHint: "Intervalle de 30 minutes ; chaque point = usage total de tous les appels dans cette demi-heure",
+      chartDayHint: 'Agrégé par jour civil pour les tendances à long terme'
     }
   }
 }

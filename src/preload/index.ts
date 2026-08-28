@@ -22,6 +22,9 @@ const api = {
       ipcRenderer.invoke('session:rename', id, title),
     messages: (id: string): Promise<UIMessage[]> =>
       ipcRenderer.invoke('session:messages', id),
+    /** 会话的压缩状态（边界消息 id + 摘要）；无压缩返回 null */
+    compaction: (id: string): Promise<{ upToMessageId: string; summary: string; createdAt: number } | null> =>
+      ipcRenderer.invoke('session:compaction', id),
     updateWorkspace: (id: string, workspacePath: string): Promise<boolean> =>
       ipcRenderer.invoke('session:updateWorkspace', id, workspacePath)
   },
@@ -126,8 +129,10 @@ const api = {
       ipcRenderer.on('agent:permission_request', handler)
       return () => ipcRenderer.removeListener('agent:permission_request', handler)
     },
-    /** source=auto：运行中自动压缩（DB 未变，不刷新消息）；source=manual：手动压缩（DB 历史已重建） */
-    onCompact: (cb: (data: { sessionId: string; source: 'auto' | 'manual'; beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number }) => void) => {
+    /** source=auto：运行中自动压缩（消息表不变）；source=manual：手动压缩。
+     *  两者都不删除消息 —— boundaryMessageId 之前的历史在 LLM 上下文中被摘要折叠，
+     *  前端据此渲染"历史已折叠"标记（完整历史始终可见）。 */
+    onCompact: (cb: (data: { sessionId: string; source: 'auto' | 'manual'; boundaryMessageId?: string; beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:compact', handler)
       return () => ipcRenderer.removeListener('agent:compact', handler)
@@ -181,13 +186,22 @@ const api = {
   },
 
   // ============================================================
-  // Token Usage
+  // Token Usage（30 分钟桶）
   // ============================================================
   token: {
     summary: (): Promise<any[]> =>
       ipcRenderer.invoke('token:summary'),
-    daily: (days?: number): Promise<any[]> =>
-      ipcRenderer.invoke('token:daily', days)
+    buckets: (days?: number): Promise<any[]> =>
+      ipcRenderer.invoke('token:buckets', days)
+  },
+
+  // ============================================================
+  // Provider 上下文窗口探测
+  // ============================================================
+  provider: {
+    /** 探测上下文窗口（用户填/改 Base URL 时自动识别；返回检测到的 token 数） */
+    detectContextWindow: (provider: any, modelOverride?: string): Promise<{ detected?: number; error?: string }> =>
+      ipcRenderer.invoke('provider:context-window', provider, modelOverride)
   },
 
   // ============================================================

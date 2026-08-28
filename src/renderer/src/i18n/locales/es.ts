@@ -68,7 +68,9 @@ export default {
     expand: 'Expandir'
   },
   compact: {
-    label: 'Resumen de contexto'
+    label: 'Resumen de contexto',
+    folded: 'Historial anterior plegado en el contexto del LLM',
+    foldedHint: 'Los mensajes anteriores a este punto se combinaron en un resumen para el modelo y ahorrar espacio de contexto. Tu historial completo sigue mostrándose aquí y nunca se elimina.'
   },
   settings: {
     title: 'Configuración',
@@ -107,7 +109,9 @@ export default {
       activate: 'Click para activar',
       contextWindow: 'Ventana de Contexto',
       contextWindowAuto: 'Auto',
-      contextWindowHint: 'Máx. tokens del modelo (0 = autodetectar). Compresión automática al 81% de uso.'
+      contextWindowDetect: 'Detectar ventana de contexto',
+      contextWindowDetected: 'Detectado',
+      contextWindowHint: 'Máx. tokens del modelo. Se autodetecta al rellenar la Base URL (puedes sobrescribirlo; 0 = detectar cada vez). La compresión automática se activa al 81% de uso y solo afecta al contexto enviado al modelo: tu historial visible nunca se elimina.'
     },
     mcp: {
       hint: 'Configura servidores MCP (Model Context Protocol) para capacidades extendidas.',
@@ -185,14 +189,17 @@ export default {
       memoryHint: 'Captura automáticamente preferencias y hechos de las conversaciones para personalizar las respuestas futuras.'
     },
     usage: {
-      hint: 'Estadísticas de uso de tokens. Los tokens de entrada/salida se registran automáticamente para cada llamada LLM.',
+      hint: 'Estadísticas de uso de tokens. Registro en bloques de 30 minutos, agregado entre sesiones.',
       noData: 'Sin datos de uso. Los datos se registrarán después de enviar mensajes.',
       model: 'Modelo',
       inputTokens: 'Tokens de Entrada',
       outputTokens: 'Tokens de Salida',
       totalTokens: 'Total Tokens',
       requests: 'Solicitudes',
-      dailyChart: 'Tendencia Diaria (Últimos 30 Días)'
+      chart30m: '30 min',
+      chartDay: 'Por día',
+      chart30mHint: 'Intervalo de 30 minutos; cada punto = uso total de todas las llamadas en esa media hora',
+      chartDayHint: 'Agregado por día natural para tendencias a largo plazo'
     }
   }
 }

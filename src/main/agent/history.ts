@@ -13,9 +13,55 @@
 //    消息存入 DB；此时 abort/崩溃会留下"有调用无结果"的悬空组
 // ============================================================
 import type { ChatMessage } from '../../shared/types'
+import { COMPACT_SUMMARY_PREFIX } from '../../shared/types.ts'
 
 /** 单条消息的 token 估算函数（由调用方注入，避免 history 依赖 context） */
 export type MessageTokenEstimator = (m: ChatMessage) => number
+
+/** 持久化的压缩记录（每会话一行：边界消息 id + 摘要） */
+export interface CompactionState {
+  upToMessageId: string
+  summary: string
+}
+
+/**
+ * 从"完整会话消息 + 已有压缩记录"构建发给 LLM 的对话上下文（不含 system）。
+ * 纯函数（不依赖 electron），便于单元测试。
+ *
+ * - 有压缩记录：找到 upToMessageId 在列表中的下标 idx（边界含在压缩段内），
+ *   返回 [摘要消息, ...messages.slice(idx + 1)]，keptFromIndex = idx + 1
+ *   （keptFromIndex = 完整历史中保留段的起始下标）。
+ * - 无压缩记录 / 边界消息不存在：返回完整列表，keptFromIndex = 0。
+ *
+ * @param messages    完整会话消息（无 system，按时间升序）
+ * @param messageIds  与 messages 平行对齐的 UI 消息 id 数组
+ * @param compaction  已有的压缩记录（可为 null）
+ *
+ * 返回 hasSummary 标记 effective[0] 是否为（虚拟的）摘要消息 ——
+ * 调用方据此构造与 effective 平行对齐的 id 数组（摘要位为 null）。
+ */
+export function buildEffectiveConversation(
+  messages: ChatMessage[],
+  messageIds: string[],
+  compaction: CompactionState | null
+): { effective: ChatMessage[]; keptFromIndex: number; hasSummary: boolean } {
+  if (compaction) {
+    const idx = messageIds.indexOf(compaction.upToMessageId)
+    if (idx >= 0) {
+      const summaryMsg: ChatMessage = {
+        role: 'user',
+        content: `${COMPACT_SUMMARY_PREFIX}\n${compaction.summary}`
+      }
+      return {
+        effective: [summaryMsg, ...messages.slice(idx + 1)],
+        keptFromIndex: idx + 1,
+        hasSummary: true
+      }
+    }
+    // 边界消息在历史中不存在（理论上不该发生）→ 忽略压缩状态
+  }
+  return { effective: messages.slice(), keptFromIndex: 0, hasSummary: false }
+}
 
 /**
  * 在 >= minIndex 的位置找一个安全切分点：
@@ -77,6 +123,19 @@ function hasContent(m: ChatMessage): boolean {
  * system / user / 完整合法组原样保留，顺序不变
  */
 export function sanitizeHistory(messages: ChatMessage[]): ChatMessage[] {
+  return sanitizeHistoryWithIds(messages, messages.map((_, i) => String(i))).messages
+}
+
+/**
+ * sanitizeHistory 的索引对齐版本：
+ * 返回清洗后的消息 + 与它们一一对应的原始下标（origIndex）。
+ * 调用方据此把 UI 消息 id 等元数据平行对齐到清洗后的序列
+ * （清洗可能删除中间消息，单纯 slice(0, len) 会错位）。
+ */
+export function sanitizeHistoryWithIds(
+  messages: ChatMessage[],
+  ids: string[]
+): { messages: ChatMessage[]; ids: string[] } {
   // 预收集所有 tool 结果 id
   const resultIds = new Set<string>()
   for (const m of messages) {
@@ -84,9 +143,11 @@ export function sanitizeHistory(messages: ChatMessage[]): ChatMessage[] {
   }
 
   const out: ChatMessage[] = []
+  const outIds: string[] = []
   const openCallIds = new Set<string>() // 已见 assistant 调用、尚未见其结果
 
-  for (const m of messages) {
+  for (let i = 0; i < messages.length; i++) {
+    const m = messages[i]
     if (m.role === 'assistant') {
       if (m.tool_calls && m.tool_calls.length > 0) {
         // 任一结果缺失 → 整组丢弃（其已有结果因 openCallIds 未登记也会被当孤儿丢弃）
@@ -97,17 +158,20 @@ export function sanitizeHistory(messages: ChatMessage[]): ChatMessage[] {
         continue // 空 assistant 消息无意义
       }
       out.push(m)
+      outIds.push(ids[i])
     } else if (m.role === 'tool') {
       // 仅保留"前面存在对应调用"的 tool 结果
       if (m.tool_call_id && openCallIds.has(m.tool_call_id)) {
         openCallIds.delete(m.tool_call_id)
         out.push(m)
+        outIds.push(ids[i])
       }
     } else {
       out.push(m)
+      outIds.push(ids[i])
     }
   }
-  return out
+  return { messages: out, ids: outIds }
 }
 
 /**

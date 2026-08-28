@@ -12,6 +12,9 @@
     "esModuleInterop": true,
     "allowSyntheticDefaultImports": true,
     "resolveJsonModule": true,
+    // 允许带 .ts 扩展的 import（history.ts 运行时导入 COMPACT_SUMMARY_PREFIX，
+    // 供 tests 用 Node 原生 type-stripping 直接执行；electron-vite 同样支持）
+    "allowImportingTsExtensions": true,
 
     "baseUrl": "."
   },

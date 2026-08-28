@@ -4,12 +4,12 @@
 // ============================================================
 import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
 import type { AppSettings, ChatMessage, UserMessageInput, AutoApproveMode } from '../../shared/types'
-import { COMPACT_SUMMARY_PREFIX, AgentAbortedError } from '../../shared/types'
+import { AgentAbortedError } from '../../shared/types'
 import { buildUserContent } from '../../shared/multimodal'
 import * as db from '../store/db'
 import { runAgent, setSkillsPromptGetter } from '../agent/runner'
-import { autoCompact, fetchContextWindow } from '../agent/context'
-import { sanitizeHistory } from '../agent/history'
+import { fetchContextWindow, buildEffectiveConversation, planAutoCompact } from '../agent/context'
+import { sanitizeHistoryWithIds } from '../agent/history'
 import { log } from '../llm/logger'
 import { registerTool, clearTools } from '../tools/registry'
 import { builtinTools } from '../tools/builtin'
@@ -126,6 +126,11 @@ export function setupIpc(win: BrowserWindow): void {
     return db.getMessages(id)
   })
 
+  // 会话的压缩状态（UI 用它渲染"历史已折叠"标记；消息表本身不变）
+  ipcMain.handle('session:compaction', (_e, id: string) => {
+    return db.getSessionCompaction(id)
+  })
+
   // ============================================================
   // Agent 对话
   // ============================================================
@@ -161,10 +166,9 @@ export function setupIpc(win: BrowserWindow): void {
       status: 'done'
     })
 
-    // 获取历史消息
+    // 获取历史消息（完整保留，绝不删除 —— 压缩只影响发给 LLM 的上下文）
     const history = db.getMessages(sessionId)
-    // 清洗 abort/崩溃遗留的非法序列（孤儿 tool 结果、不完整的 tool_call 组）
-    const chatMessages: ChatMessage[] = sanitizeHistory(history.map(m => ({
+    const chatMessages: ChatMessage[] = history.map(m => ({
       role: m.role,
       // 带图片的 user 消息组装为多模态 ContentPart[]（LLM 可见图片）
       content: m.role === 'user' && m.images && m.images.length > 0
@@ -173,7 +177,9 @@ export function setupIpc(win: BrowserWindow): void {
       tool_calls: m.toolCalls,
       tool_call_id: m.toolCallId,
       name: m.toolName
-    })))
+    }))
+    const messageIds = history.map(m => m.id)
+    const compaction = db.getSessionCompaction(sessionId)
 
     // 获取 session 的工作目录（优先用 session 的，没有再用 settings 的默认值）
     const session = db.getSession(sessionId)
@@ -200,6 +206,8 @@ export function setupIpc(win: BrowserWindow): void {
     void runAgent(
       {
         messages: chatMessages,
+        messageIds,
+        compaction,
         provider,
         workspacePath,
         sessionId,
@@ -210,6 +218,10 @@ export function setupIpc(win: BrowserWindow): void {
         maxRounds: settings.maxRounds,
         onSessionTitleUpdate: (sid, title) => {
           mainWindow?.webContents.send('session:title_updated', { sessionId: sid, title })
+        },
+        // 运行中 auto compact 成功 → 持久化新压缩状态（只折叠 LLM 上下文，不动消息表）
+        onAutoCompact: (state) => {
+          db.setSessionCompaction({ sessionId, ...state, createdAt: Date.now() })
         }
       },
       callbacks
@@ -272,9 +284,10 @@ export function setupIpc(win: BrowserWindow): void {
     return true
   })
 
-  // 手动压缩上下文（复用 autoCompact 逻辑，压缩后把保留消息写回 DB）
+  // 手动压缩上下文（非破坏性：只持久化"边界 + 摘要"，不删除/不改写消息表）。
+  // 用户侧始终看到完整历史；下次构建 LLM 上下文时边界之前的消息被摘要替换。
   ipcMain.handle('agent:compact-now', async (e, sessionId: string) => {
-    // 运行中不允许手动压缩：workingMessages 与 DB 会不一致
+    // 运行中不允许手动压缩：workingMessages 与压缩状态会不一致
     if (abortControllers.has(sessionId)) {
       return { error: 'Agent is running. Wait for it to finish before compacting.' }
     }
@@ -285,45 +298,53 @@ export function setupIpc(win: BrowserWindow): void {
       return { error: 'No active provider. Please configure one in Settings.' }
     }
 
-    const uiMessages = db.getMessages(sessionId)
-    // 与 agent:run 相同的组装：图片转多模态 + sanitize 非法序列
-    const chatMessages: ChatMessage[] = sanitizeHistory(uiMessages.map(m => ({
-      role: m.role,
-      content: m.role === 'user' && m.images && m.images.length > 0
-        ? buildUserContent(m.content, m.images)
-        : m.content,
-      tool_calls: m.toolCalls,
-      tool_call_id: m.toolCallId,
-      name: m.toolName
-    })))
-
     try {
+      const history = db.getMessages(sessionId)
+      if (history.length < 4) {
+        return { ok: true, info: { beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: history.length } }
+      }
+      // 与 agent:run 相同的组装：图片转多模态
+      const chatMessages: ChatMessage[] = history.map(m => ({
+        role: m.role,
+        content: m.role === 'user' && m.images && m.images.length > 0
+          ? buildUserContent(m.content, m.images)
+          : m.content,
+        tool_calls: m.toolCalls,
+        tool_call_id: m.toolCallId,
+        name: m.toolName
+      }))
+      const ids = history.map(m => m.id)
+
+      // 清洗非法序列（ids 平行对齐）→ 构建当前 effective 上下文（含已有压缩）
+      const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(chatMessages, ids)
+      const compaction = db.getSessionCompaction(sessionId)
+      const built = buildEffectiveConversation(sanitized, sanitizedIds, compaction)
+      const effective = built.effective
+      // effectiveIds 与 effective 平行对齐（虚拟摘要位 = null）
+      const effectiveIds: Array<string | null> = built.hasSummary
+        ? [null, ...sanitizedIds.slice(built.keptFromIndex)]
+        : [...sanitizedIds]
+
       const contextWindow = await fetchContextWindow(provider)
-      const { messages: compacted, info, keptUiMessages } = await autoCompact(chatMessages, provider, undefined, uiMessages, contextWindow)
-      if (info.compressedCount <= 0) {
-        return { ok: true, info }
+      const plan = await planAutoCompact(effective, provider, undefined, contextWindow)
+      if (plan.compressedCount <= 0) {
+        return { ok: true, info: { beforeTokens: plan.beforeTokens, afterTokens: plan.afterTokens, compressedCount: 0, keptCount: plan.keptCount } }
       }
 
-      // 重建会话历史：删除旧消息 → 写入摘要 + 保留的原始消息
-      db.deleteMessages(sessionId)
-      const summaryMsg = compacted.find(m => m.role === 'user' && typeof m.content === 'string' && m.content.startsWith(COMPACT_SUMMARY_PREFIX))
-      if (summaryMsg && typeof summaryMsg.content === 'string') {
-        db.addMessage({
-          id: genId(),
-          sessionId,
-          role: 'user',
-          content: summaryMsg.content,
-          timestamp: Date.now(),
-          status: 'done'
-        })
+      // 新边界 = 被折叠进摘要的最后一条真实历史消息 id（effective[keptOffset-1]）；
+      // 若该位是虚拟摘要（null，即只折叠了旧摘要），沿用旧边界
+      const boundaryId = effectiveIds[plan.keptOffset - 1] || compaction?.upToMessageId || null
+      if (!boundaryId || !plan.summary) {
+        // 摘要生成失败 → 不持久化（避免丢失旧摘要），提示错误
+        return { error: 'Summary generation failed. Check the LLM provider settings and try again.' }
       }
-      for (const m of keptUiMessages || []) {
-        db.addMessage(m)
-      }
-      // 通知前端展示压缩提示（source=manual：DB 历史已重建，前端需刷新消息）
-      e.sender.send('agent:compact', { sessionId, source: 'manual', ...info })
-      log('info', `Manual compact done: sessionId=${sessionId}, ${info.beforeTokens} → ${info.afterTokens} tokens`)
-      return { ok: true, info }
+      db.setSessionCompaction({ sessionId, upToMessageId: boundaryId, summary: plan.summary, createdAt: Date.now() })
+
+      // 通知前端展示压缩提示（source=manual：压缩状态已更新，消息列表本身不变；
+      // 前端用 boundaryMessageId 在完整历史里渲染"历史已折叠"标记）
+      e.sender.send('agent:compact', { sessionId, source: 'manual', boundaryMessageId: boundaryId, beforeTokens: plan.beforeTokens, afterTokens: plan.afterTokens, compressedCount: plan.compressedCount, keptCount: plan.keptCount })
+      log('info', `Manual compact done: sessionId=${sessionId}, boundary=${boundaryId}, ${plan.beforeTokens} → ${plan.afterTokens} tokens`)
+      return { ok: true, info: { beforeTokens: plan.beforeTokens, afterTokens: plan.afterTokens, compressedCount: plan.compressedCount, keptCount: plan.keptCount } }
     } catch (err) {
       const msg = (err as Error).message
       log('error', `Manual compact failed: ${msg}`)
@@ -401,14 +422,26 @@ export function setupIpc(win: BrowserWindow): void {
   })
 
   // ============================================================
-  // Token Usage 查询
+  // Token Usage 查询（30 分钟桶）
   // ============================================================
   ipcMain.handle('token:summary', () => {
     return db.getTokenUsageSummary()
   })
 
-  ipcMain.handle('token:daily', (_e, days?: number) => {
-    return db.getTokenUsageDaily(days || 30)
+  ipcMain.handle('token:buckets', (_e, days?: number) => {
+    return db.getTokenUsageBuckets(days || 7)
+  })
+
+  // ============================================================
+  // 上下文窗口探测（填写/修改 Base URL 时自动识别）
+  // ============================================================
+  ipcMain.handle('provider:context-window', async (_e, provider: AppSettings['providers'][0], modelOverride?: string) => {
+    try {
+      const detected = await fetchContextWindow(provider, modelOverride)
+      return { detected }
+    } catch (err) {
+      return { error: (err as Error).message }
+    }
   })
 
   // ============================================================

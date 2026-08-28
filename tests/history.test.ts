@@ -2,7 +2,8 @@
 // history.ts 单元测试 — 直接 node 运行（Node 22+ type stripping）
 //   npx tsx tests/history.test.ts  或  node tests/history.test.ts
 // ============================================================
-import { splitAtSafeBoundary, sanitizeHistory, planCompact, planCompactByTokens } from '../src/main/agent/history.ts'
+import { splitAtSafeBoundary, sanitizeHistory, sanitizeHistoryWithIds, planCompact, planCompactByTokens, buildEffectiveConversation, type CompactionState } from '../src/main/agent/history.ts'
+import { COMPACT_SUMMARY_PREFIX } from '../src/shared/types.ts'
 import type { ChatMessage, ToolCall } from '../src/shared/types.ts'
 
 let passed = 0
@@ -362,6 +363,97 @@ test('整个序列是一个并行工具组 → 放弃压缩（切点回退到 0�
   const { toCompress, toKeep } = planCompactByTokens(msgs, 5000, tokenEstimator)
   assertEq(toCompress.length, 0, '放弃压缩')
   assertEq(toKeep.length, msgs.length, '全部保留')
+})
+
+// ============================================================
+console.log('\nsanitizeHistoryWithIds')
+// ============================================================
+
+test('ids 与清洗后消息平行对齐（删除中间消息不错位）', () => {
+  const msgs: ChatMessage[] = [
+    text('user', 'hi'),
+    toolResult('ghost', 'bash', '???'), // 孤儿 → 删除
+    text('assistant', 'hello'),
+    assistantWithCalls(tc('c9', 'bash')), // 悬空组 → 删除
+    text('user', 'next'),
+  ]
+  const ids = ['m0', 'm1', 'm2', 'm3', 'm4']
+  const { messages, ids: outIds } = sanitizeHistoryWithIds(msgs, ids)
+  assertEq(outIds.length, messages.length, 'ids 与消息等长')
+  // 保留 m0(user) m2(assistant) m4(user)，删除 m1(孤儿) m3(悬空)
+  assertEq(outIds[0], 'm0', '第一条 id 对齐')
+  assertEq(outIds[1], 'm2', '第二条 id 对齐（跳过被删的 m1）')
+  assertEq(outIds[2], 'm4', '第三条 id 对齐（跳过被删的 m3）')
+  for (let i = 0; i < messages.length; i++) {
+    assert(messages[i].role === (msgs[parseInt(outIds[i]!.slice(1), 10)] as ChatMessage).role, `msg[${i}] 与 id 对应`)
+  }
+})
+
+test('完整合法序列 → ids 全保留', () => {
+  const msgs = makeLongHistory()
+  const ids = msgs.map((_, i) => `id${i}`)
+  const { messages, ids: outIds } = sanitizeHistoryWithIds(msgs, ids)
+  assertEq(outIds.length, ids.length, '无删除')
+  for (let i = 0; i < ids.length; i++) assertEq(outIds[i], ids[i], `ids[${i}] 不变`)
+})
+
+// ============================================================
+console.log('\nbuildEffectiveConversation（压缩只影响 LLM 上下文，不动历史）')
+// ============================================================
+
+test('无压缩 → 返回完整列表，keptFromIndex=0', () => {
+  const msgs = makeLongHistory()
+  const ids = msgs.map((_, i) => `id${i}`)
+  const r = buildEffectiveConversation(msgs, ids, null)
+  assertEq(r.effective.length, msgs.length, '长度不变')
+  assertEq(r.keptFromIndex, 0, 'keptFromIndex=0')
+  assertEq(r.hasSummary, false, '无摘要')
+})
+
+test('有压缩 → 边界之前的消息被摘要替换，之后原样保留', () => {
+  const msgs = makeLongHistory() // 13 条
+  const ids = msgs.map((_, i) => `id${i}`)
+  // 边界 = 第 4 条（id3），id4..id12 保留
+  const compaction: CompactionState = { upToMessageId: 'id3', summary: '之前讨论了项目结构' }
+  const r = buildEffectiveConversation(msgs, ids, compaction)
+  assertEq(r.hasSummary, true, '有摘要')
+  assertEq(r.keptFromIndex, 4, 'keptFromIndex = 边界下标+1')
+  assertEq(r.effective.length, 1 + (msgs.length - 4), '摘要 + 保留段')
+  assertEq(r.effective[0].role, 'user', '首条为摘要消息')
+  assertEq(typeof r.effective[0].content, 'string')
+  assert((r.effective[0].content as string).startsWith(COMPACT_SUMMARY_PREFIX), '摘要带前缀')
+  assert((r.effective[0].content as string).includes('之前讨论了项目结构'), '摘要内容正确')
+  // 保留段 = 原 id4.. 的消息（引用一致）
+  for (let i = 4; i < msgs.length; i++) {
+    assertEq(r.effective[i - 3], msgs[i], `effective[${i - 3}] 是原消息 ${i}`)
+  }
+})
+
+test('边界不存在 → 忽略压缩，返回完整列表', () => {
+  const msgs = makeLongHistory()
+  const ids = msgs.map((_, i) => `id${i}`)
+  const compaction: CompactionState = { upToMessageId: 'nonexistent', summary: 'x' }
+  const r = buildEffectiveConversation(msgs, ids, compaction)
+  assertEq(r.hasSummary, false, '无摘要')
+  assertEq(r.effective.length, msgs.length, '完整返回')
+})
+
+test('边界 = 最后一条 → 只有摘要（保留段为空）', () => {
+  const msgs = makeLongHistory()
+  const ids = msgs.map((_, i) => `id${i}`)
+  const last = ids[ids.length - 1]
+  const r = buildEffectiveConversation(msgs, ids, { upToMessageId: last, summary: 'all' })
+  assertEq(r.effective.length, 1, '只剩摘要')
+  assertEq(r.keptFromIndex, msgs.length, 'keptFromIndex 指向末尾')
+})
+
+test('边界 = 第一条 → 摘要 + 其余全部保留', () => {
+  const msgs = makeLongHistory()
+  const ids = msgs.map((_, i) => `id${i}`)
+  const r = buildEffectiveConversation(msgs, ids, { upToMessageId: ids[0], summary: 'first' })
+  assertEq(r.hasSummary, true, '有摘要')
+  assertEq(r.keptFromIndex, 1, 'keptFromIndex=1')
+  assertEq(r.effective.length, 1 + (msgs.length - 1), '摘要 + 其余')
 })
 
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed`)

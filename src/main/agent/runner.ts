@@ -1,15 +1,29 @@
 // ============================================================
 // Agent 调度器 — ReAct 工具调用循环
 // 核心流程: 用户输入 → LLM → (tool_calls? → 执行工具 → 回传结果 → LLM)* → 最终回答
+//
+// 上下文压缩（对齐 Cline / opencode）：
+// 压缩状态持久化在 compactions 表（每会话一行：边界消息 id + 摘要）。
+// 每次运行从"完整历史 + 压缩记录"构建发给 LLM 的 effective 上下文；
+// 压缩只折叠 effective 的前段，数据库与用户可见历史不受影响。
+// 运行中触发 auto compact 时把新压缩状态回传 onAutoCompact 持久化。
+//
+// 内部用 effective[] + effectiveIds[] 两个平行数组维护"当前发给 LLM 的
+// 对话上下文"（index 0 恒为 system，effectiveIds[0] = null）。运行中新增的
+// assistant / tool 消息追加时同时 push 到两个数组，保证 id 对齐；压缩边界
+// 总是取"被折叠的最后一条真实历史消息 id"（跳过虚拟摘要位 null）。
 // ============================================================
 import type { ChatMessage, ContentPart, ProviderConfig, ToolCall } from '../../shared/types'
 import { streamChat, type TokenUsage } from '../llm/provider'
 import { log } from '../llm/logger'
 import { getTool, getAllTools, type ToolContext } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
-import { needsCompact, autoCompact, fetchContextWindow } from '../agent/context'
+import {
+  needsCompact, fetchContextWindow, buildEffectiveConversation,
+  planAutoCompact, makeSummaryMessage, type CompactionState
+} from '../agent/context'
 import { buildSystemPrompt } from '../agent/promptBuilder'
-import { sanitizeHistory } from './history'
+import { sanitizeHistoryWithIds } from './history'
 import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
 import { getSettings } from '../store/db'
@@ -37,10 +51,10 @@ export interface AgentEventCallbacks {
   onToken?: (token: string) => void
   /** LLM 请求了工具调用 */
   onToolCall?: (toolCall: ToolCall) => void
-  /** 工具执行完成 */
-  onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => void
-  /** 一轮 LLM 调用完成（可能继续循环或结束） */
-  onAssistantMessage?: (content: string, toolCalls: ToolCall[]) => void
+  /** 工具执行完成。返回该 tool 消息落库后的 id（供压缩边界定位），未落库返回 null */
+  onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => string | null
+  /** 一轮 LLM 调用完成（可能继续循环或结束）。返回该 assistant 消息落库后的 id，未落库返回 null */
+  onAssistantMessage?: (content: string, toolCalls: ToolCall[]) => string | null
   /** Token 用量回调 */
   onTokenUsage?: (usage: TokenUsage, model: string) => void
   /** 整个对话完成 */
@@ -49,12 +63,17 @@ export interface AgentEventCallbacks {
   onError?: (error: Error) => void
   /** LLM 网络失败，正在自动重试 */
   onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
-  /** 上下文压缩完成（通知前端展示提示） */
-  onCompact?: (info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number }) => void
+  /** 上下文压缩完成（通知前端展示提示 + 更新压缩标记位置） */
+  onCompact?: (info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }) => void
 }
 
 export interface AgentRunOptions {
+  /** 完整会话历史（无 system，按时间升序） */
   messages: ChatMessage[]
+  /** 与 messages 平行对齐的 UI 消息 id（压缩边界定位用） */
+  messageIds: string[]
+  /** 已有的压缩记录（无则 null） */
+  compaction: CompactionState | null
   provider: ProviderConfig
   workspacePath: string
   sessionId?: string
@@ -72,6 +91,11 @@ export interface AgentRunOptions {
   loopConfig?: LoopDetectionConfig
   /** 会话标题更新回调（由 IPC 层注入） */
   onSessionTitleUpdate?: (sessionId: string, title: string) => void
+  /**
+   * 运行中触发 auto compact 且成功生成摘要时回传新压缩状态（由 IPC 层持久化）。
+   * 只折叠 effective 上下文，不触碰数据库中的完整历史。
+   */
+  onAutoCompact?: (state: { upToMessageId: string; summary: string }) => void
 }
 
 /**
@@ -81,7 +105,7 @@ export async function runAgent(
   opts: AgentRunOptions,
   cb: AgentEventCallbacks
 ): Promise<ChatMessage[]> {
-  const { provider, workspacePath, messages, signal, permissionCheck, modelOverride, sessionId, memoryEnabled, onSessionTitleUpdate } = opts
+  const { provider, workspacePath, messages, messageIds, compaction, signal, permissionCheck, modelOverride, sessionId, memoryEnabled, onSessionTitleUpdate, onAutoCompact } = opts
 
   // 构建系统提示词（含记忆注入 + MCP 工具动态列表）
   const skillsPrompt = skillsPromptGetter ? skillsPromptGetter() : ''
@@ -89,31 +113,78 @@ export async function runAgent(
   const systemPrompt = buildSystemPrompt(workspacePath, skillsPrompt, memoryPrompt, opts.systemPromptExtra)
 
   // 清洗 abort/崩溃遗留的非法序列（孤儿 tool 结果、不完整的 tool_call 组），
-  // 否则第一轮请求就会 400
-  const sanitizedMessages = sanitizeHistory(messages)
-  if (sanitizedMessages.length !== messages.length) {
-    log('info', `Sanitized history: removed ${messages.length - sanitizedMessages.length} dangling message(s)`)
+  // 否则第一轮请求就会 400。ids 与消息平行对齐（清洗删除中间消息时不错位）。
+  const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)
+  if (sanitized.length !== messages.length) {
+    log('info', `Sanitized history: removed ${messages.length - sanitized.length} dangling message(s)`)
   }
 
-  // 工作消息列表（含 system）
-  const workingMessages: ChatMessage[] = [
-    { role: 'system', content: systemPrompt },
-    ...sanitizedMessages
-  ]
+  // 从"完整历史 + 压缩记录"构建当前发给 LLM 的对话上下文（不含 system）。
+  // compaction 用 let：运行中 auto compact 成功后更新，供后续边界回退使用。
+  let compactionState: CompactionState | null = compaction
+  // effectiveIds 与 effective 平行对齐：虚拟摘要位 = null，其余 = 真实消息 id。
+  const built = buildEffectiveConversation(sanitized, sanitizedIds, compactionState)
+  const conversation: ChatMessage[] = built.effective
+  const conversationIds: Array<string | null> = built.hasSummary
+    ? [null, ...sanitizedIds.slice(built.keptFromIndex)]
+    : [...sanitizedIds]
 
-  // 运行时获取上下文窗口大小（从 API 动态检测）
+  // 运行时获取上下文窗口大小（手动配置 → API 探测 → 启发式 → 默认值）
   const contextWindow = await fetchContextWindow(provider, modelOverride)
   log('info', `Context window: ${contextWindow} tokens`)
+
+  // 当前发给 LLM 的完整上下文（index 0 = system）。这是唯一的工作数组：
+  // 发送、追加消息、压缩都直接操作它。
+  const workingMessages: ChatMessage[] = [{ role: 'system', content: systemPrompt }, ...conversation]
+  // 与 workingMessages 平行对齐的 id（[0] = null）
+  const workingIds: Array<string | null> = [null, ...conversationIds]
+
+  /**
+   * 执行一次 auto compact（折叠 workingMessages 中 system 之后的前段）。
+   * 成功后通过 onAutoCompact 持久化新压缩状态；
+   * LLM 摘要失败时退化为截断（本次运行生效，不持久化新状态）。
+   */
+  async function applyAutoCompact() {
+    const effective = workingMessages.slice(1)
+    const effectiveIds = workingIds.slice(1)
+    const plan = await planAutoCompact(effective, provider, modelOverride, contextWindow)
+    if (plan.compressedCount <= 0) {
+      log('info', 'Auto compact: no safe boundary to split, skipping')
+      return
+    }
+    // 新边界 = 被折叠的最后一条真实历史消息 id（跳过虚拟摘要位 null）
+    const boundaryId = effectiveIds[plan.keptOffset - 1] || compactionState?.upToMessageId || null
+    if (plan.summary && boundaryId) {
+      onAutoCompact?.({ upToMessageId: boundaryId, summary: plan.summary })
+      compactionState = { upToMessageId: boundaryId, summary: plan.summary }
+    }
+    // 重建工作上下文：保留 system + (新摘要 + toKeep) 或 (仅 toKeep)
+    const tail: ChatMessage[] = plan.summary
+      ? [makeSummaryMessage(plan.summary), ...plan.toKeep]
+      : plan.toKeep
+    const tailIds: Array<string | null> = plan.summary
+      ? [null, ...effectiveIds.slice(plan.keptOffset)]
+      : effectiveIds.slice(plan.keptOffset)
+    workingMessages.length = 0
+    workingMessages.push({ role: 'system', content: systemPrompt }, ...tail)
+    workingIds.length = 0
+    workingIds.push(null, ...tailIds)
+    log('warn', plan.summary
+      ? `Auto compact: boundary persisted at "${boundaryId}"`
+      : 'Auto compact: summary failed, truncated for this run only (state not persisted)')
+    cb.onCompact?.({
+      beforeTokens: plan.beforeTokens,
+      afterTokens: plan.afterTokens,
+      compressedCount: plan.compressedCount,
+      keptCount: plan.keptCount,
+      boundaryMessageId: boundaryId || undefined
+    })
+  }
 
   // Auto Compact: 发送前检查上下文是否超阈值
   if (needsCompact(workingMessages, contextWindow)) {
     log('info', 'Auto compact triggered before sending')
-    const { messages: compacted, info } = await autoCompact(workingMessages, provider, modelOverride, undefined, contextWindow)
-    if (info.compressedCount > 0) {
-      cb.onCompact?.(info)
-    }
-    workingMessages.length = 0
-    workingMessages.push(...compacted)
+    await applyAutoCompact()
   }
 
   const maxRounds = opts.maxRounds ?? getMaxToolRounds()
@@ -132,12 +203,7 @@ export async function runAgent(
     // 每轮发送前也检查（工具结果可能很大，导致上下文膨胀）
     if (round > 1 && needsCompact(workingMessages, contextWindow)) {
       log('info', `Auto compact triggered at round ${round}`)
-      const { messages: compacted, info } = await autoCompact(workingMessages, provider, modelOverride, undefined, contextWindow)
-      if (info.compressedCount > 0) {
-        cb.onCompact?.(info)
-      }
-      workingMessages.length = 0
-      workingMessages.push(...compacted)
+      await applyAutoCompact()
     }
 
     // 轮间中止检查：provider 层对用户中止按"部分内容正常完成"处理，
@@ -172,7 +238,8 @@ export async function runAgent(
       throw new AgentAbortedError()
     }
 
-    cb.onAssistantMessage?.(content, toolCalls)
+    // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
+    const assistantPersistId = cb.onAssistantMessage?.(content, toolCalls) ?? null
 
     // 如果没有工具调用 → 对话结束
     if (!toolCalls || toolCalls.length === 0) {
@@ -185,13 +252,15 @@ export async function runAgent(
       return allAssistantMessages
     }
 
-    // 记录 assistant 消息（含 tool_calls）
+    // 记录 assistant 消息（含 tool_calls）到工作上下文。
+    // workingIds 对应位置 = 落库 id（无则 null），保证压缩边界定位正确。
     const assistantMsg: ChatMessage = {
       role: 'assistant',
       content: content || null,
       tool_calls: toolCalls
     }
     workingMessages.push(assistantMsg)
+    workingIds.push(assistantPersistId)
     allAssistantMessages.push(assistantMsg)
 
     // 执行每个工具调用
@@ -209,19 +278,26 @@ export async function runAgent(
       let resultText = ''
       let isError = false
       let durationMs = 0
+      let imageContent: ContentPart[] | undefined = undefined
+
+      // 把 tool 结果追加进工作上下文（id = 落库 id，无则 null）
+      const pushToolResult = (persistId: string | null) => {
+        workingMessages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          name: tc.function.name,
+          content: imageContent ?? resultText
+        })
+        workingIds.push(persistId)
+      }
 
       // 中止短路：用户按 Stop 后本轮剩余工具不再执行（占位结果保证消息序列合法）。
       // 下一轮 while 顶部的 signal 检查会抛出 AgentAbortedError 结束本次运行。
       if (signal?.aborted) {
         resultText = 'Execution skipped: aborted by user'
         isError = true
-        cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0)
-        workingMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          name: tc.function.name,
-          content: resultText
-        })
+        const id = cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0) ?? null
+        pushToolResult(id)
         continue
       }
 
@@ -242,13 +318,8 @@ export async function runAgent(
           // 硬停已触发：本条及剩余工具调用不再执行（占位结果保证消息序列合法）
           resultText = `Execution skipped: agent hard-stopped (${hardStop})`
           isError = true
-          cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0)
-          workingMessages.push({
-            role: 'tool',
-            tool_call_id: tc.id,
-            name: tc.function.name,
-            content: resultText
-          })
+          const id = cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0) ?? null
+          pushToolResult(id)
           continue
         }
 
@@ -260,13 +331,8 @@ export async function runAgent(
             if (!allowed) {
               resultText = 'Permission denied by user'
               isError = true
-              cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0)
-              workingMessages.push({
-                role: 'tool',
-                tool_call_id: tc.id,
-                name: tc.function.name,
-                content: resultText
-              })
+              const id = cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0) ?? null
+              pushToolResult(id)
               continue
             }
           }
@@ -304,30 +370,18 @@ export async function runAgent(
           ? `${imageTextPart}\n[screenshot attached, sent to LLM for visual analysis]`
           : 'Screenshot captured (image sent to LLM for visual analysis)'
         : resultText
-      cb.onToolResult?.(tc.id, tc.function.name, displayResult, isError, durationMs)
 
       // 追加 tool 消息 — 如果结果是 base64 图片，组装为 OpenAI 多模态格式
       if (isImageResult) {
-        const imageContent: ContentPart[] = []
+        imageContent = []
         if (imageTextPart) imageContent.push({ type: 'text', text: imageTextPart })
         imageContent.push({
           type: 'image_url',
           image_url: { url: `data:image/png;base64,${imageBase64}`, detail: 'auto' }
         })
-        workingMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          name: tc.function.name,
-          content: imageContent
-        })
-      } else {
-        workingMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          name: tc.function.name,
-          content: resultText
-        })
       }
+      const persistId = cb.onToolResult?.(tc.id, tc.function.name, displayResult, isError, durationMs) ?? null
+      pushToolResult(persistId)
     }
 
     // 继续下一轮，让 LLM 看到工具结果后决定下一步
@@ -394,7 +448,7 @@ async function finalizeRun(
     cb.onAssistantMessage?.(content, [])
     log('info', 'Finalize summary completed')
   } catch (err) {
-    log('error', `Finalize summary failed: {(err as Error).message}`)
+    log('error', `Finalize summary failed: ${(err as Error).message}`)
   }
 }
 

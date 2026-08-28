@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, ImagePlus, Send, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle } from 'lucide-react'
+import { FolderOpen, ImagePlus, Send, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp } from 'lucide-react'
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore } from '../store'
 import MessageBubble from './MessageBubble'
@@ -17,6 +17,8 @@ export default function ChatView() {
   const isRunning = useAppStore(s => (activeSessionId ? s.runningIds.has(activeSessionId) : false))
   const retryStatus = useAppStore(s => (activeSessionId ? s.retryStatus[activeSessionId] : undefined))
   const compactNotice = useAppStore(s => (activeSessionId ? s.compactNotices[activeSessionId] : undefined))
+  // 压缩标记：upToMessageId 之前的历史在 LLM 上下文中被摘要折叠（消息表不变）
+  const compaction = useAppStore(s => (activeSessionId ? s.compactionMarkers[activeSessionId] : undefined))
   const { sessions, settings, selectedProviderModel, setSelectedProviderModel, approveMode, setApproveMode, isCompacting, sendMessage, abortAgent, compactNow } = useAppStore()
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -298,8 +300,15 @@ export default function ChatView() {
               <small>{t('chat.welcomeHint')}</small>
             </div>
           )}
-          {messages.map((msg) => (
-            <MessageBubble key={msg.id} message={msg} toolStatuses={toolStatuses} retryStatus={retryStatus} />
+          {messages.map((msg, i) => (
+            <React.Fragment key={msg.id}>
+              <MessageBubble message={msg} toolStatuses={toolStatuses} retryStatus={retryStatus} />
+              {/* 压缩标记：渲染在边界消息之后。完整历史仍可见，
+                  标记仅说明"此处的历史在发给 LLM 时已被摘要折叠" */}
+              {compaction && msg.id === compaction.upToMessageId && i < messages.length - 1 && (
+                <CompactFoldedMarker />
+              )}
+            </React.Fragment>
           ))}
           {/* 重试状态行（思考占位已被移除时显示，如工具轮之间的重试） */}
           {retryStatus && isRunning && !messages.some(m => m.status === 'thinking') && (
@@ -387,6 +396,35 @@ export default function ChatView() {
             {t('chat.send')}
           </button>
         </div>
+      </div>
+    </div>
+  )
+}
+
+/* ---------- 上下文压缩标记 ----------
+ * 渲染在压缩边界消息之后。说明：此消息及之前的历史在发送给 LLM 时
+ * 已被折叠为一段摘要（节省上下文空间），但界面上完整历史仍然可见，
+ * 不会被删除 —— 对齐 Cline / opencode 的"压缩只影响 LLM 上下文"语义。
+ */
+function CompactFoldedMarker() {
+  const { t } = useTranslation()
+  const [expanded, setExpanded] = useState(false)
+  return (
+    <div className="compact-summary">
+      <div className="compact-summary-inner">
+        <button className="compact-summary-header" onClick={() => setExpanded(!expanded)}>
+          <Archive size={13} />
+          <span className="compact-summary-title">{t('compact.folded')}</span>
+          <span className="compact-summary-toggle">
+            {expanded ? t('message.collapse') : t('message.expand')}
+            {expanded ? <ChevronDown size={12} /> : <ChevronUp size={12} />}
+          </span>
+        </button>
+        {expanded && (
+          <div className="compact-summary-body">
+            <p>{t('compact.foldedHint')}</p>
+          </div>
+        )}
       </div>
     </div>
   )
