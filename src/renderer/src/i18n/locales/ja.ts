@@ -50,7 +50,9 @@ export default {
     imageLimit: "1メッセージにつき最大 {{max}} 枚まで",
     imageErrorUnsupported: "サポートされていないファイル形式です。画像ファイルを追加してください",
     imageErrorTooLarge: "画像が 10MB を超えています。追加できません",
-    imageErrorDecode: "画像のデコードに失敗しました。別の画像をお試しください"
+    imageErrorDecode: "画像のデコードに失敗しました。別の画像をお試しください",
+    truncatedTool: "出力がモデルのトークン上限に達しました — ツール呼び出しが途中までになりました。小さな出力で再試行するようモデルに依頼しています。",
+    truncatedText: "出力がモデルのトークン上限に達しました — 自動で続行します。"
   },
   permission: {
     title: '権限リクエスト',

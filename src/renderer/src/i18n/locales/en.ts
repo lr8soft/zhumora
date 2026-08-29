@@ -50,7 +50,9 @@ export default {
     imageLimit: "Up to {{max}} images per message",
     imageErrorUnsupported: "Unsupported file type, please add an image file",
     imageErrorTooLarge: "Image exceeds 10MB and cannot be added",
-    imageErrorDecode: "Failed to decode image, please try another one"
+    imageErrorDecode: "Failed to decode image, please try another one",
+    truncatedTool: "Output hit the model's token limit — the tool call was cut off, asking the model to retry with smaller output.",
+    truncatedText: "Output hit the model's token limit — continuing automatically."
   },
   permission: {
     title: 'Permission Request',

@@ -50,7 +50,9 @@ export default {
     imageLimit: "Max. {{max}} Bilder pro Nachricht",
     imageErrorUnsupported: "Nicht unterstützter Dateityp. Bitte Bilddatei hinzufügen",
     imageErrorTooLarge: "Bild überschreitet 10 MB und kann nicht hinzugefügt werden",
-    imageErrorDecode: "Bild konnte nicht decodiert werden. Bitte anderes Bild versuchen"
+    imageErrorDecode: "Bild konnte nicht decodiert werden. Bitte anderes Bild versuchen",
+    truncatedTool: "Die Ausgabe hat das Token-Limit des Modells erreicht — der Tool-Aufruf wurde abgeschnitten. Das Modell wird um einen Wiederholungsversuch mit kleinerer Ausgabe gebeten.",
+    truncatedText: "Die Ausgabe hat das Token-Limit des Modells erreicht — wird automatisch fortgesetzt."
   },
   permission: {
     title: 'Berechtigungsanfrage',

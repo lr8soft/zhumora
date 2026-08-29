@@ -50,7 +50,9 @@ export default {
     imageLimit: "每条消息最多 {{max}} 张图片",
     imageErrorUnsupported: "不支持的文件类型，请上传图片文件",
     imageErrorTooLarge: "图片超过 10MB，无法添加",
-    imageErrorDecode: "图片解析失败，请更换图片"
+    imageErrorDecode: "图片解析失败，请更换图片",
+    truncatedTool: "单轮输出达到模型 token 上限，工具调用被截断——已要求模型拆小步重试。",
+    truncatedText: "单轮输出达到模型 token 上限——正在自动续写。"
   },
   permission: {
     title: '权限请求',

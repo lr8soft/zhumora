@@ -244,6 +244,20 @@ export default function App() {
         useAppStore.getState().setRetryStatus(sessionId, { failedAttempt, maxRetries })
       }),
 
+      // 单轮输出被 max_tokens 截断（按会话）→ 展示提示条，8 秒后自动消失
+      window.api.agent.onTruncated(({ sessionId, kind }) => {
+        useAppStore.setState((s) => ({
+          truncatedNotices: { ...s.truncatedNotices, [sessionId]: { kind } }
+        }))
+        setTimeout(() => {
+          useAppStore.setState((s) => {
+            const rest = { ...s.truncatedNotices }
+            delete rest[sessionId]
+            return { truncatedNotices: rest }
+          })
+        }, 8000)
+      }),
+
       // 权限请求（按会话存入；UI 按 FIFO 显示，不影响其他并行会话）
       window.api.agent.onPermissionRequest(({ sessionId, permId, toolName, args, level }) => {
         useAppStore.setState((s) => ({

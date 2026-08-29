@@ -139,6 +139,10 @@ export function buildAgentCallbacks(
     onRetry: (failedAttempt, maxRetries) => {
       sender.send('agent:retry', { sessionId, failedAttempt, maxRetries })
     },
+    onTruncated: (kind) => {
+      // 单轮输出被 max_tokens 截断 → 前端展示提示条（截断内容本身已按原样流式展示）
+      sender.send('agent:truncated', { sessionId, kind })
+    },
     onCompact: (info) => {
       // source=auto：agent 运行中的自动压缩（只影响 LLM 上下文，消息表不变；
       // 但压缩状态已持久化 → 前端用 boundaryMessageId 更新"历史已折叠"标记）

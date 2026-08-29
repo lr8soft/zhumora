@@ -79,6 +79,12 @@ interface CompactNotice {
   error?: string
 }
 
+/** 单轮输出被 max_tokens 截断的通知（按会话，展示后自动消失） */
+interface TruncatedNotice {
+  /** 'tool' = 工具调用参数被截断（已要求模型拆小步重发）；'text' = 纯文本回答被截断（已自动续写） */
+  kind: 'tool' | 'text'
+}
+
 /** 会话的上下文压缩标记（LLM 上下文中已折叠的边界；消息表不变，完整历史仍可见） */
 interface CompactionMarker {
   /** 该消息（含）之前的历史在发给 LLM 时被摘要折叠 */
@@ -147,6 +153,9 @@ interface AppState {
   compactNotices: Record<string, CompactNotice>
   /** 手动压缩进行中（显式用户操作，全局一次一个即可） */
   isCompacting: boolean
+
+  // 单轮输出被 max_tokens 截断的通知（按会话，显示后自动消失）
+  truncatedNotices: Record<string, TruncatedNotice>
 
   // 设置 — 草稿模式（改动不点"保存"不生效；"取消"丢弃改动恢复原值）
   settings: AppSettings                       // 权威设置（来自 DB），设置页之外的 UI 用这个
@@ -432,6 +441,9 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ---- 上下文压缩通知 ----
   compactNotices: {},
   isCompacting: false,
+
+  // ---- 输出截断通知（agent:truncated 事件驱动，App.tsx 负责 8s 后清除）----
+  truncatedNotices: {},
 
   compactNow: async () => {
     const { activeSessionId, runningIds, isCompacting } = get()

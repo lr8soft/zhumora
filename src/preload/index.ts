@@ -124,6 +124,12 @@ const api = {
       ipcRenderer.on('agent:retry', handler)
       return () => ipcRenderer.removeListener('agent:retry', handler)
     },
+    /** 单轮输出被 max_tokens 上限截断（kind: 'tool' = 工具调用被截断，'text' = 纯文本被截断） */
+    onTruncated: (cb: (data: { sessionId: string; kind: 'tool' | 'text' }) => void) => {
+      const handler = (_e: any, data: any) => cb(data)
+      ipcRenderer.on('agent:truncated', handler)
+      return () => ipcRenderer.removeListener('agent:truncated', handler)
+    },
     onPermissionRequest: (cb: (data: { sessionId: string; permId: string; toolName: string; args: any; level?: string }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:permission_request', handler)

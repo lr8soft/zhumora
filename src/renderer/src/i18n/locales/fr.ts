@@ -50,7 +50,9 @@ export default {
     imageLimit: "Maximum {{max}} images par message",
     imageErrorUnsupported: "Type de fichier non pris en charge. Ajoutez un fichier image",
     imageErrorTooLarge: "L'image dépasse 10 Mo et ne peut pas être ajoutée",
-    imageErrorDecode: "Échec de la décodification de l'image. Essayez-en une autre"
+    imageErrorDecode: "Échec de la décodification de l'image. Essayez-en une autre",
+    truncatedTool: "La réponse a atteint la limite de jetons du modèle : l'appel d'outil a été tronqué. Le modèle est invité à réessayer avec une sortie plus petite.",
+    truncatedText: "La réponse a atteint la limite de jetons du modèle — continuation automatique."
   },
   permission: {
     title: 'Demande de Permission',

@@ -31,6 +31,17 @@ import { AgentAbortedError } from '../../shared/types'
 
 export const DEFAULT_MAX_TOOL_ROUNDS = 20
 
+/** 同一轮次内"输出被截断"的自动续写次数上限（防止截断 → 续写 → 再截断的死循环） */
+export const MAX_TRUNCATION_CONTINUATIONS = 2
+
+/** 单轮输出达到 max_tokens 上限被截断时回传给模型的提示（喂 LLM，固定英文） */
+const TRUNCATION_TOOL_ERROR =
+  '[Output truncated] Your previous response hit the per-response token limit and was cut off: the tool call arguments are incomplete. Re-issue the call with smaller output — e.g. split file writes into multiple smaller chunks — or take the next smaller step.'
+
+/** 单轮输出达到 max_tokens 上限被截断（纯文本轮）时追加的续写指令（喂 LLM，固定英文） */
+const TRUNCATION_CONTINUE_PROMPT =
+  '[System notice] Your previous response was truncated by the per-response token limit (max_tokens) and is incomplete. Continue exactly from where you stopped. Do not repeat what you already wrote. If you were about to call a tool, call it now with a smaller output (split large file writes into chunks).'
+
 /** 单次对话最大工具轮数（0 = 不限制）。设置 maxRounds 可配，默认 20 */
 export function getMaxToolRounds(): number {
   try {
@@ -65,6 +76,13 @@ export interface AgentEventCallbacks {
   onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
   /** 上下文压缩完成（通知前端展示提示 + 更新压缩标记位置） */
   onCompact?: (info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }) => void
+  /**
+   * 单轮输出达到 max_tokens 上限被截断（finish_reason = length）。
+   * 通知前端展示"输出被截断"提示条 —— 这是"工作没做完却无报错停止"
+   * 的根因场景，必须让用户可见（对齐 opencode / Cline 的 finish_reason 处理）。
+   * 截断的文本/工具调用已按原样保留，runner 会自动引导模型续写或重试工具调用。
+   */
+  onTruncated?: (kind: 'tool' | 'text') => void
 }
 
 export interface AgentRunOptions {
@@ -195,6 +213,14 @@ export async function runAgent(
 
   let round = 0
   const allAssistantMessages: ChatMessage[] = []
+  /**
+   * 同一轮次内"输出被截断（finish_reason=length）"的自动恢复计数。
+   * 0 = 当前轮次是原始轮次；>0 = 第 N 次续写/重发。超过
+   * MAX_TRUNCATION_CONTINUATIONS 后不再自动恢复，走正常收尾 ——
+   * 防止"截断 → 续写 → 再截断"死循环烧 token。
+   * 每个新的原始轮次（用户输入 / 工具结果驱动）重置为 0。
+   */
+  let truncationContinuations = 0
 
   while (maxRounds <= 0 || round < maxRounds) {
     round++
@@ -212,7 +238,7 @@ export async function runAgent(
 
     const tools = getAllTools()
     const model = modelOverride || provider.defaultModel
-    const { content, toolCalls, usage } = await streamChat(provider, {
+    const { content, toolCalls, usage, finishReason } = await streamChat(provider, {
       messages: workingMessages,
       tools: tools.length > 0 ? tools : undefined,
       model,
@@ -238,11 +264,69 @@ export async function runAgent(
       throw new AgentAbortedError()
     }
 
+    // finish_reason = length：单轮输出达到 provider 侧 max_tokens 上限被截断。
+    // 不处理的话截断轮会"看起来像正常完成"—— 工作没做完、无报错，
+    // 这是本修复要解决的根因（对齐 opencode / Cline：finish_reason 是一等信号）。
+    const wasTruncated = finishReason === 'length'
+    const canRecover = truncationContinuations < MAX_TRUNCATION_CONTINUATIONS
+
+    if (wasTruncated && canRecover && toolCalls.length > 0) {
+      // 截断发生在工具轮：tool_calls 参数 JSON 多半不完整，不能执行。
+      // 把截断的 assistant 消息作为真实上下文保留（模型能看到自己写到哪里），
+      // 给每个调用补一条解释性 tool 结果 → 下一轮引导模型拆小步重发。
+      const assistantMsg: ChatMessage = {
+        role: 'assistant',
+        content: content || null,
+        tool_calls: toolCalls
+      }
+      workingMessages.push(assistantMsg)
+      workingIds.push(cb.onAssistantMessage?.(content, toolCalls) ?? null)
+      allAssistantMessages.push(assistantMsg)
+
+      cb.onTruncated?.('tool')
+      truncationContinuations++
+      log('warn', `Round ${round}: output truncated at token limit (finish_reason=length) — tool call(s) incomplete, asking model to retry with smaller output (continuation ${truncationContinuations}/${MAX_TRUNCATION_CONTINUATIONS})`)
+      for (const tc of toolCalls) {
+        cb.onToolCall?.(tc)
+        const persistId = cb.onToolResult?.(tc.id, tc.function.name, TRUNCATION_TOOL_ERROR, true, 0) ?? null
+        workingMessages.push({
+          role: 'tool',
+          tool_call_id: tc.id,
+          name: tc.function.name,
+          content: TRUNCATION_TOOL_ERROR
+        })
+        workingIds.push(persistId)
+      }
+      continue
+    }
+
     // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
     const assistantPersistId = cb.onAssistantMessage?.(content, toolCalls) ?? null
 
-    // 如果没有工具调用 → 对话结束
+    // 如果没有工具调用：
+    // - 正常结束 → 对话完成
+    // - finish_reason=length（纯文本轮被截断）且还有恢复额度 →
+    //   追加续写指令继续，而不是把半截回答当最终答复
     if (!toolCalls || toolCalls.length === 0) {
+      if (wasTruncated && canRecover) {
+        // content 为空时不推空 assistant 消息（部分严格后端会拒绝），直接续写
+        if (content) {
+          workingMessages.push({ role: 'assistant', content })
+          workingIds.push(assistantPersistId)
+          allAssistantMessages.push({ role: 'assistant', content })
+        }
+
+        cb.onTruncated?.('text')
+        truncationContinuations++
+        log('warn', `Round ${round}: text output truncated at token limit (finish_reason=length) — continuing (continuation ${truncationContinuations}/${MAX_TRUNCATION_CONTINUATIONS})`)
+        workingMessages.push({ role: 'user', content: TRUNCATION_CONTINUE_PROMPT })
+        workingIds.push(null)
+        continue
+      }
+      if (wasTruncated) {
+        log('warn', `Round ${round}: output truncated and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
+        cb.onTruncated?.('text')
+      }
       log('info', `Agent completed after ${round} round(s)`)
       cb.onComplete?.()
       // 异步提取记忆（不阻塞返回）
@@ -251,6 +335,9 @@ export async function runAgent(
       }
       return allAssistantMessages
     }
+
+    // 新的原始工具轮 → 重置截断恢复计数（上一轮截断已被正常消化）
+    truncationContinuations = 0
 
     // 记录 assistant 消息（含 tool_calls）到工作上下文。
     // workingIds 对应位置 = 落库 id（无则 null），保证压缩边界定位正确。

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, ImagePlus, Send, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp } from 'lucide-react'
+import { FolderOpen, ImagePlus, Send, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors } from 'lucide-react'
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore } from '../store'
 import MessageBubble from './MessageBubble'
@@ -19,6 +19,8 @@ export default function ChatView() {
   const compactNotice = useAppStore(s => (activeSessionId ? s.compactNotices[activeSessionId] : undefined))
   // 压缩标记：upToMessageId 之前的历史在 LLM 上下文中被摘要折叠（消息表不变）
   const compaction = useAppStore(s => (activeSessionId ? s.compactionMarkers[activeSessionId] : undefined))
+  // 单轮输出被 max_tokens 截断的通知（自动消失）
+  const truncatedNotice = useAppStore(s => (activeSessionId ? s.truncatedNotices[activeSessionId] : undefined))
   const { sessions, settings, selectedProviderModel, setSelectedProviderModel, approveMode, setApproveMode, isCompacting, sendMessage, abortAgent, compactNow } = useAppStore()
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
@@ -286,6 +288,14 @@ export default function ChatView() {
                   kept: compactNotice.keptCount
                 })}
           </span>
+        </div>
+      )}
+
+      {/* 输出截断通知条（单轮达到 max_tokens 上限；自动消失） */}
+      {truncatedNotice && (
+        <div className="truncated-notice">
+          <Scissors size={14} />
+          <span>{t(truncatedNotice.kind === 'tool' ? 'chat.truncatedTool' : 'chat.truncatedText')}</span>
         </div>
       )}
 

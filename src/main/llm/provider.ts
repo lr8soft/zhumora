@@ -6,12 +6,11 @@ import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from '../.
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
 import { HttpError, getMaxRetries, isRetriableError, withRetry } from '../net/retry'
+import {
+  createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer, type TokenUsage
+} from './sseAccumulator'
 
-export interface TokenUsage {
-  prompt_tokens: number
-  completion_tokens: number
-  total_tokens: number
-}
+export type { TokenUsage }
 
 export interface StreamCallbacks {
   onToken?: (token: string) => void
@@ -39,6 +38,9 @@ interface AttemptResult {
   content: string
   toolCalls: ToolCall[]
   usage?: TokenUsage
+  /** 停止原因（stop / tool_calls / length / content_filter / …）。
+   *  length = 单轮输出达到 max_tokens 上限被截断（"无声停止"的关键信号，见 runner.ts） */
+  finishReason?: string
   /** 用户主动中止（按部分内容正常完成处理，保持旧行为） */
   aborted?: boolean
 }
@@ -53,7 +55,7 @@ export async function streamChat(
   provider: ProviderConfig,
   params: CompletionParams,
   cb?: StreamCallbacks
-): Promise<{ content: string; toolCalls: ToolCall[]; usage?: TokenUsage }> {
+): Promise<{ content: string; toolCalls: ToolCall[]; usage?: TokenUsage; finishReason?: string }> {
   const model = params.model || provider.defaultModel
   const body: Record<string, unknown> = {
     model,
@@ -98,7 +100,7 @@ export async function streamChat(
       }
     )
     cb?.onComplete?.(result.content, result.toolCalls)
-    return { content: result.content, toolCalls: result.toolCalls, usage: result.usage }
+    return { content: result.content, toolCalls: result.toolCalls, usage: result.usage, finishReason: result.finishReason }
   } catch (err) {
     cb?.onError?.(err as Error)
     throw err
@@ -119,10 +121,7 @@ async function attemptStreamChat(
   cb: StreamCallbacks | undefined,
   state: { emitted: boolean }
 ): Promise<AttemptResult> {
-  let fullText = ''
-  const toolCallsMap = new Map<number, ToolCall>()
-
-  let lastUsage: TokenUsage | undefined
+  const acc = createStreamAccumulator()
 
   // 用户中止信号 + 流空闲超时 合并为一个 AbortController
   const ctrl = new AbortController()
@@ -157,75 +156,31 @@ async function attemptStreamChat(
     const reader = resp.body?.getReader()
     if (!reader) throw new Error('No response body')
     const decoder = new TextDecoder()
-    let buffer = ''
+    const sse = new SseLineBuffer()
+    // 每收到一条完整 SSE 行：解析 data 载荷 → 更新聚合状态 → 推送流式回调
+    const handleLine = (line: string) => {
+      const trimmed = line.trim()
+      if (!trimmed.startsWith('data:')) return
+      const applied = applySseData(acc, trimmed.slice(5).trim())
+      if (applied.emitted) state.emitted = true
+      if (applied.token) cb?.onToken?.(applied.token)
+    }
 
     while (true) {
       const { done, value } = await reader.read()
       if (done) break
       resetIdleTimer()
-      buffer += decoder.decode(value, { stream: true })
-
-      const lines = buffer.split('\n')
-      buffer = lines.pop() || ''
-
-      for (const line of lines) {
-        const trimmed = line.trim()
-        if (!trimmed || !trimmed.startsWith('data:')) continue
-        const data = trimmed.slice(5).trim()
-        if (data === '[DONE]') continue
-
-        try {
-          const json = JSON.parse(data)
-          const delta = json.choices?.[0]?.delta
-
-          // 提取 usage（OpenAI 兼容 API 在 stream_options.include_usage=true 时，最后一个 chunk 包含 usage）
-          if (json.usage) {
-            lastUsage = {
-              prompt_tokens: json.usage.prompt_tokens || 0,
-              completion_tokens: json.usage.completion_tokens || 0,
-              total_tokens: json.usage.total_tokens || 0
-            }
-          }
-
-          if (!delta) continue
-
-          // 文本增量
-          if (delta.content) {
-            state.emitted = true
-            fullText += delta.content
-            cb?.onToken?.(delta.content)
-          }
-
-          // 工具调用增量（分片到达，需拼接）
-          if (delta.tool_calls) {
-            state.emitted = true
-            for (const tc of delta.tool_calls) {
-              const idx = tc.index ?? 0
-              if (!toolCallsMap.has(idx)) {
-                toolCallsMap.set(idx, {
-                  id: tc.id || '',
-                  type: 'function',
-                  function: { name: '', arguments: '' }
-                })
-              }
-              const existing = toolCallsMap.get(idx)!
-              if (tc.id) existing.id = tc.id
-              if (tc.function?.name) existing.function.name += tc.function.name
-              if (tc.function?.arguments) existing.function.arguments += tc.function.arguments
-            }
-          }
-        } catch {
-          // 部分 chunk 可能不完整，跳过即可
-        }
-      }
+      sse.feed(decoder.decode(value, { stream: true }), handleLine)
     }
+    // 流结束：flush 剩余缓冲（末块常不带换行，且携带 finish_reason / usage）
+    sse.flush(handleLine)
 
-    return { content: fullText, toolCalls: Array.from(toolCallsMap.values()), usage: lastUsage }
+    return accumulateResult(acc)
   } catch (err) {
     if (ctrl.signal.aborted) {
       if (params.signal?.aborted) {
         // 用户中止 → 部分内容按正常完成返回（不重试）
-        return { content: fullText, toolCalls: Array.from(toolCallsMap.values()), usage: lastUsage, aborted: true }
+        return { ...accumulateResult(acc), aborted: true }
       }
       // 流空闲超时 → 抛出可重试错误（message 匹配重试规则）
       throw new Error(`LLM stream idle timeout: no data received for ${STREAM_IDLE_TIMEOUT_MS / 1000}s`)

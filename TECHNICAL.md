@@ -83,6 +83,20 @@ Current auto-detection paths include:
 
 A context window value of `0` means auto-detect.
 
+### Streaming and finish_reason
+
+The SSE stream is accumulated by a pure module (`src/main/llm/sseAccumulator.ts`):
+`SseLineBuffer` splits network chunks into complete SSE lines (the tail is
+flushed at stream end, because some backends send the final chunk without a
+trailing newline), and `applySseData` folds each `data:` payload into the
+round result: `content`, `toolCalls` (assembled by tool-call index), `usage`,
+and `finish_reason`.
+
+`finish_reason` is a first-class signal (aligned with opencode / Cline). The
+agent loop must distinguish "the model genuinely finished the turn" from
+"the response was cut off at the per-response output limit", which the
+protocol reports as `finish_reason: "length"`.
+
 ## 5. Agent execution
 
 The core agent follows a ReAct-style tool loop:
@@ -113,6 +127,28 @@ Repeated-call loop protection is also implemented:
 - repeated calls trigger a warning after 3 occurrences
 - the loop is stopped after 5 occurrences
 - when execution is stopped by the guard, the model is asked to produce a final text-only summary
+
+### Output truncation (finish_reason = length)
+
+When a single LLM response hits the provider-side `max_tokens` limit, the
+stream ends with `finish_reason: "length"`. Without handling, such a turn
+looks exactly like a normal completion, so the agent silently stops with the
+job unfinished. The runner therefore treats truncation as a recoverable
+condition, per round:
+
+- **truncated tool turn** — the (incomplete) assistant message with its
+  tool calls is kept in context, every call is answered with an explanatory
+  tool error telling the model to re-issue the call with smaller output
+  (e.g. split large file writes), and the loop continues
+- **truncated text turn** — a "continue exactly where you stopped" system
+  notice is appended and the loop continues
+- at most 2 automatic recoveries per round
+  (`MAX_TRUNCATION_CONTINUATIONS`), after which the run finalizes normally
+- the renderer shows a transient warning notice for each truncated turn
+  (`agent:truncated` IPC event), so the user always sees that a turn was
+  cut off
+
+All of this is keyed on `finish_reason`, so normal turns are unaffected.
 
 ## 6. Built-in tools
 
