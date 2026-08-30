@@ -60,12 +60,14 @@ export function setSkillsPromptGetter(fn: () => string) {
 export interface AgentEventCallbacks {
   /** LLM 流式 token */
   onToken?: (token: string) => void
+  /** LLM 流式思考内容（reasoning_content；仅供 UI 展示，不回传模型） */
+  onReasoningToken?: (token: string) => void
   /** LLM 请求了工具调用 */
   onToolCall?: (toolCall: ToolCall) => void
   /** 工具执行完成。返回该 tool 消息落库后的 id（供压缩边界定位），未落库返回 null */
   onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => string | null
   /** 一轮 LLM 调用完成（可能继续循环或结束）。返回该 assistant 消息落库后的 id，未落库返回 null */
-  onAssistantMessage?: (content: string, toolCalls: ToolCall[]) => string | null
+  onAssistantMessage?: (content: string, toolCalls: ToolCall[], reasoning?: string) => string | null
   /** Token 用量回调 */
   onTokenUsage?: (usage: TokenUsage, model: string) => void
   /** 整个对话完成 */
@@ -238,6 +240,8 @@ export async function runAgent(
 
     const tools = getAllTools()
     const model = modelOverride || provider.defaultModel
+    // 当前轮思考内容（每轮独立；落库 + UI 展示，不进入模型上下文）
+    let roundReasoning = ''
     const { content, toolCalls, usage, finishReason } = await streamChat(provider, {
       messages: workingMessages,
       tools: tools.length > 0 ? tools : undefined,
@@ -247,6 +251,10 @@ export async function runAgent(
       signal
     }, {
       onToken: cb.onToken,
+      onReasoningToken: (t) => {
+        roundReasoning += t
+        cb.onReasoningToken?.(t)
+      },
       onError: cb.onError,
       onRetry: cb.onRetry
     })
@@ -260,7 +268,7 @@ export async function runAgent(
     // 若不在此拦截，agent 会把部分回复当完整结果、继续执行工具调用。
     // 先落盘已生成的部分文本，再抛中止错误（IPC 层据此通知前端该会话已停止）。
     if (signal?.aborted) {
-      if (content) cb.onAssistantMessage?.(content, [])
+      if (content) cb.onAssistantMessage?.(content, [], roundReasoning || undefined)
       throw new AgentAbortedError()
     }
 
@@ -280,7 +288,7 @@ export async function runAgent(
         tool_calls: toolCalls
       }
       workingMessages.push(assistantMsg)
-      workingIds.push(cb.onAssistantMessage?.(content, toolCalls) ?? null)
+      workingIds.push(cb.onAssistantMessage?.(content, toolCalls, roundReasoning || undefined) ?? null)
       allAssistantMessages.push(assistantMsg)
 
       cb.onTruncated?.('tool')
@@ -301,7 +309,7 @@ export async function runAgent(
     }
 
     // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
-    const assistantPersistId = cb.onAssistantMessage?.(content, toolCalls) ?? null
+    const assistantPersistId = cb.onAssistantMessage?.(content, toolCalls, roundReasoning || undefined) ?? null
 
     // 如果没有工具调用：
     // - 正常结束 → 对话完成
@@ -514,6 +522,7 @@ async function finalizeRun(
   ]
   try {
     const model = modelOverride || provider.defaultModel
+    let roundReasoning = ''
     const { content, toolCalls, usage } = await streamChat(provider, {
       messages: finalizeMessages,
       tools: undefined,   // 无 tools → 强制纯文本
@@ -523,6 +532,10 @@ async function finalizeRun(
       signal
     }, {
       onToken: cb.onToken,
+      onReasoningToken: (t) => {
+        roundReasoning += t
+        cb.onReasoningToken?.(t)
+      },
       // 收尾失败不覆盖主流程错误状态、不触发重试 UI
       onError: undefined,
       onRetry: undefined
@@ -532,7 +545,7 @@ async function finalizeRun(
     const msg: ChatMessage = { role: 'assistant', content: content || null }
     workingMessages.push(msg)
     allAssistantMessages.push(msg)
-    cb.onAssistantMessage?.(content, [])
+    cb.onAssistantMessage?.(content, [], roundReasoning || undefined)
     log('info', 'Finalize summary completed')
   } catch (err) {
     log('error', `Finalize summary failed: ${(err as Error).message}`)

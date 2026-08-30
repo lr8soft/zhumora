@@ -77,12 +77,18 @@ const api = {
       ipcRenderer.on('agent:token', handler)
       return () => ipcRenderer.removeListener('agent:token', handler)
     },
+    /** 模型思考内容增量（reasoning_content；仅 UI 展示，不混入正文） */
+    onReasoning: (cb: (data: { sessionId: string; messageId: string; token: string }) => void) => {
+      const handler = (_e: any, data: any) => cb(data)
+      ipcRenderer.on('agent:reasoning', handler)
+      return () => ipcRenderer.removeListener('agent:reasoning', handler)
+    },
     /**
      * assistant 消息事件（流式 token 会携带此 messageId，用于精确路由到对应消息）
      * phase='start'：本轮 LLM 开始输出（UI 把 thinking 占位替换为流式消息）
-     * phase='end'：本轮结束已落库（UI 把流式消息收尾为 done）
+     * phase='end'：本轮结束已落库（UI 把流式消息收尾为 done；reasoning 为权威完整值）
      */
-    onAssistantMessage: (cb: (data: { sessionId: string; messageId: string; content: string; toolCalls: any[]; phase: 'start' | 'end' }) => void) => {
+    onAssistantMessage: (cb: (data: { sessionId: string; messageId: string; content: string; toolCalls: any[]; phase: 'start' | 'end'; reasoning?: string }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:assistant_message', handler)
       return () => ipcRenderer.removeListener('agent:assistant_message', handler)

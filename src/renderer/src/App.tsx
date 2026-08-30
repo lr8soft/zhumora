@@ -69,6 +69,29 @@ export default function App() {
   // 只有"当前显示会话"的状态变化才会引起界面刷新，从而会话之间互不串台。
   useEffect(() => {
     const unsubs = [
+      // 流式思考内容 → 路由到对应消息（thinking 占位收到首个思考 token 即转为流式，
+      // 用户能实时看到"思考中 + 最新一行"而非干等转圈）
+      window.api.agent.onReasoning(({ sessionId, messageId, token }) => {
+        const msgs = useAppStore.getState().messages[sessionId]
+        if (msgs === undefined) return
+        const idx = msgs.findIndex(m => m.id === messageId)
+        if (idx >= 0) {
+          pushMessage(sessionId, (m) => m.map((x, i) =>
+            i === idx ? { ...x, reasoning: (x.reasoning || '') + token, status: x.status === 'done' || x.status === 'error' ? x.status : ('streaming' as const) } : x
+          ))
+          return
+        }
+        // 兜底：路由到最后一条 thinking / streaming 的 assistant 消息
+        const last = msgs[msgs.length - 1]
+        if (last && last.role === 'assistant' && (last.status === 'thinking' || last.status === 'streaming')) {
+          pushMessage(sessionId, (m) => {
+            const next = [...m]
+            next[next.length - 1] = { ...last, reasoning: (last.reasoning || '') + token, status: 'streaming' as const }
+            return next
+          })
+        }
+      }),
+
       // 流式 token → 精确路由到 messageId 对应的消息（占位消息收到首 token 即转为流式）
       window.api.agent.onToken(({ sessionId, messageId, token }) => {
         const msgs = useAppStore.getState().messages[sessionId]
@@ -105,7 +128,7 @@ export default function App() {
       // phase=end：本轮结束，把流式消息收尾为 done）。
       // 工具行不在此渲染（onToolCall 事件负责，避免重复）；
       // 纯工具调用且无文本的轮次不创建空气泡。
-      window.api.agent.onAssistantMessage(({ sessionId, messageId, content, phase }) => {
+      window.api.agent.onAssistantMessage(({ sessionId, messageId, content, phase, reasoning }) => {
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
         pushMessage(sessionId, (m) => {
@@ -119,6 +142,8 @@ export default function App() {
                 sessionId,
                 role: 'assistant' as const,
                 content: '',
+                // 保留占位期间已累积的思考内容（防御事件乱序）
+                reasoning: m[idx].reasoning || undefined,
                 timestamp: Date.now(),
                 status: 'streaming' as const
               }
@@ -138,24 +163,28 @@ export default function App() {
           const existingIdx = m.findIndex(x => x.id === messageId)
           if (existingIdx >= 0) {
             const finalContent = content || m[existingIdx].content
-            // 纯工具轮（无任何文本）：start 时创建的空流式气泡直接移除，
+            // 纯工具轮（无任何文本、无思考内容）：start 时创建的空流式气泡直接移除，
             // 工具行由 onToolCall 事件渲染，避免留下空气泡
-            if (!finalContent) return m.filter((_, i) => i !== existingIdx)
-            // 流式消息收尾
+            if (!finalContent && !reasoning && !m[existingIdx].reasoning) {
+              return m.filter((_, i) => i !== existingIdx)
+            }
+            // 流式消息收尾（reasoning 用 end 事件的权威值覆盖 UI 侧累积值）
             const updated = [...m]
             updated[existingIdx] = {
               ...updated[existingIdx],
               content: finalContent,
+              reasoning: reasoning || updated[existingIdx].reasoning,
               status: 'done' as const
             }
             return updated
           }
-          if (!content) return m
+          if (!content && !reasoning) return m
           return [...m, {
             id: messageId,
             sessionId,
             role: 'assistant' as const,
             content,
+            reasoning,
             timestamp: Date.now(),
             status: 'done' as const
           }]

@@ -151,6 +151,30 @@ export default function ChatView() {
     return map
   }, [messages])
 
+  // 工具调用结果：按 toolCallId 聚合（合并进工具调用折叠块内展示，
+  // 时间线里不再单独渲染大块工具结果，保持对话流紧凑）
+  const toolResults = useMemo(() => {
+    const map: Record<string, { content: string; isError: boolean }> = {}
+    for (const m of messages) {
+      if (m.role === 'tool' && m.toolCallId) {
+        map[m.toolCallId] = { content: m.content, isError: m.status === 'error' }
+      }
+    }
+    return map
+  }, [messages])
+
+  // 被 assistant 消息 tool_calls 引用的 tool_call id 集合。
+  // 有主的结果 → 已并入工具调用折叠块，时间线里跳过；孤儿结果（无主）→ 兜底显示
+  const referencedToolCallIds = useMemo(() => {
+    const set = new Set<string>()
+    for (const m of messages) {
+      if (m.role === 'assistant' && m.toolCalls) {
+        for (const tc of m.toolCalls) if (tc.id) set.add(tc.id)
+      }
+    }
+    return set
+  }, [messages])
+
   // 无活跃会话
   if (!activeSessionId) {
     return (
@@ -312,7 +336,10 @@ export default function ChatView() {
           )}
           {messages.map((msg, i) => (
             <React.Fragment key={msg.id}>
-              <MessageBubble message={msg} toolStatuses={toolStatuses} retryStatus={retryStatus} />
+              {/* 有主工具结果不单独渲染（已合并进工具调用折叠块）；孤儿结果仍兜底显示 */}
+              {!(msg.role === 'tool' && msg.toolCallId && referencedToolCallIds.has(msg.toolCallId)) && (
+                <MessageBubble message={msg} toolStatuses={toolStatuses} toolResults={toolResults} retryStatus={retryStatus} />
+              )}
               {/* 压缩标记：渲染在边界消息之后。完整历史仍可见，
                   标记仅说明"此处的历史在发给 LLM 时已被摘要折叠" */}
               {compaction && msg.id === compaction.upToMessageId && i < messages.length - 1 && (

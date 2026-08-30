@@ -28,6 +28,7 @@ export function initDatabase(): void {
       session_id TEXT NOT NULL,
       role TEXT NOT NULL,
       content TEXT,
+      reasoning TEXT,
       tool_calls TEXT,
       tool_call_id TEXT,
       tool_name TEXT,
@@ -123,6 +124,11 @@ export function initDatabase(): void {
   if (!msgColumns.some(c => c.name === 'images')) {
     db!.exec('ALTER TABLE messages ADD COLUMN images TEXT')
   }
+
+  // 迁移：给 messages 加 reasoning 列（模型思考内容，与 Cline/opencode 对齐：单独存储、不喂回 LLM）
+  if (!msgColumns.some(c => c.name === 'reasoning')) {
+    db!.exec('ALTER TABLE messages ADD COLUMN reasoning TEXT')
+  }
 }
 
 // ============================================================
@@ -196,10 +202,11 @@ export function touchSession(id: string): void {
 
 export function addMessage(msg: UIMessage): void {
   db!.prepare(`
-    INSERT INTO messages (id, session_id, role, content, tool_calls, tool_call_id, tool_name, images, timestamp, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, session_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, images, timestamp, status)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     msg.id, msg.sessionId, msg.role, msg.content,
+    msg.reasoning || null,
     msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
     msg.toolCallId, msg.toolName,
     msg.images && msg.images.length > 0 ? JSON.stringify(msg.images) : null,
@@ -215,6 +222,7 @@ export function getMessages(sessionId: string): UIMessage[] {
     sessionId: r.session_id,
     role: r.role,
     content: r.content || '',
+    reasoning: r.reasoning || undefined,
     toolCalls: r.tool_calls ? JSON.parse(r.tool_calls) : undefined,
     images: r.images ? (safeJsonParse<string[]>(r.images) ?? undefined) : undefined,
     toolCallId: r.tool_call_id,

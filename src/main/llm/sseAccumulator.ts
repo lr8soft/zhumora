@@ -37,6 +37,20 @@ export interface StreamAccumulator {
   finishReason?: string
 }
 
+/**
+ * 从 delta 中提取思考内容增量（reasoning_content / reasoning 字段）。
+ * 不同推理模型的后端字段名不同：
+ * - DeepSeek-R1 / 豆包 / Kimi / 多数 OpenAI 兼容网关 → reasoning_content
+ * - OpenAI o-series 部分端点 / Ollama → reasoning
+ * 非字符串（如 o-series 的对象形 signature 块）一律忽略。
+ * 思考内容仅供 UI 展示：不进正文、不回传 LLM 上下文。
+ */
+export function extractReasoningDelta(delta: any): string {
+  if (typeof delta?.reasoning_content === 'string') return delta.reasoning_content
+  if (typeof delta?.reasoning === 'string') return delta.reasoning
+  return ''
+}
+
 /** 创建空聚合器 */
 export function createStreamAccumulator(): StreamAccumulator {
   return { content: '', toolCalls: new Map() }
@@ -46,7 +60,9 @@ export function createStreamAccumulator(): StreamAccumulator {
 export interface SseApplyResult {
   /** 本 chunk 的文本增量（供调用方实时推送流式回调；无增量为空串） */
   token: string
-  /** 本 chunk 是否包含可见输出（文本或工具调用）—— 调用方据此
+  /** 本 chunk 的思考内容增量（reasoning_content；供调用方推送 onReasoningToken；无增量为空串） */
+  reasoning: string
+  /** 本 chunk 是否包含可见输出（文本、思考或工具调用）—— 调用方据此
    *  置"已输出"标记，避免重试时向 UI 重复推流 */
   emitted: boolean
 }
@@ -56,7 +72,7 @@ export interface SseApplyResult {
  * '[DONE]'、无法解析的载荷、空载荷一律忽略（部分后端会发 keep-alive 或非 JSON 行）。
  */
 export function applySseData(acc: StreamAccumulator, data: string): SseApplyResult {
-  const result: SseApplyResult = { token: '', emitted: false }
+  const result: SseApplyResult = { token: '', reasoning: '', emitted: false }
   if (data === '[DONE]') return result
 
   let json: any
@@ -82,6 +98,13 @@ export function applySseData(acc: StreamAccumulator, data: string): SseApplyResu
 
   const delta = choice?.delta
   if (!delta) return result
+
+  // 思考内容增量（仅 UI 展示，不聚合进 content）
+  const reasoning = extractReasoningDelta(delta)
+  if (reasoning) {
+    result.reasoning = reasoning
+    result.emitted = true
+  }
 
   // 文本增量
   if (delta.content) {

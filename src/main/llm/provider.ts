@@ -14,6 +14,12 @@ export type { TokenUsage }
 
 export interface StreamCallbacks {
   onToken?: (token: string) => void
+  /**
+   * 模型思考内容增量（reasoning_content / reasoning 字段，
+   * DeepSeek-R1、豆包、Kimi、OpenAI o-series 等推理模型在正文前流式输出）。
+   * 仅供 UI 展示，不参与正文拼接、不回传 LLM 上下文。
+   */
+  onReasoningToken?: (token: string) => void
   onComplete?: (fullText: string, toolCalls: ToolCall[]) => void
   onError?: (error: Error) => void
   /** 网络失败，正在自动重试（failedAttempt = 已失败次数，maxRetries = -1 表示无限） */
@@ -163,6 +169,7 @@ async function attemptStreamChat(
       if (!trimmed.startsWith('data:')) return
       const applied = applySseData(acc, trimmed.slice(5).trim())
       if (applied.emitted) state.emitted = true
+      if (applied.reasoning) cb?.onReasoningToken?.(applied.reasoning)
       if (applied.token) cb?.onToken?.(applied.token)
     }
 

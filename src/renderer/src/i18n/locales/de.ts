@@ -34,6 +34,8 @@ export default {
     compactWorking: 'Kontext wird komprimiert…',
     compactError: 'Komprimierung fehlgeschlagen',
     thinking: 'Denke nach...',
+    thinkingBlock: 'Tiefes Denken',
+    tool: { running: 'Läuft', done: 'Fertig', error: 'Fehler', args: 'Argumente', result: 'Ergebnis' },
     retrying: 'Netzwerk instabil, erneuter Versuch ({{attempt}}/{{max}})…',
     stop: 'Stopp',
     send: 'Senden',

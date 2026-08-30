@@ -34,6 +34,8 @@ export default {
     compactWorking: 'Compression du contexte en cours...',
     compactError: 'Échec de la compression',
     thinking: 'Réflexion...',
+    thinkingBlock: 'Raisonnement approfondi',
+    tool: { running: 'En cours', done: 'Terminé', error: 'Erreur', args: 'Arguments', result: 'Résultat' },
     retrying: 'Réseau instable, nouvelle tentative ({{attempt}}/{{max}})…',
     stop: 'Arrêter',
     send: 'Envoyer',

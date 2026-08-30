@@ -34,6 +34,8 @@ export default {
     compactWorking: 'Comprimiendo contexto...',
     compactError: 'Error al comprimir',
     thinking: 'Pensando...',
+    thinkingBlock: 'Razonamiento profundo',
+    tool: { running: 'En ejecución', done: 'Completado', error: 'Error', args: 'Argumentos', result: 'Resultado' },
     retrying: 'Red inestable, reintentando ({{attempt}}/{{max}})…',
     stop: 'Detener',
     send: 'Enviar',

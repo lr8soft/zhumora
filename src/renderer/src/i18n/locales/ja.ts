@@ -34,6 +34,8 @@ export default {
     compactWorking: 'コンテキストを圧縮中…',
     compactError: '圧縮に失敗しました',
     thinking: '考え中...',
+    thinkingBlock: '深く思考中',
+    tool: { running: '実行中', done: '完了', error: 'エラー', args: '引数', result: '結果' },
     retrying: 'ネットワークが不安定です。再試行中（{{attempt}}/{{max}}）…',
     stop: '停止',
     send: '送信',

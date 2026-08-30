@@ -54,6 +54,9 @@ export interface UIMessage {
   content: string
   /** 用户消息携带的图片（base64 data URL，如 "data:image/png;base64,..."）。仅 user 消息使用，DB 单独列持久化 */
   images?: string[]
+  /** 模型思考内容（reasoning_content，如 DeepSeek-R1 / o-series）。DB 单独列持久化，
+   *  重建 LLM 历史时不混入 content、不回传给模型（与 Cline / opencode 做法一致） */
+  reasoning?: string
   toolCalls?: ToolCall[]
   toolCallId?: string
   toolName?: string

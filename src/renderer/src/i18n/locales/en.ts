@@ -34,6 +34,8 @@ export default {
     compactWorking: 'Compacting context...',
     compactError: 'Compact failed',
     thinking: 'Thinking...',
+    thinkingBlock: 'Deep thinking',
+    tool: { running: 'Running', done: 'Done', error: 'Error', args: 'Arguments', result: 'Result' },
     retrying: 'Network unstable, retrying ({{attempt}}/{{max}})…',
     stop: 'Stop',
     send: 'Send',

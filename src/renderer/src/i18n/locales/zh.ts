@@ -34,6 +34,8 @@ export default {
     compactWorking: '正在压缩上下文...',
     compactError: '压缩失败',
     thinking: '思考中...',
+    thinkingBlock: '深度思考',
+    tool: { running: '运行中', done: '已完成', error: '出错', args: '参数', result: '返回' },
     retrying: '网络不稳定，正在重试（{{attempt}}/{{max}}）…',
     stop: '停止',
     send: '发送',

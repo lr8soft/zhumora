@@ -26,13 +26,16 @@ export function buildAgentCallbacks(
 } {
   let streamingMsgId: string | null = null
   let streamingContent = ''
+  let streamingReasoning = ''
   /** 当前 LLM 轮次的 messageId（每轮独立：onAssistantMessage 在轮结束时调用，
    *  会重置并开启下一轮） */
   let roundMsgId: string | null = null
+  /** 当前轮已收到的思考内容（onReasoningToken 累积，onAssistantMessage 落库后清空） */
+  let roundReasoning = ''
 
   /** 确保当前轮已有 messageId：无则生成并广播 assistant 消息事件
    *  （UI 据此把 thinking 占位替换为正式流式消息，后续 token 精确路由到该消息）。
-   *  在首个 token 之前就发出，解决旧实现"token 的 messageId 滞后一轮"的串台问题。 */
+   *  在首个 token（含思考 token）之前就发出，解决旧实现"token 的 messageId 滞后一轮"的串台问题。 */
   const ensureRoundMsgId = (): string => {
     if (!roundMsgId) {
       roundMsgId = genId()
@@ -46,6 +49,14 @@ export function buildAgentCallbacks(
       streamingContent += token
       // token 携带当前轮 messageId → UI 精确路由，多会话并行不串台
       sender.send('agent:token', { sessionId, messageId: ensureRoundMsgId(), token })
+    },
+    onReasoningToken: (token) => {
+      // 思考内容：仅推给 UI 展示（不进正文、不喂回模型）。
+      // 首个思考 token 同样触发 ensureRoundMsgId → thinking 占位此时即被替换，
+      // 用户能实时看到"思考中 + 最新一行"而非干等转圈。
+      roundReasoning += token
+      streamingReasoning = roundReasoning
+      sender.send('agent:reasoning', { sessionId, messageId: ensureRoundMsgId(), token })
     },
     onToolCall: (toolCall) => {
       sender.send('agent:tool_call', { sessionId, toolCall })
@@ -66,16 +77,19 @@ export function buildAgentCallbacks(
       // 返回落库 id：runner 把它记进 workingIds，供压缩边界定位
       return toolMsg.id
     },
-    onAssistantMessage: (content, toolCalls) => {
-      // 本轮结束：复用流式 token 的 messageId 落库（纯工具轮无文本时不落空消息）
+    onAssistantMessage: (content, toolCalls, reasoning) => {
+      // 本轮结束：复用流式 token 的 messageId 落库（纯工具轮无文本无思考时不落空消息）
       let persistedId: string | null = null
-      if (content || toolCalls.length > 0) {
+      if (content || toolCalls.length > 0 || reasoning) {
         const msgId = ensureRoundMsgId()
         db.addMessage({
           id: msgId,
           sessionId,
           role: 'assistant' as const,
           content: content || '',
+          // 思考内容单独列存储（业界对齐 Cline / opencode）；
+          // 重建 LLM 历史时只读 content 列，reasoning 永不喂回模型
+          reasoning: reasoning || roundReasoning || undefined,
           toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
           timestamp: Date.now(),
           status: 'done' as const
@@ -84,10 +98,13 @@ export function buildAgentCallbacks(
       }
       streamingMsgId = roundMsgId
       streamingContent = content || ''
+      streamingReasoning = reasoning || roundReasoning || ''
       // 开启下一轮（下一轮 token 会用新的 messageId）
       roundMsgId = null
-      // 通知前端：本轮 assistant 消息已收尾（UI 据此把流式消息置为 done）
-      sender.send('agent:assistant_message', { sessionId, messageId: streamingMsgId || '', content, toolCalls, phase: 'end' })
+      roundReasoning = ''
+      // 通知前端：本轮 assistant 消息已收尾（UI 据此把流式消息置为 done；
+      // reasoning 作为权威值覆盖 UI 侧累积值，防个别 chunk 丢失）
+      sender.send('agent:assistant_message', { sessionId, messageId: streamingMsgId || '', content, toolCalls, phase: 'end', reasoning: streamingReasoning || undefined })
       // 返回落库 id（未落库返回 null）：runner 据此对齐 workingIds
       return persistedId
     },
@@ -105,6 +122,7 @@ export function buildAgentCallbacks(
           sessionId,
           role: 'assistant',
           content: streamingContent || '',
+          reasoning: streamingReasoning || undefined,
           timestamp: Date.now(),
           status: 'done'
         })
@@ -114,12 +132,13 @@ export function buildAgentCallbacks(
     onError: (error) => {
       const errMsg = `Error: ${error.message}`
       if (roundMsgId) {
-        // 本轮已开始流式（尚未落库）→ 以本轮 messageId 存错误消息（保留部分文本）
+        // 本轮已开始流式（尚未落库）→ 以本轮 messageId 存错误消息（保留部分文本 + 部分思考）
         db.addMessage({
           id: roundMsgId,
           sessionId,
           role: 'assistant',
           content: streamingContent ? `${streamingContent}\n\n${errMsg}` : errMsg,
+          reasoning: roundReasoning || undefined,
           timestamp: Date.now(),
           status: 'error'
         })

@@ -285,18 +285,44 @@ h1, h2, h3, p { margin: 0; }
 .assistant-status { color: var(--app-color-text-mute); font-size: 0.733rem; }
 .assistant-status.error { color: var(--app-color-danger); font-weight: 600; }
 
-/* 工具调用 */
-.tool-call-row {
-  display: flex; align-items: center; gap: 8px; padding: 6px 10px;
-  border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface);
-  font-size: 0.733rem;
+/* 深度思考块（reasoning 内容；默认折叠只显示最新一行，点击展开全文） */
+.thinking-block { overflow: hidden; border: 1px solid color-mix(in srgb, var(--app-color-primary) 18%, var(--app-color-border)); border-radius: 6px; background: color-mix(in srgb, var(--app-color-primary) 3%, var(--app-color-surface)); }
+.thinking-block-header {
+  display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 10px;
+  border: 0; background: transparent; cursor: pointer; text-align: left; font-size: 0.733rem;
 }
-.tool-call-row .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--app-color-warn); animation: app-pulse 1.1s ease-in-out infinite; }
-.tool-call-row.done .dot { background: var(--app-color-success); animation: none; }
-.tool-call-row.error .dot { background: var(--app-color-danger); animation: none; }
-.tool-call-row > svg { flex: 0 0 auto; color: var(--app-color-text-mute); }
-.tool-call-name { flex: 0 0 auto; overflow: hidden; color: var(--app-color-text); font-family: Consolas, Monaco, monospace; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
-.tool-call-args { overflow: hidden; color: var(--app-color-text-mute); font-family: Consolas, Monaco, monospace; text-overflow: ellipsis; white-space: nowrap; }
+.thinking-block-header:disabled { cursor: default; }
+.thinking-block-icon { flex: 0 0 auto; color: var(--app-color-primary-strong); }
+.thinking-block-label { flex: 0 0 auto; color: var(--app-color-text-soft); font-weight: 650; }
+.thinking-block-preview { flex: 1 1 auto; overflow: hidden; color: var(--app-color-text-mute); text-overflow: ellipsis; white-space: nowrap; }
+.thinking-block-header > svg { flex: 0 0 auto; color: var(--app-color-text-mute); }
+.thinking-block-header:hover .thinking-block-preview { color: var(--app-color-text-soft); }
+.thinking-block-body { padding: 8px 12px; border-top: 1px dashed var(--app-color-border); max-height: 320px; overflow: auto; color: var(--app-color-text-soft); font-size: 0.8rem; line-height: 1.6; }
+.thinking-block-body p { margin: 0 0 8px; }
+.thinking-block-body p:last-child { margin-bottom: 0; }
+.thinking-block-body code, .thinking-block-body pre { font-family: Consolas, Monaco, monospace; font-size: 0.767rem; }
+.thinking-block-body pre { padding: 8px; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-muted-bg); overflow-x: auto; }
+
+/* 工具调用（默认折叠：只显示 状态点 + 工具名 + 状态，展开后才显示参数与返回） */
+.tool-call { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
+.tool-call-header {
+  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px;
+  border: 0; background: transparent; cursor: pointer; text-align: left; font-size: 0.733rem;
+}
+.tool-call-header:disabled { cursor: default; }
+.tool-call .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--app-color-warn); animation: app-pulse 1.1s ease-in-out infinite; }
+.tool-call.done .dot { background: var(--app-color-success); animation: none; }
+.tool-call.error .dot { background: var(--app-color-danger); animation: none; }
+.tool-call-header > svg { flex: 0 0 auto; color: var(--app-color-text-mute); }
+.tool-call-name { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--app-color-text); font-family: Consolas, Monaco, monospace; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.tool-call-status { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; color: var(--app-color-text-mute); font-size: 0.7rem; }
+.tool-call-status.running { color: var(--app-color-warn); }
+.tool-call-status.done { color: var(--app-color-success); }
+.tool-call-status.error { color: var(--app-color-danger); }
+.tool-call-body { padding: 4px 10px 10px; border-top: 1px dashed var(--app-color-border); }
+.tool-call-section-label { padding: 7px 0 3px; color: var(--app-color-text-mute); font-size: 0.667rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
+.tool-call-section-label.error { color: var(--app-color-danger); }
+.tool-call-pre { margin: 0; max-height: 320px; overflow: auto; color: var(--app-color-text-soft); font-family: Consolas, Monaco, monospace; font-size: 0.733rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
 /* 工具结果 */
 .tool-result { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }

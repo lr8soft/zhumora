@@ -74,6 +74,19 @@ A provider stores:
 - reasoning effort
 - context window
 
+### Reasoning (thinking) content
+
+Reasoning models (DeepSeek-R1, Doubao, Kimi, OpenAI o-series, Ollama) stream a
+`reasoning_content` / `reasoning` delta before the visible answer. Zhumora:
+
+- parses it in the SSE reader and routes it to the UI via a dedicated
+  `agent:reasoning` event (separate from `agent:token`)
+- renders it in a collapsible "Deep thinking" block on the chat page —
+  collapsed by default showing only the latest line, expandable for the full text
+- persists it in a dedicated `reasoning` column on the `messages` table, aligned
+  with the Cline / opencode approach: it is **never** merged into `content` and
+  **never** fed back into the LLM context when rebuilding history
+
 The context window may be configured manually or detected from the provider where supported.
 
 Current auto-detection paths include:
