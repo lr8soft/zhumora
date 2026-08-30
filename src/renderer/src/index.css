@@ -398,6 +398,8 @@ select.input-field { cursor: pointer; }
 
 /* 滑杆 / 复选框 */
 .range-input { width: 100%; accent-color: var(--app-color-primary); }
+.temp-number { width: 72px; height: 28px; flex: 0 0 auto; text-align: center; }
+.temp-number:disabled { opacity: 0.5; cursor: not-allowed; }
 .checkbox { accent-color: var(--app-color-primary); width: 15px; height: 15px; margin: 0; cursor: pointer; }
 
 /* ---------- 设置页 ---------- */

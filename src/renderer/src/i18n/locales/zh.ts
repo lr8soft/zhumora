@@ -99,6 +99,7 @@ export default {
       apiKeyPlaceholder: '(本地服务可留空)',
       enabled: '启用',
       temperature: '温度',
+      temperatureDefault: '默认',
       temperatureHint: '默认 1.0。低 = 聚焦，高 = 创意。',
       temperatureReset: '重置',
       reasoningEffort: '思考强度',

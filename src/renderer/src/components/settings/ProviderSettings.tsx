@@ -9,6 +9,61 @@ interface Props {
   onChange: (providers: ProviderConfig[], activeId: string | null) => void
 }
 
+const TEMP_MIN = 0
+const TEMP_MAX = 2
+const TEMP_STEP = 0.01
+
+/** 四舍五入到 0.01，消除浮点误差 */
+const roundTemp = (v: number) => Math.round(v * 100) / 100
+const clampTemp = (v: number) => Math.min(TEMP_MAX, Math.max(TEMP_MIN, roundTemp(v)))
+
+/**
+ * 温度数字输入框。
+ * 输入过程中不拦截用户输入（可以临时超出范围），只在失焦时收敛到 [min, max]。
+ * 未聚焦时跟随外部值，保证拖动滑杆 / 重置后数字同步。
+ */
+function TemperatureInput({
+  value,
+  disabled,
+  onCommit
+}: {
+  value: number
+  disabled?: boolean
+  onCommit: (v: number) => void
+}) {
+  const [focused, setFocused] = useState(false)
+  const [text, setText] = useState('')
+
+  const display = focused ? text : String(roundTemp(value))
+
+  return (
+    <input
+      type="number"
+      className="input-field temp-number"
+      min={TEMP_MIN}
+      max={TEMP_MAX}
+      step={TEMP_STEP}
+      value={display}
+      disabled={disabled}
+      onFocus={() => {
+        setFocused(true)
+        setText(String(roundTemp(value)))
+      }}
+      onChange={(e) => {
+        setText(e.target.value)
+        const v = parseFloat(e.target.value)
+        // 输入中：只做有效性校验，不夹范围，让用户能打 "1" → "0.75"
+        if (Number.isFinite(v)) onCommit(roundTemp(v))
+      }}
+      onBlur={() => {
+        setFocused(false)
+        const v = parseFloat(text)
+        onCommit(Number.isFinite(v) ? clampTemp(v) : roundTemp(value))
+      }}
+    />
+  )
+}
+
 export function ProviderSettings({ providers, activeId, onChange }: Props) {
   const { t } = useTranslation()
   // 上下文窗口探测状态（按 provider id）：填/改 Base URL 时自动识别
@@ -153,16 +208,21 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
           </div>
 
           {/* Temperature */}
-          <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center' }}>
-            <label className="form-label">{t('settings.providers.temperature')}{p.temperature !== undefined && ` (${p.temperature})`}</label>
+          <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', alignItems: 'center' }}>
+            <label className="form-label">{t('settings.providers.temperature')}{p.temperature === undefined && ` (${t('settings.providers.temperatureDefault')})`}</label>
             <input
               type="range"
-              min="0"
-              max="2"
-              step="0.1"
+              min={TEMP_MIN}
+              max={TEMP_MAX}
+              step={TEMP_STEP}
               value={p.temperature ?? 1}
               onChange={(e) => updateProvider(i, { temperature: parseFloat(e.target.value) })}
               className="range-input"
+            />
+            <TemperatureInput
+              value={p.temperature ?? 1}
+              disabled={p.temperature === undefined}
+              onCommit={(v) => updateProvider(i, { temperature: v })}
             />
             <button
               onClick={() => updateProvider(i, { temperature: undefined })}

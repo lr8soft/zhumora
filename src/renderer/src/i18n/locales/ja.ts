@@ -99,6 +99,7 @@ export default {
       apiKeyPlaceholder: '(ローカルは省略可)',
       enabled: '有効',
       temperature: '温度',
+      temperatureDefault: 'デフォルト',
       temperatureHint: 'デフォルト 1.0。低 = 集中、高 = 創造的。',
       temperatureReset: 'リセット',
       reasoningEffort: '推論強度',

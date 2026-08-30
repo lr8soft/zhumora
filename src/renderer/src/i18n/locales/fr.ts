@@ -99,6 +99,7 @@ export default {
       apiKeyPlaceholder: '(optionnel pour local)',
       enabled: 'Activé',
       temperature: 'Température',
+      temperatureDefault: 'par défaut',
       temperatureHint: 'Par défaut 1.0. Bas = concentré, haut = créatif.',
       temperatureReset: 'Réinitialiser',
       reasoningEffort: 'Intensité de Raisonnement',
