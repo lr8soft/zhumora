@@ -400,6 +400,10 @@ select.input-field { cursor: pointer; }
 .range-input { width: 100%; accent-color: var(--app-color-primary); }
 .temp-number { width: 72px; height: 28px; flex: 0 0 auto; text-align: center; }
 .temp-number:disabled { opacity: 0.5; cursor: not-allowed; }
+
+/* 模型组合框：输入 + 下拉选择（datalist）+ 刷新按钮 */
+.model-combobox { display: flex; align-items: center; gap: 6px; }
+.model-combobox .input-field { flex: 1; min-width: 0; }
 .checkbox { accent-color: var(--app-color-primary); width: 15px; height: 15px; margin: 0; cursor: pointer; }
 
 /* ---------- 设置页 ---------- */

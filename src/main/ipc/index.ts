@@ -9,6 +9,7 @@ import { buildUserContent } from '../../shared/multimodal'
 import * as db from '../store/db'
 import { runAgent, setSkillsPromptGetter } from '../agent/runner'
 import { fetchContextWindow, buildEffectiveConversation, planAutoCompact } from '../agent/context'
+import { listProviderModels } from '../llm/models'
 import { sanitizeHistoryWithIds } from '../agent/history'
 import { log } from '../llm/logger'
 import { registerTool, clearTools } from '../tools/registry'
@@ -442,6 +443,11 @@ export function setupIpc(win: BrowserWindow): void {
     } catch (err) {
       return { error: (err as Error).message }
     }
+  })
+
+  // 模型列表（OpenAI 兼容 GET /models；主进程缓存，force 强刷）
+  ipcMain.handle('provider:models', async (_e, provider: AppSettings['providers'][0], force?: boolean) => {
+    return listProviderModels(provider, force === true)
   })
 
   // ============================================================

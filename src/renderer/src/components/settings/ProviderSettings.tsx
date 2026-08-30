@@ -69,6 +69,42 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
   // 上下文窗口探测状态（按 provider id）：填/改 Base URL 时自动识别
   const [detecting, setDetecting] = useState<Record<string, boolean>>({})
   const [detected, setDetected] = useState<Record<string, number>>({})
+  // 模型列表状态：key = `${providerId}::${baseUrl}`（baseUrl 变了旧列表自动失效）
+  const [modelLists, setModelLists] = useState<Record<string, { id: string; name?: string; ownedBy?: string }[]>>({})
+  const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
+  const [modelsError, setModelsError] = useState<Record<string, string>>({})
+
+  const listKey = (p: { id: string; baseUrl: string }) => `${p.id}::${p.baseUrl}`
+
+  /** 拉取模型列表（聚焦时懒加载；刷新按钮 force 强拉） */
+  const loadModels = async (idx: number, force: boolean) => {
+    const p = providers[idx]
+    const key = listKey(p)
+    if (!p?.baseUrl || modelsLoading[key]) return
+    if (!force && modelLists[key]) return
+    setModelsLoading((s) => ({ ...s, [key]: true }))
+    try {
+      const res = await window.api.provider.listModels(p, force)
+      if (res.models && res.models.length > 0) {
+        setModelLists((s) => ({ ...s, [key]: res.models }))
+        setModelsError((s) => {
+          const n = { ...s }
+          delete n[key]
+          return n
+        })
+      } else if (res.error) {
+        setModelsError((s) => ({ ...s, [key]: res.error! }))
+      }
+    } catch (err) {
+      setModelsError((s) => ({ ...s, [key]: (err as Error).message }))
+    } finally {
+      setModelsLoading((s) => {
+        const n = { ...s }
+        delete n[key]
+        return n
+      })
+    }
+  }
 
   /** 探测上下文窗口（手动配置优先；否则 API 探测 → 启发式 → 默认值） */
   const detectContextWindow = async (idx: number) => {
@@ -167,11 +203,38 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
             </div>
             <div className="form-field">
               <label className="form-label">{t('settings.providers.defaultModel')}</label>
-              <input
-                className="input-field"
-                value={p.defaultModel}
-                onChange={(e) => updateProvider(i, { defaultModel: e.target.value })}
-              />
+              <div className="model-combobox">
+                <input
+                  className="input-field"
+                  value={p.defaultModel}
+                  list={`model-datalist-${p.id}`}
+                  placeholder={t('settings.providers.modelPlaceholder')}
+                  onChange={(e) => updateProvider(i, { defaultModel: e.target.value })}
+                  onFocus={() => void loadModels(i, false)}
+                />
+                {/* 原生 combobox：可下拉选择，也可自由输入不在列表中的模型 id */}
+                <datalist id={`model-datalist-${p.id}`}>
+                  {(modelLists[listKey(p)] || []).map((m) => (
+                    <option key={m.id} value={m.id} label={m.ownedBy ? `${m.id} (${m.ownedBy})` : m.id} />
+                  ))}
+                </datalist>
+                <button
+                  className="icon-button"
+                  style={{ flex: 'none' }}
+                  title={t('settings.providers.modelRefresh')}
+                  disabled={!!modelsLoading[listKey(p)]}
+                  onClick={() => void loadModels(i, true)}
+                >
+                  {modelsLoading[listKey(p)]
+                    ? <Loader2 size={14} className="spin" />
+                    : <RefreshCw size={14} />}
+                </button>
+              </div>
+              {modelsError[listKey(p)] && (
+                <p className="form-hint" style={{ color: 'var(--app-color-danger)' }}>
+                  {t('settings.providers.modelLoadFailed')}: {modelsError[listKey(p)]}
+                </p>
+              )}
             </div>
             <div className="form-field span-2">
               <label className="form-label">{t('settings.providers.baseUrl')}</label>

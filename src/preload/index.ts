@@ -207,7 +207,10 @@ const api = {
   provider: {
     /** 探测上下文窗口（用户填/改 Base URL 时自动识别；返回检测到的 token 数） */
     detectContextWindow: (provider: any, modelOverride?: string): Promise<{ detected?: number; error?: string }> =>
-      ipcRenderer.invoke('provider:context-window', provider, modelOverride)
+      ipcRenderer.invoke('provider:context-window', provider, modelOverride),
+    /** 拉取模型列表（OpenAI 兼容 GET /models；主进程缓存 5 分钟，force 强刷） */
+    listModels: (provider: any, force?: boolean): Promise<{ models: { id: string; name?: string; ownedBy?: string }[]; error?: string }> =>
+      ipcRenderer.invoke('provider:models', provider, force)
   },
 
   // ============================================================
