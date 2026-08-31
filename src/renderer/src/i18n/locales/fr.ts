@@ -58,7 +58,10 @@ export default {
     imageErrorDecode: "Échec de la décodification de l'image. Essayez-en une autre",
     truncatedTool: "La réponse a atteint la limite de jetons du modèle : l'appel d'outil a été tronqué. Le modèle est invité à réessayer avec une sortie plus petite.",
     truncatedText: "La réponse a atteint la limite de jetons du modèle — continuation automatique.",
-    inputResizeHint: "Glisser pour redimensionner la zone de saisie (clic pour réinitialiser)"
+    inputResizeHint: "Glisser pour redimensionner la zone de saisie (clic pour réinitialiser)",
+    reasoningEffortHint: "Choisir l'intensité de raisonnement (activé pour le fournisseur actuel)",
+    reasoningEffort: { off: 'Par défaut', low: 'Faible', medium: 'Moyen', high: 'Élevé' },
+    reasoningEffortDesc: { off: 'Laisser le modèle décider', low: 'Rapide, moins de réflexion', medium: 'Équilibré', high: 'Raisonnement approfondi' }
   },
   permission: {
     title: 'Demande de Permission',
@@ -111,7 +114,8 @@ export default {
       temperatureDefault: 'par défaut',
       temperatureHint: 'Par défaut 1.0. Bas = concentré, haut = créatif.',
       temperatureReset: 'Réinitialiser',
-      reasoningEffort: 'Intensité de Raisonnement',
+      reasoningEffort: "Intensité de Raisonnement (interrupteur)",
+      reasoningEnabledHint: "Si activée, la zone de saisie affiche un menu déroulant d'intensité ; choisissez faible/moyen/élevé par conversation.",
       reasoningLow: 'bas — rapide, moins de réflexion',
       reasoningMedium: 'moyen — équilibré',
       reasoningHigh: 'haut — raisonnement approfondi',

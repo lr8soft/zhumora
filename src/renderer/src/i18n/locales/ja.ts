@@ -58,7 +58,10 @@ export default {
     imageErrorDecode: "画像のデコードに失敗しました。別の画像をお試しください",
     truncatedTool: "出力がモデルのトークン上限に達しました — ツール呼び出しが途中までになりました。小さな出力で再試行するようモデルに依頼しています。",
     truncatedText: "出力がモデルのトークン上限に達しました — 自動で続行します。",
-    inputResizeHint: "ドラッグで入力欄の高さを調整（クリックでリセット）"
+    inputResizeHint: "ドラッグで入力欄の高さを調整（クリックでリセット）",
+    reasoningEffortHint: "思考強度を選択（現在のプロバイダーで有効）",
+    reasoningEffort: { off: '既定', low: '低', medium: '中', high: '高' },
+    reasoningEffortDesc: { off: 'モデルに委ねる', low: '高速、少ない思考', medium: 'バランス', high: '深い推論' }
   },
   permission: {
     title: '権限リクエスト',
@@ -111,7 +114,8 @@ export default {
       temperatureDefault: 'デフォルト',
       temperatureHint: 'デフォルト 1.0。低 = 集中、高 = 創造的。',
       temperatureReset: 'リセット',
-      reasoningEffort: '推論強度',
+      reasoningEffort: '推論強度（機能スイッチ）',
+      reasoningEnabledHint: '有効にすると、チャット入力欄に思考強度のドロップダウンが表示されます。会話ごとに低/中/高を選択できます。',
       reasoningLow: '低 — 高速、少ない思考',
       reasoningMedium: '中 — バランス',
       reasoningHigh: '高 — 深い推論',

@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors } from 'lucide-react'
+import { ArrowUp, BrainCircuit, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors } from 'lucide-react'
 
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT } from '../store'
@@ -38,7 +38,16 @@ export default function ChatView() {
   const [modeMenuOpen, setModeMenuOpen] = useState(false)
   // 模型选择下拉是否展开（向上弹出；原生 select 弹出方向不可控，改自定义菜单）
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  // 思考强度下拉是否展开
+  const [effortMenuOpen, setEffortMenuOpen] = useState(false)
   const enabledProviders = settings.providers.filter(p => p.enabled)
+  // 当前生效 provider（聊天页选择优先，否则 active provider）
+  const spmParts = selectedProviderModel?.split('::')
+  const activeRunProvider = enabledProviders.find(p => p.id === spmParts?.[0])
+    || enabledProviders.find(p => p.id === settings.activeProviderId)
+  const reasoningSupported = activeRunProvider?.reasoningEnabled === true
+  const reasoningEffort = useAppStore(s => s.reasoningEffort)
+  const setReasoningEffort = useAppStore(s => s.setReasoningEffort)
 
   // 当前 session 的工作目录
   const activeSession = sessions.find(s => s.id === activeSessionId)
@@ -464,6 +473,36 @@ export default function ChatView() {
               )}
             </div>
             <div className="composer-toolbar-spacer" />
+            {/* 思考强度（仅当前 provider 开启该功能时显示；自定义菜单向上展开） */}
+            {reasoningSupported && (
+              <div className="mode-selector">
+                <button
+                  className={reasoningEffort === 'high' ? 'composer-effort-chip effort-high' : reasoningEffort === 'low' ? 'composer-effort-chip effort-low' : 'composer-effort-chip'}
+                  onClick={() => setEffortMenuOpen(!effortMenuOpen)}
+                  title={t('chat.reasoningEffortHint')}
+                >
+                  <BrainCircuit size={14} />
+                  {t(`chat.reasoningEffort.${reasoningEffort}`)}
+                </button>
+                {effortMenuOpen && (
+                  <>
+                    <div className="mode-menu-backdrop" onClick={() => setEffortMenuOpen(false)} />
+                    <div className="mode-menu effort-menu">
+                      {(['off', 'low', 'medium', 'high'] as const).map(effort => (
+                        <button
+                          key={effort}
+                          className={effort === reasoningEffort ? 'mode-menu-item active' : 'mode-menu-item'}
+                          onClick={() => { setReasoningEffort(effort); setEffortMenuOpen(false) }}
+                        >
+                          <span className="effort-menu-label">{t(`chat.reasoningEffort.${effort}`)}</span>
+                          <small className="effort-menu-desc">{t(`chat.reasoningEffortDesc.${effort}`)}</small>
+                        </button>
+                      ))}
+                    </div>
+                  </>
+                )}
+              </div>
+            )}
             {/* Provider/模型选择（自定义菜单，向上展开贴工具栏上方） */}
             <div className="mode-selector">
               <button

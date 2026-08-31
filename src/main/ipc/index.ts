@@ -3,7 +3,7 @@
 // 所有来自渲染进程的请求在这里注册
 // ============================================================
 import { ipcMain, BrowserWindow, dialog, shell } from 'electron'
-import type { AppSettings, ChatMessage, UserMessageInput, AutoApproveMode } from '../../shared/types'
+import type { AppSettings, ChatMessage, UserMessageInput, AutoApproveMode, ReasoningEffort } from '../../shared/types'
 import { AgentAbortedError } from '../../shared/types'
 import { buildUserContent } from '../../shared/multimodal'
 import * as db from '../store/db'
@@ -135,7 +135,7 @@ export function setupIpc(win: BrowserWindow): void {
   // ============================================================
   // Agent 对话
   // ============================================================
-  ipcMain.handle('agent:run', (e, sessionId: string, userMessage: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode }) => {
+  ipcMain.handle('agent:run', (e, sessionId: string, userMessage: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode; reasoningEffort?: ReasoningEffort }) => {
     // 同一会话同一时刻只允许一个运行（UI 已禁用运行中的输入；这里是防御性检查）。
     // 不同会话之间完全并行，互不阻塞。
     if (runningSessions.has(sessionId)) {
@@ -215,6 +215,7 @@ export function setupIpc(win: BrowserWindow): void {
         permissionCheck,
         signal: abortController.signal,
         modelOverride: options?.modelOverride,
+        reasoningEffort: options?.reasoningEffort,
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
         onSessionTitleUpdate: (sid, title) => {

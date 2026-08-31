@@ -296,7 +296,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
           </div>
           <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.temperatureHint')}</p>
 
-          {/* Reasoning Effort */}
+          {/* 思考强度功能开关（具体强度在聊天输入框里按会话选择） */}
           <div className="provider-row">
             <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
               <input
@@ -307,18 +307,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
               />
               <span className="form-label">{t('settings.providers.reasoningEffort')}</span>
             </label>
-            {p.reasoningEnabled && (
-              <select
-                className="input-field"
-                style={{ width: 220 }}
-                value={p.reasoningEffort || 'medium'}
-                onChange={(e) => updateProvider(i, { reasoningEffort: e.target.value as 'low' | 'medium' | 'high' })}
-              >
-                <option value="low">{t('settings.providers.reasoningLow')}</option>
-                <option value="medium">{t('settings.providers.reasoningMedium')}</option>
-                <option value="high">{t('settings.providers.reasoningHigh')}</option>
-              </select>
-            )}
+            <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.reasoningEnabledHint')}</p>
           </div>
 
           {/* Context Window */}

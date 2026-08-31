@@ -58,7 +58,20 @@ export default {
     imageErrorDecode: "图片解析失败，请更换图片",
     truncatedTool: "单轮输出达到模型 token 上限，工具调用被截断——已要求模型拆小步重试。",
     truncatedText: "单轮输出达到模型 token 上限——正在自动续写。",
-    inputResizeHint: "拖拽调整输入区高度（单击恢复自适应）"
+    inputResizeHint: "拖拽调整输入区高度（单击恢复自适应）",
+    reasoningEffortHint: "选择思考强度（当前 Provider 已开启该功能）",
+    reasoningEffort: {
+      off: '默认',
+      low: '低',
+      medium: '中',
+      high: '高'
+    },
+    reasoningEffortDesc: {
+      off: '由模型自行决定',
+      low: '快速，少思考',
+      medium: '平衡',
+      high: '深度推理'
+    }
   },
   permission: {
     title: '权限请求',
@@ -111,7 +124,8 @@ export default {
       temperatureDefault: '默认',
       temperatureHint: '默认 1.0。低 = 聚焦，高 = 创意。',
       temperatureReset: '重置',
-      reasoningEffort: '思考强度',
+      reasoningEffort: '思考强度（功能开关）',
+      reasoningEnabledHint: '开启后，聊天输入框会显示思考强度下拉，你可按对话选择 低/中/高。',
       reasoningLow: '低 — 快速，少思考',
       reasoningMedium: '中 — 平衡',
       reasoningHigh: '高 — 深度推理',

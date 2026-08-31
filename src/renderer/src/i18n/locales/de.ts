@@ -58,7 +58,10 @@ export default {
     imageErrorDecode: "Bild konnte nicht decodiert werden. Bitte anderes Bild versuchen",
     truncatedTool: "Die Ausgabe hat das Token-Limit des Modells erreicht — der Tool-Aufruf wurde abgeschnitten. Das Modell wird um einen Wiederholungsversuch mit kleinerer Ausgabe gebeten.",
     truncatedText: "Die Ausgabe hat das Token-Limit des Modells erreicht — wird automatisch fortgesetzt.",
-    inputResizeHint: "Ziehen, um die Eingabehöhe zu ändern (Klicken zum Zurücksetzen)"
+    inputResizeHint: "Ziehen, um die Eingabehöhe zu ändern (Klicken zum Zurücksetzen)",
+    reasoningEffortHint: "Begründungsintensität wählen (für aktuellen Anbieter aktiviert)",
+    reasoningEffort: { off: 'Standard', low: 'Niedrig', medium: 'Mittel', high: 'Hoch' },
+    reasoningEffortDesc: { off: 'Vom Modell entscheiden lassen', low: 'Schnell, weniger Denken', medium: 'Ausgewogen', high: 'Tiefes Nachdenken' }
   },
   permission: {
     title: 'Berechtigungsanfrage',
@@ -111,7 +114,8 @@ export default {
       temperatureDefault: 'Standard',
       temperatureHint: 'Standard 1.0. Niedrig = fokussiert, hoch = kreativ.',
       temperatureReset: 'Zurücksetzen',
-      reasoningEffort: 'Begründungsintensität',
+      reasoningEffort: 'Begründungsintensität (Funktionsschalter)',
+      reasoningEnabledHint: 'Wenn aktiviert, zeigt die Chat-Eingabe ein Dropdown für die Intensität; wählen Sie niedrig/mittel/hoch pro Gespräch.',
       reasoningLow: 'niedrig — schnell, weniger Denken',
       reasoningMedium: 'mittel — ausgeglichen',
       reasoningHigh: 'hoch — tiefes Reasoning',

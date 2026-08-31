@@ -41,8 +41,11 @@ export interface ProviderConfig {
   defaultModel: string
   enabled: boolean
   temperature?: number             // 采样温度，不设则由 API 默认
-  reasoningEnabled?: boolean       // 是否启用思考强度
-  reasoningEffort?: 'low' | 'medium' | 'high'  // 思考强度（reasoning_effort）
+  /** 思考强度功能开关：开启后聊天输入框显示"思考强度"下拉，用户按会话选择。
+   *  关闭时不发送 reasoning_effort 参数 */
+  reasoningEnabled?: boolean
+  /** @deprecated 已迁移到对话级选择（ReasoningEffort），保留字段仅为旧数据兼容，不再读取 */
+  reasoningEffort?: 'low' | 'medium' | 'high'
   contextWindow?: number           // 模型上下文窗口大小（token 数），0 或未设 = 自动检测
 }
 
@@ -145,6 +148,14 @@ export class AgentAbortedError extends Error {
     this.name = 'AgentAbortedError'
   }
 }
+
+/** 对话级思考强度（聊天输入框选择，每次 agent 运行携带）
+ *  - off:    不发送 reasoning_effort 参数（模型默认行为）
+ *  - low:    快速，少思考
+ *  - medium: 平衡
+ *  - high:   深度推理
+ */
+export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
 
 /** 工具调用批准模式（三档）
  * - manual: 手动批准 — safe 放行，normal + dangerous 都弹窗

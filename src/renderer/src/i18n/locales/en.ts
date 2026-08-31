@@ -58,7 +58,10 @@ export default {
     imageErrorDecode: "Failed to decode image, please try another one",
     truncatedTool: "Output hit the model's token limit — the tool call was cut off, asking the model to retry with smaller output.",
     truncatedText: "Output hit the model's token limit — continuing automatically.",
-    inputResizeHint: "Drag to resize the input area (click to reset)"
+    inputResizeHint: "Drag to resize the input area (click to reset)",
+    reasoningEffortHint: "Choose reasoning effort (enabled for the current provider)",
+    reasoningEffort: { off: 'Default', low: 'Low', medium: 'Medium', high: 'High' },
+    reasoningEffortDesc: { off: 'Let the model decide', low: 'Fast, less thinking', medium: 'Balanced', high: 'Deep reasoning' }
   },
   permission: {
     title: 'Permission Request',
@@ -111,7 +114,8 @@ export default {
       temperatureDefault: 'default',
       temperatureHint: 'Leave at 1.0 for default. Lower = focused, higher = creative.',
       temperatureReset: 'Reset',
-      reasoningEffort: 'Reasoning Effort',
+      reasoningEffort: 'Reasoning Effort (feature toggle)',
+      reasoningEnabledHint: 'When enabled, the chat input shows a reasoning-effort dropdown; pick Low/Medium/High per conversation.',
       reasoningLow: 'low — fast, less thinking',
       reasoningMedium: 'medium — balanced',
       reasoningHigh: 'high — deep reasoning',

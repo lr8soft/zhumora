@@ -382,7 +382,7 @@ h1, h2, h3, p { margin: 0; }
 .chat-input-resizer:hover::after { background: var(--app-color-primary); }
 .chat-input-resizer:active::after { background: var(--app-color-primary-strong); }
 .composer {
-  width: 100%; max-width: 860px; margin: 0 auto; flex: 1; min-height: 108px;
+  width: 100%; flex: 1; min-height: 108px;
   display: flex; flex-direction: column;
   border: 1px solid var(--app-color-border-strong, var(--app-color-border)); border-radius: 14px;
   background: var(--app-color-surface); box-shadow: var(--app-shadow-panel, 0 2px 12px rgba(0, 0, 0, .08));
@@ -411,6 +411,21 @@ h1, h2, h3, p { margin: 0; }
 .composer-mode-chip:hover { color: var(--app-color-text); }
 .composer-mode-chip.mode-auto { color: var(--app-color-info); background: color-mix(in srgb, var(--app-color-info) 10%, transparent); }
 .composer-mode-chip.mode-full { color: var(--app-color-warn); background: color-mix(in srgb, var(--app-color-warn) 10%, transparent); }
+/* 思考强度 chip + 菜单（仅 provider 开启功能时显示） */
+.composer-effort-chip {
+  display: flex; align-items: center; gap: 6px; padding: 5px 11px;
+  color: var(--app-color-text-mute); border: 0; border-radius: 999px;
+  background: var(--app-muted-bg); font-size: 0.733rem; font-weight: 600; cursor: pointer;
+}
+.composer-effort-chip svg { flex: 0 0 auto; }
+.composer-effort-chip:hover { color: var(--app-color-text); }
+.composer-effort-chip.effort-high { color: var(--app-color-info); background: color-mix(in srgb, var(--app-color-info) 10%, transparent); }
+.composer-effort-chip.effort-low { color: var(--app-color-success); background: color-mix(in srgb, var(--app-color-success) 10%, transparent); }
+.effort-menu { min-width: 220px; }
+.effort-menu-item { display: flex; flex-direction: column; align-items: flex-start; gap: 2px; }
+.effort-menu-label { font-weight: 650; }
+.effort-menu-desc { color: var(--app-color-text-mute); font-size: 0.667rem; }
+
 /* 模型选择按钮（自定义菜单，替代原生 select） */
 .composer-model-select {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;

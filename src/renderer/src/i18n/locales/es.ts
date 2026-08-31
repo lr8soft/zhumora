@@ -58,7 +58,10 @@ export default {
     imageErrorDecode: "No se pudo decodificar la imagen. Prueba con otra",
     truncatedTool: "La salida alcanzó el límite de tokens del modelo: la llamada a la herramienta fue truncada. Se pidió al modelo reintentar con una salida más pequeña.",
     truncatedText: "La salida alcanzó el límite de tokens del modelo: continuando automáticamente.",
-    inputResizeHint: "Arrastra para cambiar la altura del área de entrada (clic para restablecer)"
+    inputResizeHint: "Arrastra para cambiar la altura del área de entrada (clic para restablecer)",
+    reasoningEffortHint: "Elige la intensidad de razonamiento (activado para el proveedor actual)",
+    reasoningEffort: { off: 'Predeterminado', low: 'Baja', medium: 'Media', high: 'Alta' },
+    reasoningEffortDesc: { off: 'Que lo decida el modelo', low: 'Rápido, menos pensamiento', medium: 'Equilibrado', high: 'Razonamiento profundo' }
   },
   permission: {
     title: 'Solicitud de Permiso',
@@ -111,7 +114,8 @@ export default {
       temperatureDefault: 'predeterminada',
       temperatureHint: 'Por defecto 1.0. Bajo = enfocado, alto = creativo.',
       temperatureReset: 'Restablecer',
-      reasoningEffort: 'Intensidad de Razonamiento',
+      reasoningEffort: 'Intensidad de Razonamiento (interruptor de función)',
+      reasoningEnabledHint: 'Si está activado, la entrada de chat muestra un desplegable de intensidad; elige baja/media/alta por conversación.',
       reasoningLow: 'bajo — rápido, menos pensamiento',
       reasoningMedium: 'medio — equilibrado',
       reasoningHigh: 'alto — razonamiento profundo',

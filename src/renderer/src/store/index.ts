@@ -9,7 +9,9 @@
 // - 重试 / 权限请求 / 压缩通知同样按会话隔离
 // ============================================================
 import { create } from 'zustand'
-import type { Session, UIMessage, AppSettings, AutoApproveMode } from '@shared/types'
+import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort } from '@shared/types'
+
+export type { ReasoningEffort }
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
 
 const api = window.api
@@ -74,6 +76,15 @@ function getStoredSidebarCollapsed(): boolean {
 
 function getStoredInputHeight(): number {
   return getStoredNumber(INPUT_HEIGHT_KEY, DEFAULT_INPUT_HEIGHT, 0, INPUT_MAX_HEIGHT)
+}
+
+function getStoredReasoningEffort(): ReasoningEffort {
+  try {
+    const stored = localStorage.getItem('zhumora.reasoningEffort')
+    return stored === 'off' || stored === 'low' || stored === 'medium' || stored === 'high' ? stored : 'medium'
+  } catch {
+    return 'medium'
+  }
 }
 
 function getStoredApproveMode(): AutoApproveMode {
@@ -190,6 +201,10 @@ interface AppState {
   // 批准模式（三档：manual / auto / full）
   approveMode: AutoApproveMode
   setApproveMode: (v: AutoApproveMode) => void
+
+  // 对话级思考强度（聊天输入框选择；off = 不发送 reasoning_effort）
+  reasoningEffort: ReasoningEffort
+  setReasoningEffort: (v: ReasoningEffort) => void
 
   // 权限 — 按会话隔离（多个并行会话可能同时弹窗，UI 按 FIFO 逐个确认）
   permissionRequests: Record<string, PermissionRequest>
@@ -384,6 +399,13 @@ export const useAppStore = create<AppState>((set, get) => ({
     }
   },
 
+  // ---- 对话级思考强度 ----
+  reasoningEffort: getStoredReasoningEffort(),
+  setReasoningEffort: (v) => {
+    set({ reasoningEffort: v })
+    try { localStorage.setItem('zhumora.reasoningEffort', v) } catch { /* ignore */ }
+  },
+
   sendMessage: async (text: string, images?: string[]) => {
     let { activeSessionId } = get()
     if (!activeSessionId) {
@@ -429,11 +451,17 @@ export const useAppStore = create<AppState>((set, get) => ({
           modelOverride = spm.slice(sepIdx + 2) || undefined
         }
       }
+      // 思考强度：仅当所选 provider 开启了该功能才生效（否则 UI 不显示下拉，也不发送参数）
+      const settings = get().settings
+      const runProvider = settings.providers.find(p => p.id === providerId)
+        || (settings.activeProviderId ? settings.providers.find(p => p.id === settings.activeProviderId) : undefined)
+      const effort = runProvider?.reasoningEnabled ? get().reasoningEffort : 'off'
 
       const result = await api.agent.run(sid, { text, images }, {
         providerId,
         modelOverride,
-        approveMode: get().approveMode
+        approveMode: get().approveMode,
+        reasoningEffort: effort
       })
       if (result.error) {
         // 启动失败（如未配置 provider）：移除思考占位，追加错误消息

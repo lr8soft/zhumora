@@ -13,7 +13,7 @@
 // assistant / tool 消息追加时同时 push 到两个数组，保证 id 对齐；压缩边界
 // 总是取"被折叠的最后一条真实历史消息 id"（跳过虚拟摘要位 null）。
 // ============================================================
-import type { ChatMessage, ContentPart, ProviderConfig, ToolCall } from '../../shared/types'
+import type { ChatMessage, ContentPart, ProviderConfig, ToolCall, ReasoningEffort } from '../../shared/types'
 import { streamChat, type TokenUsage } from '../llm/provider'
 import { log } from '../llm/logger'
 import { getTool, getAllTools, type ToolContext } from '../tools/registry'
@@ -103,6 +103,8 @@ export interface AgentRunOptions {
   systemPromptExtra?: string
   /** 覆盖模型名（如果用户在聊天页选了别的模型） */
   modelOverride?: string
+  /** 对话级思考强度（聊天输入框选择；'off'/undefined = 不发送 reasoning_effort 参数） */
+  reasoningEffort?: ReasoningEffort
   /** 是否启用长期记忆（提取 + 注入） */
   memoryEnabled?: boolean
   /** 最大工具轮数（0 = 不限制）；不传则读设置 maxRounds，默认 20 */
@@ -126,6 +128,9 @@ export async function runAgent(
   cb: AgentEventCallbacks
 ): Promise<ChatMessage[]> {
   const { provider, workspacePath, messages, messageIds, compaction, signal, permissionCheck, modelOverride, sessionId, memoryEnabled, onSessionTitleUpdate, onAutoCompact } = opts
+  // 对话级思考强度（'off'/undefined = 不发送参数，模型默认行为）。
+  // 收窄为 streamChat 接受的 'low'|'medium'|'high'
+  const reasoningEffort = opts.reasoningEffort && opts.reasoningEffort !== 'off' ? opts.reasoningEffort : undefined
 
   // 构建系统提示词（含记忆注入 + MCP 工具动态列表）
   const skillsPrompt = skillsPromptGetter ? skillsPromptGetter() : ''
@@ -247,7 +252,7 @@ export async function runAgent(
       tools: tools.length > 0 ? tools : undefined,
       model,
       temperature: provider.temperature,
-      reasoningEffort: provider.reasoningEnabled ? provider.reasoningEffort : undefined,
+      reasoningEffort,
       signal
     }, {
       onToken: cb.onToken,
@@ -489,7 +494,7 @@ export async function runAgent(
   }
 
   // 优雅收尾：不带 tools 的最后一次调用，强制模型纯文本总结进度
-  await finalizeRun(provider, modelOverride, signal, hardStop, workingMessages, allAssistantMessages, cb)
+  await finalizeRun(provider, modelOverride, signal, hardStop, workingMessages, allAssistantMessages, cb, reasoningEffort)
 
   cb.onComplete?.()
   // 异步提取记忆（不阻塞返回）
@@ -511,7 +516,8 @@ async function finalizeRun(
   reason: string,
   workingMessages: ChatMessage[],
   allAssistantMessages: ChatMessage[],
-  cb: AgentEventCallbacks
+  cb: AgentEventCallbacks,
+  reasoningEffort: 'low' | 'medium' | 'high' | undefined
 ): Promise<void> {
   const finalizeMessages: ChatMessage[] = [
     ...workingMessages,
@@ -528,7 +534,7 @@ async function finalizeRun(
       tools: undefined,   // 无 tools → 强制纯文本
       model,
       temperature: provider.temperature,
-      reasoningEffort: provider.reasoningEnabled ? provider.reasoningEffort : undefined,
+      reasoningEffort,
       signal
     }, {
       onToken: cb.onToken,
