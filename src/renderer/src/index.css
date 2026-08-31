@@ -96,10 +96,11 @@ h1, h2, h3, p { margin: 0; }
 .window-controls .window-close:hover { color: #fff; background: #c42b1c; }
 
 /* ---------- 外壳 ---------- */
-.app-shell { min-height: 0; display: grid; grid-template-columns: 224px minmax(0, 1fr); overflow: hidden; }
+.app-shell { --sidebar-width: 224px; min-height: 0; display: grid; grid-template-columns: var(--sidebar-width) minmax(0, 1fr); overflow: hidden; }
+.app-shell.sidebar-is-collapsed { grid-template-columns: 52px minmax(0, 1fr); }
 .main-area { min-width: 0; min-height: 0; display: flex; flex-direction: column; }
 .main-area > * { flex: 1; min-height: 0; }
-.sidebar { min-height: 0; display: flex; flex-direction: column; padding: 14px 12px 12px; border-right: 1px solid var(--app-color-border); background: var(--app-chrome-bg); }
+.sidebar { position: relative; min-height: 0; display: flex; flex-direction: column; padding: 14px 12px 12px; border-right: 1px solid var(--app-color-border); background: var(--app-chrome-bg); }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 14px; }
 .brand-mark { width: 34px; height: 34px; flex: 0 0 auto; display: block; border-radius: 8px; }
 .brand strong { min-width: 0; font-size: 1.133rem; font-weight: 650; line-height: 1.35; }
@@ -144,6 +145,35 @@ h1, h2, h3, p { margin: 0; }
 .sidebar-settings:hover { color: var(--app-color-text); background: var(--app-muted-bg); }
 .sidebar-settings.active { color: var(--app-color-primary-strong); background: var(--app-active-bg); }
 
+/* 收起/展开按钮 */
+.sidebar-toggle {
+  flex: 0 0 auto; margin-left: auto; width: 28px; height: 28px;
+  display: grid; place-items: center; color: var(--app-color-text-mute);
+  border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+}
+.sidebar-toggle:hover { color: var(--app-color-text); background: var(--app-muted-bg); }
+.sidebar-toggle-collapsed { margin-left: 0; margin: 0 auto 10px; }
+
+/* 侧边栏右缘拖拽手柄（宽 5px，视觉居中在边框上；悬停/拖拽中显示主色） */
+.sidebar-resizer {
+  position: absolute; top: 0; right: -3px; width: 6px; height: 100%;
+  cursor: col-resize; z-index: 10;
+}
+.sidebar-resizer::after { content: ''; position: absolute; inset: 0 2px; background: transparent; transition: background .15s; }
+.sidebar-resizer:hover::after { background: var(--app-color-primary); }
+.sidebar-resizer:active::after { background: var(--app-color-primary-strong); }
+
+/* 收起态侧边栏：窄 rail（52px） */
+.sidebar.collapsed { padding: 12px 8px; align-items: stretch; }
+.sidebar-rail-button {
+  flex: 0 0 auto; width: 36px; height: 36px; margin: 0 auto;
+  display: grid; place-items: center; color: var(--app-color-text-soft);
+  border: 0; border-radius: 6px; background: transparent; cursor: pointer;
+}
+.sidebar-rail-button:hover { color: var(--app-color-text); background: var(--app-muted-bg); }
+.sidebar-rail-button.active { color: var(--app-color-primary-strong); background: var(--app-active-bg); }
+.sidebar-rail-spacer { flex: 1; }
+
 /* ---------- 聊天视图 ---------- */
 .chat-view { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--app-color-bg); }
 .chat-topbar {
@@ -187,11 +217,13 @@ h1, h2, h3, p { margin: 0; }
 .mode-selector { position: relative; display: inline-flex; }
 .mode-menu-backdrop { position: fixed; inset: 0; z-index: 100; }
 .mode-menu {
-  position: absolute; top: calc(100% + 6px); right: 0; z-index: 200;
+  position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 200;
   min-width: 240px; display: flex; flex-direction: column; gap: 2px; padding: 4px;
   border: 1px solid var(--app-color-border); border-radius: 8px;
   background: var(--app-color-surface-solid); box-shadow: var(--app-shadow-panel);
 }
+/* 模型选择菜单（基类已 right:0 向左展开，避免被右缘裁切） */
+.model-menu { min-width: 220px; }
 .mode-menu-item {
   display: flex; align-items: center; gap: 8px; padding: 8px 10px;
   border: 0; border-radius: 6px; background: transparent; cursor: pointer;
@@ -268,9 +300,6 @@ h1, h2, h3, p { margin: 0; }
 .compact-summary-body code, .compact-summary-body pre { font-family: Consolas, Monaco, monospace; font-size: 0.767rem; }
 
 /* 输入区图片附件 */
-.attach-button { width: 42px; height: 42px; flex: 0 0 auto; display: grid; place-items: center; color: var(--app-color-text-soft); border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); cursor: pointer; }
-.attach-button:hover:not(:disabled) { color: var(--app-color-primary-strong); border-color: var(--app-color-primary); }
-.attach-button:disabled { opacity: .45; cursor: not-allowed; }
 .attach-file-input { display: none; }
 .chat-image-previews { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .chat-image-preview { position: relative; display: inline-block; }
@@ -338,30 +367,69 @@ h1, h2, h3, p { margin: 0; }
 .tool-result-toggle:hover { color: var(--app-color-text); }
 .tool-result-body { margin: 0; padding: 10px 12px; max-height: 400px; overflow: auto; color: var(--app-color-text-soft); font-family: Consolas, Monaco, monospace; font-size: 0.733rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
-/* 输入区 */
-.chat-input-area { flex: 0 0 auto; border-top: 1px solid var(--app-color-border); background: var(--app-chrome-bg); padding: 14px 18px 16px; }
-.chat-input-row { display: flex; align-items: flex-end; gap: 10px; }
+/* ---------- 输入区（Codex desktop 风格 composer 卡片） ----------
+ * 结构：chat-input-area（外层，承载拖拽手柄与高度约束）
+ *   └─ .composer（卡片，flex 纵向）
+ *        ├─ 图片预览 / 错误提示
+ *        ├─ .chat-textarea（唯一吸收拖拽高度变化的元素）
+ *        └─ .composer-toolbar（底部工具栏，固定尺寸，不随拖拽变化） */
+.chat-input-area { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; background: var(--app-chrome-bg); padding: 12px 18px 16px; }
+.chat-input-resizer {
+  position: absolute; top: -3px; left: 0; right: 0; height: 6px;
+  cursor: row-resize; z-index: 5;
+}
+.chat-input-resizer::after { content: ''; position: absolute; inset: 2px 0; background: transparent; transition: background .15s; }
+.chat-input-resizer:hover::after { background: var(--app-color-primary); }
+.chat-input-resizer:active::after { background: var(--app-color-primary-strong); }
+.composer {
+  width: 100%; max-width: 860px; margin: 0 auto; flex: 1; min-height: 108px;
+  display: flex; flex-direction: column;
+  border: 1px solid var(--app-color-border-strong, var(--app-color-border)); border-radius: 14px;
+  background: var(--app-color-surface); box-shadow: var(--app-shadow-panel, 0 2px 12px rgba(0, 0, 0, .08));
+}
+.composer:focus-within { border-color: var(--app-color-primary); }
 .chat-textarea {
-  flex: 1; min-height: 42px; max-height: 200px; resize: none; padding: 10px 12px;
-  color: var(--app-color-text); border: 1px solid var(--app-color-border); border-radius: 6px;
-  background: var(--app-color-surface); font-size: 0.933rem; line-height: 1.5; outline: 0;
+  flex: 1 1 auto; min-height: 40px; resize: none; padding: 13px 14px 4px;
+  color: var(--app-color-text); border: 0; background: transparent;
+  font-size: 0.933rem; line-height: 1.5; outline: 0; font-family: inherit;
 }
 .chat-textarea::placeholder { color: var(--app-color-text-mute); }
-.chat-textarea:focus { border-color: var(--app-color-primary); outline: 2px solid color-mix(in srgb, var(--app-color-primary) 18%, transparent); }
-.chat-textarea:disabled { opacity: .55; cursor: not-allowed; }
-.model-select {
-  width: 190px; height: 42px; flex: 0 0 auto; padding: 0 10px;
-  color: var(--app-color-text); border: 1px solid var(--app-color-border); border-radius: 6px;
-  background: var(--app-muted-bg); font-size: 0.8rem; outline: 0; cursor: pointer;
+.composer-toolbar { flex: 0 0 auto; display: flex; align-items: center; gap: 8px; padding: 8px 10px 10px; }
+.composer-toolbar-spacer { flex: 1 1 auto; }
+.composer-icon-btn {
+  width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center;
+  color: var(--app-color-text-soft); border: 0; border-radius: 8px; background: transparent; cursor: pointer;
 }
-.model-select:focus { border-color: var(--app-color-primary); outline: 2px solid color-mix(in srgb, var(--app-color-primary) 18%, transparent); }
-.send-button {
-  height: 42px; flex: 0 0 auto; display: flex; align-items: center; justify-content: center; gap: 7px;
-  padding: 0 18px; color: #fff; border: 1px solid var(--app-color-primary-strong); border-radius: 6px;
-  background: var(--app-color-primary); font-size: 0.867rem; font-weight: 650; cursor: pointer;
+.composer-icon-btn:hover:not(:disabled) { color: var(--app-color-text); background: var(--app-muted-bg); }
+.composer-icon-btn:disabled { opacity: .45; cursor: not-allowed; }
+.composer-mode-chip {
+  display: flex; align-items: center; gap: 6px; padding: 5px 11px;
+  color: var(--app-color-text-mute); border: 0; border-radius: 999px;
+  background: var(--app-muted-bg); font-size: 0.733rem; font-weight: 600; cursor: pointer;
 }
-.send-button:hover:not(:disabled) { background: var(--app-color-primary-strong); }
-.send-button:disabled { opacity: .45; cursor: not-allowed; }
+.composer-mode-chip svg { flex: 0 0 auto; }
+.composer-mode-chip:hover { color: var(--app-color-text); }
+.composer-mode-chip.mode-auto { color: var(--app-color-info); background: color-mix(in srgb, var(--app-color-info) 10%, transparent); }
+.composer-mode-chip.mode-full { color: var(--app-color-warn); background: color-mix(in srgb, var(--app-color-warn) 10%, transparent); }
+/* 模型选择按钮（自定义菜单，替代原生 select） */
+.composer-model-select {
+  display: flex; align-items: center; justify-content: space-between; gap: 6px;
+  width: 190px; height: 32px; flex: 0 0 auto; padding: 0 10px;
+  color: var(--app-color-text-soft); border: 0; border-radius: 8px;
+  background: transparent; font-size: 0.767rem; cursor: pointer;
+}
+.composer-model-select:hover { background: var(--app-muted-bg); }
+.composer-model-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.composer-model-select > svg { flex: 0 0 auto; color: var(--app-color-text-mute); transition: transform .15s; }
+.composer-model-select > svg.chevron-up { transform: rotate(180deg); }
+.composer-send {
+  width: 32px; height: 32px; flex: 0 0 auto; display: grid; place-items: center;
+  color: #fff; border: 0; border-radius: 50%; background: var(--app-color-primary); cursor: pointer;
+}
+.composer-send:hover:not(:disabled) { background: var(--app-color-primary-strong); }
+.composer-send:disabled { opacity: .45; cursor: not-allowed; }
+.composer-send.stop { background: var(--app-color-danger); }
+.composer-send.stop:hover { background: #c42b1c; }
 
 /* ---------- 按钮 ---------- */
 .btn-primary {

@@ -1,8 +1,9 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { FolderOpen, ImagePlus, Send, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors } from 'lucide-react'
+import { ArrowUp, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors } from 'lucide-react'
+
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
-import { useAppStore } from '../store'
+import { useAppStore, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT } from '../store'
 import MessageBubble from './MessageBubble'
 import type { AutoApproveMode, UIMessage } from '@shared/types'
 
@@ -25,12 +26,19 @@ export default function ChatView() {
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
+  const inputAreaRef = useRef<HTMLDivElement>(null)
+  // 输入区固定高度（0 = 自适应内容）；拖拽上缘调整，持久化在 store
+  const inputAreaHeight = useAppStore(s => s.inputAreaHeight)
+  const setInputAreaHeight = useAppStore(s => s.setInputAreaHeight)
   // 待发送的图片附件（base64 data URL，发送前暂存在输入区预览）
   const [pendingImages, setPendingImages] = useState<string[]>([])
   const [imageError, setImageError] = useState<string | null>(null)
   const fileInputRef = useRef<HTMLInputElement>(null)
-  // 批准模式下拉是否展开
+  // 批准模式下拉是否展开（向上弹出，贴工具栏上方）
   const [modeMenuOpen, setModeMenuOpen] = useState(false)
+  // 模型选择下拉是否展开（向上弹出；原生 select 弹出方向不可控，改自定义菜单）
+  const [modelMenuOpen, setModelMenuOpen] = useState(false)
+  const enabledProviders = settings.providers.filter(p => p.enabled)
 
   // 当前 session 的工作目录
   const activeSession = sessions.find(s => s.id === activeSessionId)
@@ -71,6 +79,18 @@ export default function ChatView() {
     setImageError(null)
   }, [activeSessionId])
 
+  // textarea 自适应内容高度（inputAreaHeight=0 时生效；固定高度时清空 inline height，交给 CSS flex 接管）
+  useEffect(() => {
+    const el = inputRef.current
+    if (!el) return
+    if (inputAreaHeight > 0) {
+      el.style.height = ''
+      return
+    }
+    el.style.height = 'auto'
+    el.style.height = `${Math.min(el.scrollHeight, 240)}px`
+  }, [input, pendingImages.length, inputAreaHeight, activeSessionId])
+
   const handleSubmit = () => {
     const text = input.trim()
     if ((!text && pendingImages.length === 0) || isRunning) return
@@ -107,6 +127,32 @@ export default function ChatView() {
     if (processed.length > 0) {
       setPendingImages(prev => [...prev, ...processed])
     }
+  }
+
+  /** 拖拽输入区上缘调整高度：document 级监听，松手即清理（clamp + 持久化在 store 内）。
+   *  单击手柄（位移 < 4px）= 恢复自适应高度 */
+  const onInputResizeStart = (e: React.MouseEvent) => {
+    e.preventDefault()
+    const startY = e.clientY
+    const startArea = inputAreaRef.current?.getBoundingClientRect().height ?? 0
+    let moved = false
+    const onMove = (ev: MouseEvent) => {
+      const delta = startY - ev.clientY // 向上拖为正
+      if (Math.abs(delta) >= 4) moved = true
+      if (!moved) return
+      setInputAreaHeight(startArea + delta)
+    }
+    const onUp = () => {
+      document.removeEventListener('mousemove', onMove)
+      document.removeEventListener('mouseup', onUp)
+      document.body.style.cursor = ''
+      document.body.style.userSelect = ''
+      if (!moved) setInputAreaHeight(0) // 单击手柄 → 恢复自适应
+    }
+    document.body.style.cursor = 'row-resize'
+    document.body.style.userSelect = 'none'
+    document.addEventListener('mousemove', onMove)
+    document.addEventListener('mouseup', onUp)
   }
 
   /** 粘贴图片（如截图） */
@@ -235,38 +281,6 @@ export default function ChatView() {
           </button>
         </div>
         <div className="chat-topbar-right">
-          {/* 批准模式下拉选择器 */}
-          <div className="mode-selector">
-            <button
-              className={approveMode === 'full' ? 'toggle-chip mode-full' : approveMode === 'auto' ? 'toggle-chip mode-auto' : 'toggle-chip'}
-              onClick={() => setModeMenuOpen(!modeMenuOpen)}
-              title={modeHint(approveMode)}
-            >
-              {modeIcon(approveMode)}
-              {modeLabel(approveMode)}
-            </button>
-            {modeMenuOpen && (
-              <>
-                <div className="mode-menu-backdrop" onClick={() => setModeMenuOpen(false)} />
-                <div className="mode-menu">
-                  {(['manual', 'auto', 'full'] as AutoApproveMode[]).map(mode => (
-                    <button
-                      key={mode}
-                      className={mode === approveMode ? 'mode-menu-item active' : 'mode-menu-item'}
-                      onClick={() => { setApproveMode(mode); setModeMenuOpen(false) }}
-                      title={modeHint(mode)}
-                    >
-                      {modeIcon(mode)}
-                      <span className="mode-menu-label">
-                        <strong>{modeLabel(mode)}</strong>
-                        <small>{modeHint(mode)}</small>
-                      </span>
-                    </button>
-                  ))}
-                </div>
-              </>
-            )}
-          </div>
           {/* 手动压缩上下文按钮（模仿 Cline：将早期消息合并为摘要，释放上下文空间） */}
           <button
             className={isCompacting ? 'compact-chip compacting' : 'compact-chip'}
@@ -282,16 +296,10 @@ export default function ChatView() {
             {isCompacting ? t('chat.compactWorking') : t('chat.compactNow')}
           </button>
           {isRunning && (
-            <>
-              <span className="thinking">
-                <span className="pulse-dot" />
-                {t('chat.thinking')}
-              </span>
-              <button className="btn-danger btn-sm" onClick={abortAgent}>
-                <Square size={11} />
-                {t('chat.stop')}
-              </button>
-            </>
+            <span className="thinking">
+              <span className="pulse-dot" />
+              {t('chat.thinking')}
+            </span>
           )}
         </div>
       </div>
@@ -357,46 +365,40 @@ export default function ChatView() {
         </div>
       </div>
 
-      {/* 输入区 */}
-      <div className="chat-input-area">
-        {/* 图片附件预览 */}
-        {pendingImages.length > 0 && (
-          <div className="chat-image-previews">
-            {pendingImages.map((src, i) => (
-              <span key={i} className="chat-image-preview">
-                <img src={src} alt="" />
-                <button
-                  className="chat-image-remove"
-                  title={t('chat.removeImage')}
-                  onClick={() => setPendingImages(prev => prev.filter((_, j) => j !== i))}
-                >
-                  <X size={10} />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
-        {imageError && <p className="chat-image-error">{imageError}</p>}
-        <div className="chat-input-row" onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
-          <button
-            className="attach-button"
-            title={t('chat.attachImage')}
-            onClick={() => fileInputRef.current?.click()}
-            disabled={isRunning || pendingImages.length >= MAX_IMAGES}
-          >
-            <ImagePlus size={16} />
-          </button>
-          <input
-            ref={fileInputRef}
-            type="file"
-            accept="image/*"
-            multiple
-            className="attach-file-input"
-            onChange={(e) => {
-              if (e.target.files) void addImages(Array.from(e.target.files))
-              e.target.value = ''
-            }}
-          />
+      {/* 输入区（Codex desktop 风格：卡片式 composer，工具栏固定在卡片底部；
+          上缘可拖拽调高——只有 textarea 吸收高度变化，按钮大小不动；
+          单击上缘手柄恢复自适应） */}
+      <div
+        ref={inputAreaRef}
+        className="chat-input-area"
+        style={inputAreaHeight > 0 ? { height: `${inputAreaHeight}px` } : undefined}
+      >
+        <div
+          className="chat-input-resizer"
+          onMouseDown={onInputResizeStart}
+          title={t('chat.inputResizeHint')}
+        />
+        <div className="composer" onDrop={handleDrop} onDragOver={(e) => e.preventDefault()}>
+          {/* 图片附件预览（卡片内顶部） */}
+          {pendingImages.length > 0 && (
+            <div className="chat-image-previews">
+              {pendingImages.map((src, i) => (
+                <span key={i} className="chat-image-preview">
+                  <img src={src} alt="" />
+                  <button
+                    className="chat-image-remove"
+                    title={t('chat.removeImage')}
+                    onClick={() => setPendingImages(prev => prev.filter((_, j) => j !== i))}
+                  >
+                    <X size={10} />
+                  </button>
+                </span>
+              ))}
+            </div>
+          )}
+          {imageError && <p className="chat-image-error">{imageError}</p>}
+
+          {/* 文本区（拖拽调高时唯一吸收变化的元素） */}
           <textarea
             ref={inputRef}
             value={input}
@@ -406,32 +408,109 @@ export default function ChatView() {
             placeholder={t('chat.inputPlaceholder')}
             className="chat-textarea"
             rows={1}
-            disabled={isRunning}
           />
-          {/* Provider/模型选择下拉框 */}
-          <select
-            className="model-select"
-            value={selectedProviderModel || ''}
-            onChange={(e) => setSelectedProviderModel(e.target.value || null)}
-            title={t('chat.selectModelHint')}
-          >
-            <option value="">{t('chat.defaultModel')}</option>
-            {settings.providers
-              .filter(p => p.enabled)
-              .map(p => (
-                <optgroup key={p.id} label={p.name}>
-                  <option value={`${p.id}::${p.defaultModel}`}>{p.defaultModel} {t('chat.modelDefaultSuffix')}</option>
-                </optgroup>
-              ))}
-          </select>
-          <button
-            className="send-button"
-            onClick={handleSubmit}
-            disabled={(!input.trim() && pendingImages.length === 0) || isRunning}
-          >
-            <Send size={15} />
-            {t('chat.send')}
-          </button>
+
+          {/* 底部工具栏（固定尺寸，不随拖拽变化） */}
+          <div className="composer-toolbar">
+            <button
+              className="composer-icon-btn"
+              title={t('chat.attachImage')}
+              onClick={() => fileInputRef.current?.click()}
+              disabled={isRunning || pendingImages.length >= MAX_IMAGES}
+            >
+              <ImagePlus size={17} />
+            </button>
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="image/*"
+              multiple
+              className="attach-file-input"
+              onChange={(e) => {
+                if (e.target.files) void addImages(Array.from(e.target.files))
+                e.target.value = ''
+              }}
+            />
+            {/* 批准模式下拉（从 topbar 移入 composer，对齐 Codex 布局） */}
+            <div className="mode-selector">
+              <button
+                className={approveMode === 'full' ? 'composer-mode-chip mode-full' : approveMode === 'auto' ? 'composer-mode-chip mode-auto' : 'composer-mode-chip'}
+                onClick={() => setModeMenuOpen(!modeMenuOpen)}
+                title={modeHint(approveMode)}
+              >
+                {modeIcon(approveMode)}
+                {modeLabel(approveMode)}
+              </button>
+              {modeMenuOpen && (
+                <>
+                  <div className="mode-menu-backdrop" onClick={() => setModeMenuOpen(false)} />
+                  <div className="mode-menu">
+                    {(['manual', 'auto', 'full'] as AutoApproveMode[]).map(mode => (
+                      <button
+                        key={mode}
+                        className={mode === approveMode ? 'mode-menu-item active' : 'mode-menu-item'}
+                        onClick={() => { setApproveMode(mode); setModeMenuOpen(false) }}
+                        title={modeHint(mode)}
+                      >
+                        {modeIcon(mode)}
+                        <span className="mode-menu-label">
+                          <strong>{modeLabel(mode)}</strong>
+                          <small>{modeHint(mode)}</small>
+                        </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="composer-toolbar-spacer" />
+            {/* Provider/模型选择（自定义菜单，向上展开贴工具栏上方） */}
+            <div className="mode-selector">
+              <button
+                className="composer-model-select"
+                onClick={() => setModelMenuOpen(!modelMenuOpen)}
+                title={t('chat.selectModelHint')}
+              >
+                <span className="composer-model-name">
+                  {selectedProviderModel
+                    ? (enabledProviders.find(p => p.id === selectedProviderModel.split('::')[0])?.name || '') + ' · ' + selectedProviderModel.split('::')[1]
+                    : t('chat.defaultModel')}
+                </span>
+                <ChevronDown size={12} className={modelMenuOpen ? 'chevron-up' : ''} />
+              </button>
+              {modelMenuOpen && (
+                <>
+                  <div className="mode-menu-backdrop" onClick={() => setModelMenuOpen(false)} />
+                  <div className="mode-menu model-menu">
+                    <button
+                      className={selectedProviderModel === null ? 'mode-menu-item active' : 'mode-menu-item'}
+                      onClick={() => { setSelectedProviderModel(null); setModelMenuOpen(false) }}
+                    >
+                      {t('chat.defaultModel')}
+                    </button>
+                    {enabledProviders.map(p => (
+                      <button
+                        key={p.id}
+                        className={selectedProviderModel === `${p.id}::${p.defaultModel}` ? 'mode-menu-item active' : 'mode-menu-item'}
+                        onClick={() => { setSelectedProviderModel(`${p.id}::${p.defaultModel}`); setModelMenuOpen(false) }}
+                      >
+                        {p.name} · {p.defaultModel}
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            {/* 发送 / 停止（运行中切换为停止按钮） */}
+            <button
+              className={isRunning ? 'composer-send stop' : 'composer-send'}
+              onClick={isRunning ? abortAgent : handleSubmit}
+              disabled={!isRunning && (!input.trim() && pendingImages.length === 0)}
+              title={isRunning ? t('chat.stop') : t('chat.send')}
+            >
+              {isRunning ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
+            </button>
+          </div>
         </div>
       </div>
     </div>

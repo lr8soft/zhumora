@@ -16,7 +16,10 @@ export default {
     deleteSessionTitle: 'Delete this session?',
     deleteSessionConfirm: 'This will permanently delete the session and all of its messages.',
     running: 'Running',
-    settings: 'Settings'
+    settings: 'Settings',
+    collapse: 'Collapse sidebar',
+    expand: 'Expand sidebar',
+    resize: 'Drag to resize sidebar'
   },
   chat: {
     createSessionToStart: 'Create a session to start chatting',
@@ -54,7 +57,8 @@ export default {
     imageErrorTooLarge: "Image exceeds 10MB and cannot be added",
     imageErrorDecode: "Failed to decode image, please try another one",
     truncatedTool: "Output hit the model's token limit — the tool call was cut off, asking the model to retry with smaller output.",
-    truncatedText: "Output hit the model's token limit — continuing automatically."
+    truncatedText: "Output hit the model's token limit — continuing automatically.",
+    inputResizeHint: "Drag to resize the input area (click to reset)"
   },
   permission: {
     title: 'Permission Request',

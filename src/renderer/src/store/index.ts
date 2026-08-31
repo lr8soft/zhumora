@@ -41,6 +41,41 @@ function getStoredFontSize(): number {
   }
 }
 
+// ---------- 布局（侧边栏宽度 / 收起 / 输入区高度）----------
+export const SIDEBAR_WIDTH_KEY = 'zhumora.sidebarWidth'
+export const SIDEBAR_COLLAPSED_KEY = 'zhumora.sidebarCollapsed'
+export const INPUT_HEIGHT_KEY = 'zhumora.inputHeight'
+export const SIDEBAR_MIN_WIDTH = 180
+export const SIDEBAR_MAX_WIDTH = 480
+export const INPUT_MIN_HEIGHT = 136
+export const INPUT_MAX_HEIGHT = 480
+export const DEFAULT_INPUT_HEIGHT = 0 // 0 = 自适应内容高度
+
+function getStoredNumber(key: string, fallback: number, min: number, max: number): number {
+  try {
+    const v = parseInt(localStorage.getItem(key) || '', 10)
+    return Number.isFinite(v) ? Math.min(max, Math.max(min, v)) : fallback
+  } catch {
+    return fallback
+  }
+}
+
+function getStoredSidebarWidth(): number {
+  return getStoredNumber(SIDEBAR_WIDTH_KEY, 224, SIDEBAR_MIN_WIDTH, SIDEBAR_MAX_WIDTH)
+}
+
+function getStoredSidebarCollapsed(): boolean {
+  try {
+    return localStorage.getItem(SIDEBAR_COLLAPSED_KEY) === '1'
+  } catch {
+    return false
+  }
+}
+
+function getStoredInputHeight(): number {
+  return getStoredNumber(INPUT_HEIGHT_KEY, DEFAULT_INPUT_HEIGHT, 0, INPUT_MAX_HEIGHT)
+}
+
 function getStoredApproveMode(): AutoApproveMode {
   try {
     const stored = localStorage.getItem('zhumora.approveMode')
@@ -99,6 +134,17 @@ interface AppState {
   // 视图
   view: 'chat' | 'settings'
   setView: (v: 'chat' | 'settings') => void
+
+  // 布局
+  /** 侧边栏宽度（px）；collapsed 时不生效 */
+  sidebarWidth: number
+  setSidebarWidth: (px: number) => void
+  /** 侧边栏收起状态 */
+  sidebarCollapsed: boolean
+  setSidebarCollapsed: (v: boolean) => void
+  /** 输入区固定高度（px）；0 = 自适应内容高度 */
+  inputAreaHeight: number
+  setInputAreaHeight: (px: number) => void
 
   // 主题（light/dark/system，system 跟随系统）
   theme: Theme
@@ -185,6 +231,25 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ---- 视图 ----
   view: 'chat',
   setView: (v) => set({ view: v }),
+
+  // ---- 布局 ----
+  sidebarWidth: getStoredSidebarWidth(),
+  setSidebarWidth: (px) => {
+    const w = Math.min(SIDEBAR_MAX_WIDTH, Math.max(SIDEBAR_MIN_WIDTH, Math.round(px)))
+    set({ sidebarWidth: w })
+    try { localStorage.setItem(SIDEBAR_WIDTH_KEY, String(w)) } catch { /* ignore */ }
+  },
+  sidebarCollapsed: getStoredSidebarCollapsed(),
+  setSidebarCollapsed: (v) => {
+    set({ sidebarCollapsed: v })
+    try { localStorage.setItem(SIDEBAR_COLLAPSED_KEY, v ? '1' : '0') } catch { /* ignore */ }
+  },
+  inputAreaHeight: getStoredInputHeight(),
+  setInputAreaHeight: (px) => {
+    const h = Math.min(INPUT_MAX_HEIGHT, Math.max(0, Math.round(px)))
+    set({ inputAreaHeight: h })
+    try { localStorage.setItem(INPUT_HEIGHT_KEY, String(h)) } catch { /* ignore */ }
+  },
 
   // ---- 主题 / 字号 ----
   theme: getStoredTheme(),

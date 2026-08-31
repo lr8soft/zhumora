@@ -19,6 +19,8 @@ function pushMessage(sessionId: string, fn: (msgs: import('@shared/types').UIMes
 
 export default function App() {
   const { view, loadSessions, loadSettings, setActiveSession, theme, fontSize } = useAppStore()
+  const sidebarWidth = useAppStore(s => s.sidebarWidth)
+  const sidebarCollapsed = useAppStore(s => s.sidebarCollapsed)
 
   // 初始化
   useEffect(() => {
@@ -360,7 +362,10 @@ export default function App() {
       {/* 自定义窗口标题栏 */}
       <TitleBar />
 
-      <div className="app-shell">
+      <div
+        className={sidebarCollapsed ? 'app-shell sidebar-is-collapsed' : 'app-shell'}
+        style={{ ['--sidebar-width' as string]: `${sidebarWidth}px` }}
+      >
         {/* 侧边栏 */}
         <Sidebar />
 

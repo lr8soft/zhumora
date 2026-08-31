@@ -16,7 +16,10 @@ export default {
     deleteSessionTitle: 'Diese Sitzung löschen?',
     deleteSessionConfirm: 'Die Sitzung und alle ihre Nachrichten werden dauerhaft gelöscht.',
     running: 'Läuft',
-    settings: 'Einstellungen'
+    settings: 'Einstellungen',
+    collapse: 'Seitenleiste einklappen',
+    expand: 'Seitenleiste ausklappen',
+    resize: 'Ziehen, um Breite zu ändern'
   },
   chat: {
     createSessionToStart: 'Erstellen Sie eine Sitzung, um zu chatten',
@@ -54,7 +57,8 @@ export default {
     imageErrorTooLarge: "Bild überschreitet 10 MB und kann nicht hinzugefügt werden",
     imageErrorDecode: "Bild konnte nicht decodiert werden. Bitte anderes Bild versuchen",
     truncatedTool: "Die Ausgabe hat das Token-Limit des Modells erreicht — der Tool-Aufruf wurde abgeschnitten. Das Modell wird um einen Wiederholungsversuch mit kleinerer Ausgabe gebeten.",
-    truncatedText: "Die Ausgabe hat das Token-Limit des Modells erreicht — wird automatisch fortgesetzt."
+    truncatedText: "Die Ausgabe hat das Token-Limit des Modells erreicht — wird automatisch fortgesetzt.",
+    inputResizeHint: "Ziehen, um die Eingabehöhe zu ändern (Klicken zum Zurücksetzen)"
   },
   permission: {
     title: 'Berechtigungsanfrage',

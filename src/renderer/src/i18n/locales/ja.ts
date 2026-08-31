@@ -16,7 +16,10 @@ export default {
     deleteSessionTitle: 'このセッションを削除しますか？',
     deleteSessionConfirm: 'セッションとその全メッセージが完全に削除され、復元できません。',
     running: '実行中',
-    settings: '設定'
+    settings: '設定',
+    collapse: 'サイドバーを折りたたむ',
+    expand: 'サイドバーを展開する',
+    resize: 'ドラッグで幅を調整'
   },
   chat: {
     createSessionToStart: 'チャットを開始するにはセッションを作成してください',
@@ -54,7 +57,8 @@ export default {
     imageErrorTooLarge: "画像が 10MB を超えています。追加できません",
     imageErrorDecode: "画像のデコードに失敗しました。別の画像をお試しください",
     truncatedTool: "出力がモデルのトークン上限に達しました — ツール呼び出しが途中までになりました。小さな出力で再試行するようモデルに依頼しています。",
-    truncatedText: "出力がモデルのトークン上限に達しました — 自動で続行します。"
+    truncatedText: "出力がモデルのトークン上限に達しました — 自動で続行します。",
+    inputResizeHint: "ドラッグで入力欄の高さを調整（クリックでリセット）"
   },
   permission: {
     title: '権限リクエスト',

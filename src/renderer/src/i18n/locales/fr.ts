@@ -16,7 +16,10 @@ export default {
     deleteSessionTitle: 'Supprimer cette session ?',
     deleteSessionConfirm: 'La session et tous ses messages seront supprimés définitivement.',
     running: 'En cours',
-    settings: 'Paramètres'
+    settings: 'Paramètres',
+    collapse: 'Réduire la barre latérale',
+    expand: 'Déployer la barre latérale',
+    resize: 'Glisser pour redimensionner'
   },
   chat: {
     createSessionToStart: 'Créez une session pour commencer à discuter',
@@ -54,7 +57,8 @@ export default {
     imageErrorTooLarge: "L'image dépasse 10 Mo et ne peut pas être ajoutée",
     imageErrorDecode: "Échec de la décodification de l'image. Essayez-en une autre",
     truncatedTool: "La réponse a atteint la limite de jetons du modèle : l'appel d'outil a été tronqué. Le modèle est invité à réessayer avec une sortie plus petite.",
-    truncatedText: "La réponse a atteint la limite de jetons du modèle — continuation automatique."
+    truncatedText: "La réponse a atteint la limite de jetons du modèle — continuation automatique.",
+    inputResizeHint: "Glisser pour redimensionner la zone de saisie (clic pour réinitialiser)"
   },
   permission: {
     title: 'Demande de Permission',

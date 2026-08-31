@@ -16,7 +16,10 @@ export default {
     deleteSessionTitle: '删除此会话？',
     deleteSessionConfirm: '会话及其全部消息将被永久删除，无法恢复。',
     running: '运行中',
-    settings: '设置'
+    settings: '设置',
+    collapse: '收起侧边栏',
+    expand: '展开侧边栏',
+    resize: '拖拽调整侧边栏宽度'
   },
   chat: {
     createSessionToStart: '创建会话开始对话',
@@ -54,7 +57,8 @@ export default {
     imageErrorTooLarge: "图片超过 10MB，无法添加",
     imageErrorDecode: "图片解析失败，请更换图片",
     truncatedTool: "单轮输出达到模型 token 上限，工具调用被截断——已要求模型拆小步重试。",
-    truncatedText: "单轮输出达到模型 token 上限——正在自动续写。"
+    truncatedText: "单轮输出达到模型 token 上限——正在自动续写。",
+    inputResizeHint: "拖拽调整输入区高度（单击恢复自适应）"
   },
   permission: {
     title: '权限请求',

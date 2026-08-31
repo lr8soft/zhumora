@@ -16,7 +16,10 @@ export default {
     deleteSessionTitle: '¿Eliminar esta sesión?',
     deleteSessionConfirm: 'La sesión y todos sus mensajes se eliminarán permanentemente.',
     running: 'En ejecución',
-    settings: 'Configuración'
+    settings: 'Configuración',
+    collapse: 'Contraer barra lateral',
+    expand: 'Expandir barra lateral',
+    resize: 'Arrastra para cambiar el ancho'
   },
   chat: {
     createSessionToStart: 'Crea una sesión para empezar a chatear',
@@ -54,7 +57,8 @@ export default {
     imageErrorTooLarge: "La imagen supera los 10 MB y no se puede añadir",
     imageErrorDecode: "No se pudo decodificar la imagen. Prueba con otra",
     truncatedTool: "La salida alcanzó el límite de tokens del modelo: la llamada a la herramienta fue truncada. Se pidió al modelo reintentar con una salida más pequeña.",
-    truncatedText: "La salida alcanzó el límite de tokens del modelo: continuando automáticamente."
+    truncatedText: "La salida alcanzó el límite de tokens del modelo: continuando automáticamente.",
+    inputResizeHint: "Arrastra para cambiar la altura del área de entrada (clic para restablecer)"
   },
   permission: {
     title: 'Solicitud de Permiso',

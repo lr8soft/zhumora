@@ -1,6 +1,6 @@
 {
   "name": "zhumora",
-  "version": "0.2.4",
+  "version": "0.3.0",
   "description": "An open-source AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora",
