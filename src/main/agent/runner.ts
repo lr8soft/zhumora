@@ -42,6 +42,18 @@ const TRUNCATION_TOOL_ERROR =
 const TRUNCATION_CONTINUE_PROMPT =
   '[System notice] Your previous response was truncated by the per-response token limit (max_tokens) and is incomplete. Continue exactly from where you stopped. Do not repeat what you already wrote. If you were about to call a tool, call it now with a smaller output (split large file writes into chunks).'
 
+/**
+ * 空响应（finish_reason=stop 但无正文、无工具调用）的自动继续次数上限。
+ * 推理模型偶发"只思考不输出"或空补全：工作没做完却提前收尾，
+ * 用户必须手动发"继续"。超过该次数后不再自动继续，走正常收尾，
+ * 防止"空响应 → 继续 → 再空响应"死循环烧 token。
+ */
+export const MAX_EMPTY_CONTINUATIONS = 2
+
+/** 空响应时回传给模型的继续指令（喂 LLM，固定英文） */
+const EMPTY_CONTINUE_PROMPT =
+  '[System notice] Your previous response was empty — it contained no text and no tool call. Do not stop now. If the task is already fully complete, write a brief final summary of what you did. Otherwise continue: take the next step by calling a tool or writing your answer.'
+
 /** 单次对话最大工具轮数（0 = 不限制）。设置 maxRounds 可配，默认 20 */
 export function getMaxToolRounds(): number {
   try {
@@ -228,6 +240,7 @@ export async function runAgent(
    * 每个新的原始轮次（用户输入 / 工具结果驱动）重置为 0。
    */
   let truncationContinuations = 0
+  let emptyContinuations = 0
 
   while (maxRounds <= 0 || round < maxRounds) {
     round++
@@ -340,6 +353,19 @@ export async function runAgent(
         log('warn', `Round ${round}: output truncated and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
         cb.onTruncated?.('text')
       }
+      // 空响应自动继续：无正文、无工具调用、且不是截断（finish_reason=stop）。
+      // 推理模型偶发"只思考不输出"或空补全 —— 工作没做完却提前收尾，
+      // 用户被迫手动发"继续"。注入继续指令再跑一轮（上限 MAX_EMPTY_CONTINUATIONS，
+      // 防止 空响应→继续→再空响应 死循环烧 token）。
+      // 注意：空 assistant 消息不落库也不进上下文（部分严格后端拒绝空 content 的
+      // assistant 消息，见上方截断分支同款处理），只追加 user 继续指令。
+      if (!wasTruncated && !content.trim() && emptyContinuations < MAX_EMPTY_CONTINUATIONS) {
+        emptyContinuations++
+        log('warn', `Round ${round}: empty response (no content, no tool call, finish_reason=${finishReason || 'stop'}) — injecting continue prompt (continuation ${emptyContinuations}/${MAX_EMPTY_CONTINUATIONS})`)
+        workingMessages.push({ role: 'user', content: EMPTY_CONTINUE_PROMPT })
+        workingIds.push(null)
+        continue
+      }
       log('info', `Agent completed after ${round} round(s)`)
       cb.onComplete?.()
       // 异步提取记忆（不阻塞返回）
@@ -351,6 +377,8 @@ export async function runAgent(
 
     // 新的原始工具轮 → 重置截断恢复计数（上一轮截断已被正常消化）
     truncationContinuations = 0
+    // 模型恢复了有效输出（工具调用）→ 重置空响应计数（统计的是连续空响应次数）
+    emptyContinuations = 0
 
     // 记录 assistant 消息（含 tool_calls）到工作上下文。
     // workingIds 对应位置 = 落库 id（无则 null），保证压缩边界定位正确。

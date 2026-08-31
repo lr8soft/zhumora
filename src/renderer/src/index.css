@@ -304,7 +304,7 @@ h1, h2, h3, p { margin: 0; }
 .chat-image-previews { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 10px; }
 .chat-image-preview { position: relative; display: inline-block; }
 .chat-image-preview img { width: 64px; height: 64px; object-fit: cover; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
-.chat-image-remove { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; display: grid; place-items: center; color: #fff; border: 2px solid var(--app-color-bg); border-radius: 50%; background: var(--app-color-danger); cursor: pointer; }
+.chat-image-remove { position: absolute; top: -6px; right: -6px; width: 18px; height: 18px; display: flex; align-items: center; justify-content: center; padding: 0; line-height: 0; color: #fff; border: 2px solid var(--app-color-bg); border-radius: 50%; background: var(--app-color-danger); cursor: pointer; }
 .chat-image-remove:hover { background: #c42b1c; }
 .chat-image-error { margin: 0 0 8px; color: var(--app-color-danger); font-size: 0.733rem; }
 .message-assistant { min-width: 0; }
