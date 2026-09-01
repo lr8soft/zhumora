@@ -79,12 +79,18 @@ export const browserNavigateTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_navigate',
-      description: '导航到指定 URL。返回页面标题和最终 URL。',
+      description: [
+        'Navigate the browser to a URL. Returns the final URL and page title.',
+        'Usage:',
+        '- Call this first to start browser automation; subsequent actions operate on the loaded page.',
+        '- For single-page apps or slow pages, use wait_until="networkidle" to wait until network activity settles before inspecting content.',
+        '- After navigating, inspect the page with browser_screenshot or browser_get_text before interacting with it.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          url: { type: 'string', description: '要访问的完整 URL' },
-          wait_until: { type: 'string', description: '等待策略: load | domcontentloaded | networkidle (默认 load)' }
+          url: { type: 'string', description: 'Full URL to navigate to (include http:// or https://)' },
+          wait_until: { type: 'string', description: 'Wait strategy: load (default) | domcontentloaded | networkidle' }
         },
         required: ['url']
       }
@@ -111,12 +117,18 @@ export const browserClickTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_click',
-      description: '点击页面上的元素。支持 CSS 选择器或可见文本匹配。',
+      description: [
+        'Click an element on the page.',
+        'Usage:',
+        '- Use a CSS selector (#id, .class, tag, or compound selectors) to target the element precisely.',
+        '- Use text=Visible Text to click by visible text when a CSS selector is awkward (e.g. text=Submit, text=Next Page).',
+        '- If the click fails or the element is not found, take a browser_screenshot or browser_get_text first to see the current page state and find the correct selector.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          selector: { type: 'string', description: 'CSS 选择器，如 #button、.class、text=Submit' },
-          timeout: { type: 'number', description: '等待超时毫秒数，默认 10000' }
+          selector: { type: 'string', description: 'CSS selector (e.g. "#submit-btn", ".nav a") or text=Visible Text to match by visible text' },
+          timeout: { type: 'number', description: 'Wait timeout in milliseconds, default 10000' }
         },
         required: ['selector']
       }
@@ -146,7 +158,7 @@ export const browserTypeTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_type',
-      description: '在指定输入框中输入文本。会先清空已有内容。',
+      description: 'Type text into an input element. Clears the existing content first (fill, not append). Use press_enter=true to submit forms.',
       parameters: {
         type: 'object',
         properties: {
@@ -180,12 +192,17 @@ export const browserScreenshotTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_screenshot',
-      description: '截取当前页面截图并返回图片供视觉分析。截图会以图片形式发送给你，你可以直接看到并分析页面内容。',
+      description: [
+        'Capture a screenshot of the current page. The image is returned to you for visual analysis — you can see the rendered layout, find buttons/inputs, and verify the result of an action.',
+        'Usage:',
+        '- Use this to inspect the page state when you are unsure which selectors exist, or to verify that a click/typing/navigation produced the expected result.',
+        '- Use full_page=true to capture the entire scrollable page, not just the viewport.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          file_path: { type: 'string', description: '截图保存路径（.png）。不填则保存到工作目录下 screenshot-{timestamp}.png' },
-          full_page: { type: 'boolean', description: '是否截取完整页面（包括滚动区域），默认 false' }
+          file_path: { type: 'string', description: 'Path to save the screenshot (.png). Defaults to a timestamped file in the workspace' },
+          full_page: { type: 'boolean', description: 'Capture the full scrollable page instead of just the viewport, default false' }
         }
       }
     }
@@ -219,7 +236,7 @@ export const browserGetTextTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_get_text',
-      description: '提取页面可见文本内容。可指定 CSS 选择器提取局部文本，不指定则提取整个页面。',
+      description: 'Extract visible text content from the page. Lighter than a screenshot — prefer it when you only need text (forms, lists, labels). Use a CSS selector to target a region; omit it for the whole page body.',
       parameters: {
         type: 'object',
         properties: {
@@ -297,7 +314,7 @@ export const browserGetHtmlTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_get_html',
-      description: '获取页面指定元素的 outerHTML。不指定选择器则获取整个页面 HTML。',
+      description: 'Get the HTML of a page element. Use this when you need to discover the exact CSS selectors/structure of a section (e.g. to build a selector for click/type). Omit the selector for the whole body.',
       parameters: {
         type: 'object',
         properties: {

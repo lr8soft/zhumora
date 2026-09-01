@@ -1,5 +1,6 @@
 // ============================================================
 // 系统提示词构建 — 从工具注册表动态生成工具描述
+// 参考 Cline / opencode 的提示词设计，针对 Zhumora 的 Electron 桌面环境定制
 // ============================================================
 import { getAllTools, getToolsBySource } from '../tools/registry'
 import { getMcpConnectionStatus } from '../mcp/client'
@@ -9,17 +10,49 @@ import type { ToolDefinition } from '../../shared/types'
 // 静态指导文本（与具体工具列表无关的通用规则）
 // ============================================================
 
-const EDITING_RULES = `## Editing Rules (IMPORTANT)
-1. **ALWAYS read a file before editing it.** Never use edit with a guessed oldString — if the oldString doesn't match, the edit will fail.
-2. When editing, copy the exact text from the read output as oldString. Include enough surrounding context to make the match unique.
-3. For large changes across many files, prefer bash with sed/awk or write the entire file.
-4. If edit fails with "oldString not found", re-read the file to get the current content, then retry with the exact text.`
+const TONE_AND_STYLE = `## Tone and Style
+- Be concise, direct, and to the point. Minimize output tokens while maintaining helpfulness and accuracy.
+- When you run a non-trivial bash command, briefly explain what it does and why you are running it.
+- Your output is rendered as GitHub-flavored Markdown in a desktop application.
+- Avoid unnecessary preamble ("Here's what I'll do...") and postamble ("I hope this helps!") unless the user asks.
+- Only use emojis if the user explicitly requests them.
+- If you cannot or will not help with something, keep your response to 1-2 sentences and offer an alternative if possible.`
 
-const SEARCH_STRATEGY = `## Search Strategy
-1. When exploring an unfamiliar project: ls first, then glob for specific files, then read relevant files.
-2. When searching for code: use grep with include to narrow scope (e.g. include="*.{h,cpp}" for C++). Use exclude to skip irrelevant directories (e.g. exclude=["node_modules", ".git", "Binaries"]).
-3. When looking for a specific file: use glob with the filename pattern (e.g. **/*AuthManager*). Similarly use exclude to avoid searching build artifacts.
-4. All glob/grep paths default to the workspace directory. You can specify a subdirectory as path to narrow the search.`
+const AUTONOMY = `## Autonomy and Persistence
+- Unless the user is asking a question, brainstorming, or explicitly requesting a plan, assume they want you to make changes. Go ahead and implement — don't just describe what you would do.
+- Persist until the task is fully handled end-to-end: implement, then verify (run tests, check build, read the edited file back). Do not stop at analysis or partial fixes.
+- If you encounter blockers, attempt to resolve them yourself before asking for help.
+- If you notice unexpected changes in the workspace that you did not make, continue with your task. NEVER revert, undo, or modify changes you did not make unless the user explicitly asks.`
+
+const CONVENTIONS = `## Following Conventions
+- Before editing a file, read its surrounding context (especially imports) to understand the code's style, framework, and patterns. Mimic them.
+- NEVER assume a library is available. Check package.json (or equivalent) before writing code that imports it.
+- When creating new code, look at existing files to match naming, structure, and conventions.
+- Always follow security best practices. Never expose or log secrets and keys.`
+
+const EDITING_APPROACH = `## Editing Approach
+- The best change is often the smallest correct change. Prefer the minimal approach when two correct options exist.
+- ALWAYS prefer editing existing files. NEVER create new files unless explicitly required.
+- NEVER proactively create documentation files (*.md) or README files unless the user asks.
+- Do not add code comments unless the logic is genuinely non-obvious.
+- ALWAYS read a file before editing it. Never use edit with a guessed oldString — if it doesn't match, the edit will fail.
+- For large changes across many files, prefer bash with sed/awk or write the entire file.
+- Always verify your edits at the end: read the edited file back or run the project's build/lint/tests.`
+
+const TOOL_USAGE_POLICY = `## Tool Usage Policy
+- You can call multiple tools in a single response. When several independent reads, searches, commands, or edits are needed, emit them all together — do not serialize independent work across turns.
+- Good parallelism: read all known relevant files at once; run independent inspection commands together; edit multiple files in one response.
+- For file operations, prefer the dedicated tools over bash: use read (not cat/type), glob (not dir /s / find), grep (not findstr / grep in bash), edit (not sed), write (not echo > file).
+- When referencing code, use the format \`file_path:line_number\` so the user can navigate to the source.`
+
+const TASK_GUIDELINES = `## Guidelines
+- If a task requires multiple steps, state your plan briefly, then execute step by step.
+- Always explain what you are doing and why before running potentially impactful operations.
+- If you are unsure about something, ask the user for clarification instead of guessing.
+- When the task is complete, provide a brief summary of what you did.
+- NEVER commit, push, or create PRs unless the user explicitly asks.
+- NEVER use destructive commands like \`git reset --hard\` or \`git checkout --\` unless the user explicitly requests them.
+- IMPORTANT: At the start of every new conversation, call the set_title tool with a short title (max 6 words) summarizing the user's request. Do this before doing anything else.`
 
 const MEMORY_GUIDE = `## Long-term Memory
 You have access to a persistent memory system. You can proactively use these tools:
@@ -33,12 +66,6 @@ When to use memory tools:
 - When the user mentions a preference, habit, or important context, call memory_save to store it.
 - When the user asks "do you remember..." or refers to past conversations, use memory_search to find relevant memories.
 - Do NOT save trivial information (e.g. "user said hello"). Only save durable, useful facts.`
-
-const GUIDELINES = `## Guidelines
-- If a task requires multiple steps, plan your approach first, then execute step by step.
-- Always explain what you're doing and why, especially before running potentially impactful operations.
-- If you're unsure about something, ask the user for clarification.
-- IMPORTANT: At the start of every new conversation, you MUST call the set_title tool with a short title (max 6 words) that summarizes the user's request. Do this before doing anything else.`
 
 // ============================================================
 // 工具分类映射 — 将工具名映射到分类标签
@@ -84,6 +111,18 @@ function formatParams(def: ToolDefinition): string {
   return Object.entries(props).map(([k, v]) => `${k}(${v.type || 'any'})`).join(', ')
 }
 
+/**
+ * 系统提示词概览只用描述首行做摘要。
+ * 完整的多行使用指导（何时用/何时不用/失败模式/示例）由 tool schema 承载，
+ * 模型每次请求都能从 schema 中读到；概览段只负责"有哪些工具、各管什么"，
+ * 避免系统提示词膨胀（对齐 Cline / opencode：系统提示词不含冗长工具列表）。
+ */
+function summarizeDescription(def: ToolDefinition): string {
+  const desc = (def.function.description || '').trim()
+  const firstLine = desc.split('\n')[0] || '(no description)'
+  return firstLine.length > 200 ? firstLine.slice(0, 197) + '...' : firstLine
+}
+
 /** 从注册表获取内置工具并按分类生成描述段落 */
 function buildBuiltinToolSection(): string {
   const allTools = getAllTools()
@@ -102,7 +141,7 @@ function buildBuiltinToolSection(): string {
 
     sections.push(`\n**${cat.label}:**`)
     for (const t of found) {
-      const desc = t.function.description || '(no description)'
+      const desc = summarizeDescription(t)
       const params = formatParams(t)
       sections.push(`- ${t.function.name}: ${desc} (params: ${params})`)
     }
@@ -117,7 +156,7 @@ function buildBuiltinToolSection(): string {
     hasAnyCategory = true
     sections.push('\n**Other:**')
     for (const t of uncategorized) {
-      const desc = t.function.description || '(no description)'
+      const desc = summarizeDescription(t)
       const params = formatParams(t)
       sections.push(`- ${t.function.name}: ${desc} (params: ${params})`)
     }
@@ -140,7 +179,7 @@ function buildMcpSection(): string {
     if (mcpTools.length > 0) {
       lines.push('The following MCP tools are connected and available. Use them when the task matches their capabilities:')
       for (const t of mcpTools) {
-        const desc = t.function.description || '(no description)'
+        const desc = summarizeDescription(t)
         const params = formatParams(t)
         lines.push(`- **${t.function.name}**: ${desc} (params: ${params})`)
       }
@@ -185,22 +224,32 @@ export function buildSystemPrompt(
 ): string {
   const builtinSection = buildBuiltinToolSection()
   const mcpSection = buildMcpSection()
+  const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
+  const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   let prompt = `You are Zhumora, an open-source AI agent that can code, automate tasks, and operate your computer. You run in a local Electron desktop environment.
 
 ## Environment
-- You are connected to a local workspace at: ${workspacePath}
+- Platform: ${platform}
+- Working directory: ${workspacePath}
+- Date: ${date}
 - You also have access to MCP tools and Skills for extended capabilities.${mcpSection}
+
+${TONE_AND_STYLE}
+
+${AUTONOMY}
+
+${CONVENTIONS}
+
+${EDITING_APPROACH}
+
+${TOOL_USAGE_POLICY}
 
 ${builtinSection}
 
-${EDITING_RULES}
-
-${SEARCH_STRATEGY}
-
 ${MEMORY_GUIDE}
 
-${GUIDELINES}`
+${TASK_GUIDELINES}`
 
   if (skillsPrompt) {
     prompt += skillsPrompt

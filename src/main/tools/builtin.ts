@@ -21,13 +21,21 @@ export const readTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'read',
-      description: '读取文件内容。可指定 offset 和 limit 分段读取大文件。',
+      description: [
+        'Read a file or directory from the local filesystem.',
+        'Usage:',
+        '- Call this tool in parallel when you know there are multiple files you want to read.',
+        '- The output is prefixed with line numbers ("N: content") — this format is the reference for the edit tool; never copy the line number prefix into oldString/newString.',
+        '- By default returns up to 2000 lines from the start. For later sections, call again with a larger offset. Avoid tiny repeated slices; read a larger window if you need more context.',
+        '- If you are unsure of the correct file path, use glob to look up filenames first.',
+        '- Use grep to find specific content in large files instead of reading them in full.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          file_path: { type: 'string', description: '要读取的文件绝对路径' },
-          offset: { type: 'number', description: '起始行号(1-based)，默认1' },
-          limit: { type: 'number', description: '读取的行数上限，默认2000' }
+          file_path: { type: 'string', description: 'Absolute path to the file, or a path relative to the workspace root' },
+          offset: { type: 'number', description: 'Line number to start reading from (1-indexed), default 1' },
+          limit: { type: 'number', description: 'Maximum number of lines to read, default 2000' }
         },
         required: ['file_path']
       }
@@ -62,12 +70,20 @@ export const writeTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'write',
-      description: '写入文件（覆盖）。自动创建不存在的目录。',
+      description: [
+        'Write a file to the local filesystem. Creates parent directories automatically.',
+        'Usage:',
+        '- This tool OVERWRITES the existing file if there is one at the provided path.',
+        '- If the file already exists, you MUST have read it in this conversation first — read it to confirm its current state before overwriting.',
+        '- ALWAYS prefer editing existing files in the codebase. NEVER write new files unless explicitly required.',
+        '- NEVER proactively create documentation files (*.md) or README files. Only create them if the user explicitly asks.',
+        '- Use for creating new files from scratch or fully replacing file contents. For partial changes, use the edit tool instead.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          file_path: { type: 'string', description: '文件绝对路径' },
-          content: { type: 'string', description: '要写入的完整内容' }
+          file_path: { type: 'string', description: 'Absolute path to the file, or a path relative to the workspace root' },
+          content: { type: 'string', description: 'The complete content to write to the file' }
         },
         required: ['file_path', 'content']
       }
@@ -95,14 +111,25 @@ export const editTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'edit',
-      description: '编辑文件：找到 oldString 并替换为 newString。行尾自动对齐（CRLF/LF 均可匹配）。如果有多处匹配会失败，除非 replaceAll=true。',
+      description: [
+        'Perform an exact string replacement in a file. The preferred tool for making targeted changes to existing files.',
+        'Usage:',
+        '- You MUST read the file at least once in this conversation before editing it.',
+        '- Copy oldString verbatim from the read output. Preserve the exact indentation (tabs/spaces) as it appears AFTER the line number prefix. The line number prefix (e.g. "12: ") is NOT part of the file content — never include it in oldString or newString.',
+        '- Line endings are auto-aligned: CRLF and LF both match, so you can copy from read output directly.',
+        '- The edit FAILS if oldString is not found. If it fails, re-read the file and copy the exact text including indentation.',
+        '- The edit FAILS if oldString matches multiple locations. Provide more surrounding context to make it unique, or set replaceAll=true.',
+        '- Use replaceAll for renaming a variable or string across the whole file.',
+        '- Include enough surrounding context (a few lines before/after) to make the match unambiguous.',
+        '- If several edits to different files or non-overlapping regions are already known, emit multiple edit calls in the same response.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          file_path: { type: 'string', description: '文件绝对路径' },
-          oldString: { type: 'string', description: '要被替换的原始文本（直接照 read 输出复制即可，无需关心行尾）' },
-          newString: { type: 'string', description: '替换后的文本' },
-          replaceAll: { type: 'boolean', description: '是否替换所有匹配，默认false' }
+          file_path: { type: 'string', description: 'Absolute path to the file, or a path relative to the workspace root' },
+          oldString: { type: 'string', description: 'The exact text to be replaced, copied verbatim from the read output (line-number prefixes excluded, indentation preserved)' },
+          newString: { type: 'string', description: 'The replacement text' },
+          replaceAll: { type: 'boolean', description: 'Replace every occurrence instead of requiring a unique match, default false' }
         },
         required: ['file_path', 'oldString', 'newString']
       }
@@ -141,18 +168,61 @@ export const editTool: ToolHandler = {
 }
 
 // Bash 执行工具
+// 描述按实际执行 shell 动态生成（对齐 opencode：shell 语法指导必须与实际执行环境一致）
+const bashDescription = (() => {
+  const isWin = process.platform === 'win32'
+  const shellName = isWin ? 'cmd.exe' : 'bash'
+  const lines = [
+    `Executes a shell command in a ${shellName} shell and returns stdout, stderr, and the exit code.`,
+    `Be aware: OS: ${process.platform}, Shell: ${shellName}.`,
+    'Usage:',
+    '- This tool is for terminal operations: git, npm, node, docker, running builds/tests, etc. DO NOT use it for file operations (reading, writing, editing, searching, finding files) — use the dedicated tools instead:',
+    '  - File search: use glob (NOT dir /s, find, ls)',
+    '  - Content search: use grep (NOT findstr, grep, rg)',
+    '  - Read files: use read (NOT type, cat, head, tail)',
+    '  - Edit files: use edit (NOT sed, awk)',
+    '  - Write files: use write (NOT echo > file, here-docs)',
+    '  - Communicate with the user: output text directly (NOT echo / Write-Host)',
+    '- Commands must be non-interactive. Never run commands that wait for input (e.g. interactive git rebase, pagers). Use flags like --no-pager, --yes, --non-interactive when available.'
+  ]
+  if (isWin) {
+    lines.push(
+      '- Commands run through cmd.exe. Syntax notes:',
+      '  - Chain dependent commands with && (e.g. git add . && git commit -m "msg").',
+      '  - Use ; only to run sequentially without caring about earlier failures.',
+      '  - Quote paths with spaces: mkdir "My Project\\src".',
+      '  - Use %VAR% for environment variables; if exist <path> for existence checks.',
+      '  - To run a .bat/.cmd file from another command, use: call "script.bat".',
+      '  - DO NOT use bash-only syntax: no pipes through unix tools like head/tail/which, no backticks for command substitution, no $(...) (cmd does not expand it).'
+    )
+  } else {
+    lines.push(
+      '- If commands depend on each other and must run sequentially, chain them in ONE call with && (e.g. git add . && git commit -m "msg" && git push). Use ; only when later commands must run regardless of earlier failures.',
+      '- Always quote file paths that contain spaces.'
+    )
+  }
+  lines.push(
+    '- AVOID changing directories inside the command. Use the workdir parameter instead.',
+    '  <good-example>workdir="src\\pkg", command: "npm test"</good-example>',
+    '  <bad-example>command: "cd src\\pkg && npm test"</bad-example>',
+    '- If you need to run independent commands (e.g. "git status" and "git log"), issue multiple parallel bash calls in one response instead of chaining.',
+    '- Long-running commands: keep them under the timeout; for very long tasks prefer to split them up.'
+  )
+  return lines.join('\n')
+})()
+
 export const bashTool: ToolHandler = {
   definition: {
     type: 'function',
     function: {
       name: 'bash',
-      description: '执行 shell 命令。默认工作目录为项目根目录，可通过 workdir 参数指定子目录。返回 stdout、stderr 和 exit code。',
+      description: bashDescription,
       parameters: {
         type: 'object',
         properties: {
-          command: { type: 'string', description: '要执行的命令（无需 cd，工作目录由 workdir 控制）' },
-          workdir: { type: 'string', description: '工作目录（相对或绝对路径），默认为项目根目录' },
-          timeout: { type: 'number', description: '超时秒数，默认120' }
+          command: { type: 'string', description: `The ${process.platform === 'win32' ? 'cmd.exe' : 'shell'} command to execute. Do not include 'cd' — use workdir instead.` },
+          workdir: { type: 'string', description: 'Working directory for the command (absolute or relative to the workspace root). Defaults to the workspace root. Use this instead of cd.' },
+          timeout: { type: 'number', description: 'Timeout in seconds, default 120' }
         },
         required: ['command']
       }
@@ -198,14 +268,23 @@ export const grepTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'grep',
-      description: '搜索文件内容。支持正则表达式。返回匹配的文件路径和行号。',
+      description: [
+        'Fast content search across the workspace using regular expressions. Returns file paths with line numbers and matching lines.',
+        'Usage:',
+        '- Use this tool when you need to find code containing a specific pattern (function names, class definitions, imports, string literals, error messages).',
+        '- Supports full regex syntax (e.g. "log.*Error", "function\\s+\\w+"). Narrow, specific patterns beat broad ones — results are truncated at 200 matches.',
+        '- Filter files with the include parameter (e.g. "*.ts", "*.{ts,tsx}") to narrow scope and reduce noise.',
+        '- Use exclude to skip heavy directories (e.g. ["node_modules", ".git", "dist", "release"]) — this dramatically speeds up the search.',
+        '- It is always better to speculatively perform multiple independent searches as a batch in one response than to wait for one result before searching for another.',
+        '- After finding candidate locations with grep, use read to see the full context around the matches.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          pattern: { type: 'string', description: '正则表达式' },
-          path: { type: 'string', description: '搜索目录，默认工作目录' },
-          include: { type: 'string', description: '文件名 glob 过滤，如 *.ts、*.{h,cpp}' },
-          exclude: { type: 'array', items: { type: 'string' }, description: '要跳过的目录名列表，如 ["node_modules", ".git", "Binaries"]' }
+          pattern: { type: 'string', description: 'Regular expression to search for in file contents' },
+          path: { type: 'string', description: 'Directory to search in, defaults to the workspace root' },
+          include: { type: 'string', description: 'Filename glob filter, e.g. "*.ts" or "*.{h,cpp}"' },
+          exclude: { type: 'array', items: { type: 'string' }, description: 'Directory names to skip, e.g. ["node_modules", ".git", "dist", "release"]' }
         },
         required: ['pattern']
       }
@@ -266,13 +345,21 @@ export const globTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'glob',
-      description: '按通配符模式查找文件。支持标准 glob 语法：** 递归子目录，* 匹配任意字符（不含/），? 匹配单个字符。',
+      description: [
+        'Fast file pattern matching that works with any codebase size. Returns matching file paths.',
+        'Usage:',
+        '- Use this tool when you need to find files by name patterns, e.g. "**/*.ts", "**/*AuthManager*", "src/**/*.cpp".',
+        '- Pattern syntax: ** matches any number of subdirectories, * matches any characters except / (but also matches filenames across segments), ? matches a single character.',
+        '- Use exclude to skip heavy directories like ["node_modules", ".git", "dist", "release"] to speed up the search.',
+        '- It is always better to speculatively perform multiple independent searches as a batch in one response than to wait for one result before searching for another.',
+        '- After finding candidate files with glob, use read to open the relevant ones (in parallel when possible).'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          pattern: { type: 'string', description: 'glob 模式，如 **/*.ts、**/*Scene*.h、src/**/*.cpp' },
-          path: { type: 'string', description: '搜索根目录，默认工作目录' },
-          exclude: { type: 'array', items: { type: 'string' }, description: '要跳过的目录名列表，如 ["node_modules", ".git", "Binaries"]' }
+          pattern: { type: 'string', description: 'Glob pattern to match file paths, e.g. "**/*.ts", "**/*Scene*.h", "src/**/*.cpp"' },
+          path: { type: 'string', description: 'Directory to search in, defaults to the workspace root' },
+          exclude: { type: 'array', items: { type: 'string' }, description: 'Directory names to skip, e.g. ["node_modules", ".git", "dist", "release"]' }
         },
         required: ['pattern']
       }
@@ -301,12 +388,17 @@ export const lsTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'ls',
-      description: '列出目录内容。',
+      description: [
+        'List the contents of a directory. Returns one entry per line: "d name/" for directories, "f name" for files.',
+        'Usage:',
+        '- Use to get a quick overview of a directory when exploring an unfamiliar project (ls first, then glob for specific files, then read relevant files).',
+        '- Use glob instead of ls when you need to find files matching a pattern recursively.'
+      ].join('\n'),
       parameters: {
         type: 'object',
         properties: {
-          path: { type: 'string', description: '目录路径，默认工作目录' },
-          ignore: { type: 'array', items: { type: 'string' }, description: '要忽略的目录/文件名模式' }
+          path: { type: 'string', description: 'Directory path to list, defaults to the workspace root' },
+          ignore: { type: 'array', items: { type: 'string' }, description: 'Directory or file names to ignore, e.g. ["node_modules", ".git"]' }
         }
       }
     }
@@ -362,11 +454,11 @@ export const setTitleTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'set_title',
-      description: '为当前对话设置一个简短的标题（最多6个词）。在对话开始时应该尽早调用此工具来为会话命名。',
+      description: 'Set a short title (max 6 words) for the current conversation. Call this early at the start of a new conversation, before doing anything else, to name the session.',
       parameters: {
         type: 'object',
         properties: {
-          title: { type: 'string', description: '简洁的对话标题，不超过6个词' }
+          title: { type: 'string', description: 'A concise conversation title, no more than 6 words' }
         },
         required: ['title']
       }
