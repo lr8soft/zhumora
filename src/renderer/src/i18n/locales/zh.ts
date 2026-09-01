@@ -78,7 +78,7 @@ export default {
     description: 'Agent 要执行一个需要确认的操作：',
     fromSession: '该请求来自会话：{{title}}',
     titleDangerous: '危险操作确认',
-    descriptionDangerous: 'Agent 要执行一个高危操作（操控桌面/删除文件等），请仔细检查参数：',
+    descriptionDangerous: 'Agent 要执行一个高危操作（执行终端命令/删除文件等），请仔细检查参数：',
     levelDangerous: '危险',
     allow: '允许',
     deny: '拒绝'

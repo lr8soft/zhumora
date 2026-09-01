@@ -68,7 +68,7 @@ export default {
     description: 'エージェントが確認が必要なツールを実行しようとしています：',
     fromSession: 'このリクエストの送信元セッション：{{title}}',
     titleDangerous: '危険な操作の確認',
-    descriptionDangerous: 'エージェントが高リスク操作（デスクトップ制御/ファイル削除など）を実行しようとしています。引数を慎重に確認してください：',
+    descriptionDangerous: 'エージェントが高リスク操作（ターミナルコマンド実行/ファイル削除など）を実行しようとしています。引数を慎重に確認してください：',
     levelDangerous: '危険',
     allow: '許可',
     deny: '拒否'

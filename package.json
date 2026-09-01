@@ -1,6 +1,6 @@
 {
   "name": "zhumora",
-  "version": "0.3.2",
+  "version": "0.3.3",
   "description": "An open-source AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora",
@@ -30,7 +30,6 @@
     "playwright": "^1.62.1",
     "react-i18next": "^17.0.11",
     "recharts": "^3.10.1",
-    "robotjs": "^0.9.1",
     "zod": "^3.25.76"
   },
   "devDependencies": {
@@ -73,10 +72,7 @@
       "!node_modules/**/__tests__/**"
     ],
     "asarUnpack": [
-      "node_modules/better-sqlite3/**/*",
-      "node_modules/robotjs/**/*",
-      "node_modules/bindings/**/*",
-      "node_modules/file-uri-to-path/**/*"
+      "node_modules/better-sqlite3/**/*"
     ],
     "extraResources": [
       {
@@ -98,5 +94,8 @@
       ],
       "signExecutable": false
     }
+  },
+  "allowScripts": {
+    "better-sqlite3@13.0.3": true
   }
 }

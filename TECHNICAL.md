@@ -12,7 +12,7 @@ The application is split into three runtime boundaries:
 - **Preload** — controlled IPC bridge exposed through `contextBridge`
 - **Renderer** — React UI and client-side state
 
-The agent can use built-in local tools, browser automation, desktop automation, memory tools, and tools provided by MCP servers.
+The agent can use built-in local tools, browser automation, desktop capture, memory tools, and tools provided by MCP servers.
 
 ## 2. Technology stack
 
@@ -26,7 +26,7 @@ The agent can use built-in local tools, browser automation, desktop automation, 
 | i18n | i18next + react-i18next |
 | LLM transport | Native `fetch`, OpenAI-compatible `/chat/completions`, SSE streaming |
 | Browser automation | Playwright + Chromium |
-| Desktop automation | robotjs |
+| Desktop capture | Electron `desktopCapturer` |
 | MCP | `@modelcontextprotocol/sdk` |
 | Storage | better-sqlite3 |
 | Skill parsing | gray-matter |
@@ -195,22 +195,15 @@ Available browser tools currently include:
 - `browser_wait`
 - `browser_close`
 
-### 6.3 Desktop automation
+### 6.3 Desktop capture
 
-Desktop control is implemented with robotjs.
+Desktop observation is implemented with Electron `desktopCapturer` (robotjs was
+removed; mouse/keyboard input is no longer supported).
 
-Available desktop tools currently include:
-
-- `desktop_mouse_move`
-- `desktop_mouse_click`
-- `desktop_mouse_drag`
-- `desktop_mouse_scroll`
-- `desktop_key_tap`
-- `desktop_type_text`
-- `desktop_screenshot`
-- `desktop_screen_size`
-- `desktop_get_mouse_pos`
-- `desktop_get_pixel_color`
+The `desktop` tool exposes a single `screenshot` action: it captures the primary
+screen, scales it to at most 1280px wide, and returns a PNG that is sent to the
+model for visual analysis. It is **observation-only** — to interact with
+on-screen content, use the browser tools (`browser_*`) or `bash`.
 
 ## 7. Permission model
 
@@ -442,4 +435,4 @@ npm install
 
 Zhumora is currently Windows-focused.
 
-The architecture already separates model access, agent execution, browser automation, desktop automation, MCP, memory, storage, and the renderer, so these components can evolve independently without turning the README into an implementation manual.
+The architecture already separates model access, agent execution, browser automation, desktop capture, MCP, memory, storage, and the renderer, so these components can evolve independently without turning the README into an implementation manual.

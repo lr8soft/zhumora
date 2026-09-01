@@ -68,7 +68,7 @@ export default {
     description: 'The agent wants to execute a tool that requires confirmation:',
     fromSession: 'This request is from session: {{title}}',
     titleDangerous: 'Dangerous Operation',
-    descriptionDangerous: 'The agent wants to perform a high-risk action (desktop control / file deletion, etc.). Please review the arguments carefully:',
+    descriptionDangerous: 'The agent wants to perform a high-risk action (terminal commands / file deletion, etc.). Please review the arguments carefully:',
     levelDangerous: 'DANGEROUS',
     allow: 'Allow',
     deny: 'Deny'

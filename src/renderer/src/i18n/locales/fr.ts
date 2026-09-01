@@ -68,7 +68,7 @@ export default {
     description: "L'agent veut exécuter un outil qui nécessite une confirmation :",
     fromSession: "Cette demande provient de la session : {{title}}",
     titleDangerous: 'Opération Dangereuse',
-    descriptionDangerous: "L'agent veut effectuer une opération à haut risque (contrôle du bureau / suppression de fichiers, etc.). Veuillez examiner les arguments attentivement :",
+    descriptionDangerous: "L'agent veut effectuer une opération à haut risque (commandes de terminal / suppression de fichiers, etc.). Veuillez examiner les arguments attentivement :",
     levelDangerous: 'DANGEREUX',
     allow: 'Autoriser',
     deny: 'Refuser'
