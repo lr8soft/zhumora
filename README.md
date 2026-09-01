@@ -6,6 +6,10 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 
 [简体中文](./README.zh-CN.md) · [Technical documentation](./TECHNICAL.md)
 
+<p align="center">
+  <img src="./img/image-main.png" alt="Zhumora — AI agent chat interface" width="960" />
+</p>
+
 ## Features
 
 - Connect to OpenAI-compatible APIs, including local endpoints such as Ollama, llama.cpp, and vLLM

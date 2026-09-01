@@ -6,6 +6,10 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 
 [English](./README.md) · [技术文档](./TECHNICAL.md)
 
+<p align="center">
+  <img src="./img/image-main.png" alt="Zhumora — AI 智能体聊天界面" width="960" />
+</p>
+
 ## 功能
 
 - 支持 OpenAI 兼容 API，也可接入 Ollama、llama.cpp、vLLM 等本地端点
