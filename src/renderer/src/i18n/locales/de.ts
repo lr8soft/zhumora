@@ -202,7 +202,13 @@ export default {
       agent: 'Agent-Verhalten',
       agentHint: 'Sicherheitsnetz für die Tool-Call-Schleife: wiederholte identische Aufrufe lösen Warnungen / Hard-Stop; die Rundengrenze beendet die Ausführung mit automatischer Zusammenfassung.',
       memory: 'Langzeitgedächtnis',
-      memoryHint: 'Erfasst automatisch Präferenzen und Fakten aus Gesprächen, damit der Agent zukünftige Antworten personalisieren kann.'
+      memoryHint: 'Erfasst automatisch Präferenzen und Fakten aus Gesprächen, damit der Agent zukünftige Antworten personalisieren kann.',
+      browser: 'Browser',
+      browserHint: 'Browser-Modus der browser_*-Tools. Beide Modi aktivieren Anti-Detection-Einspritzung und ein persistierendes Profil (ein manuell gelöster CAPTCHA bleibt wirksam).',
+      browserMode: 'Browser-Modus',
+      browserModeLocal: 'Lokales Chrome verwenden (sichtbares Fenster)',
+      browserModeHeadless: 'Integrierter Browser (headless)',
+      browserModeHint: 'Der lokale Modus nutzt das installierte Chrome mit sichtbarem Fenster, um die Agent-Aktionen in Echtzeit zu sehen und bei Bot-Erkennung manuell einzugreifen (ohne Chrome auf dem System wird auf den integrierten Browser im Fenstermodus zurückgefallen). Der Headless-Modus läuft still im Hintergrund.'
     },
     usage: {
       hint: 'Token-Nutzungsstatistiken. Erfassung in 30-Minuten-Buckets, zusammengefasst über alle Sitzungen.',

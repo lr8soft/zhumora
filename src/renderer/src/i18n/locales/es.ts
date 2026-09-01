@@ -202,7 +202,13 @@ export default {
       agent: 'Comportamiento del Agente',
       agentHint: 'Red de seguridad para el bucle de tool-call: llamadas idénticas repetidas disparan advertencias / parada forzada; el límite de rondas termina con un resumen automático.',
       memory: 'Memoria a largo plazo',
-      memoryHint: 'Captura automáticamente preferencias y hechos de las conversaciones para personalizar las respuestas futuras.'
+      memoryHint: 'Captura automáticamente preferencias y hechos de las conversaciones para personalizar las respuestas futuras.',
+      browser: 'Navegador',
+      browserHint: 'Modo de navegador de las herramientas browser_*. Ambos modos activan la inyección antidetección y un perfil persistente (un captcha resuelto a mano sigue siendo efectivo).',
+      browserMode: 'Modo de navegador',
+      browserModeLocal: 'Usar Chrome local (ventana visible)',
+      browserModeHeadless: 'Navegador integrado (headless)',
+      browserModeHint: 'El modo local usa el Chrome instalado con ventana visible para ver la navegación del agente en tiempo real e intervenir si la detección de bots bloquea (si no hay Chrome, usa el navegador integrado en modo ventana). El modo headless funciona en silencio en segundo plano.'
     },
     usage: {
       hint: 'Estadísticas de uso de tokens. Registro en bloques de 30 minutos, agregado entre sesiones.',

@@ -186,6 +186,15 @@ export interface AppSettings {
    * 关闭时走 Node 内置 fetch（打包的 Mozilla CA，不读系统证书库）。
    */
   useSystemCerts?: boolean
+  /**
+   * 浏览器模式（默认 'local'）：
+   * - local:    调用本机安装的 Chrome，显示窗口，使用专用持久化 profile
+   *             （cookies/登录态跨会话保留，人工过一次验证码后长期有效；
+   *             未安装 Chrome 时自动回退内置 Chromium 的可视模式）。
+   * - headless: 内置 Chromium 后台无头运行（同样用持久化 profile + 反检测注入）。
+   * 浏览器已在运行时切换该设置，下次 ensureBrowser 会重启浏览器以生效。
+   */
+  browserMode?: 'local' | 'headless'
 }
 
 // ============================================================

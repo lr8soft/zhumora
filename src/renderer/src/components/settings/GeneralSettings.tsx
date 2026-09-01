@@ -223,6 +223,32 @@ export function GeneralSettings() {
         </div>
       </section>
 
+      {/* 浏览器 */}
+      <section className="settings-section">
+        <div className="settings-section-title">
+          <Globe size={16} />
+          <div>
+            <h3>{t('settings.general.browser')}</h3>
+            <p>{t('settings.general.browserHint')}</p>
+          </div>
+        </div>
+        <div className="form-field" style={{ marginTop: 12 }}>
+          <label className="form-label" htmlFor="browser-mode-select">
+            {t('settings.general.browserMode')}
+          </label>
+          <select
+            id="browser-mode-select"
+            className="input-field"
+            value={settingsDraft.browserMode === 'headless' ? 'headless' : 'local'}
+            onChange={(e) => updateSettingsDraft({ browserMode: e.target.value as 'local' | 'headless' })}
+          >
+            <option value="local">{t('settings.general.browserModeLocal')}</option>
+            <option value="headless">{t('settings.general.browserModeHeadless')}</option>
+          </select>
+          <p className="form-hint">{t('settings.general.browserModeHint')}</p>
+        </div>
+      </section>
+
       {/* 长期记忆 */}
       <section className="settings-section">
         <div className="switch-row">

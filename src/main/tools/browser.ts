@@ -3,17 +3,58 @@
 // 工具: browser_navigate / browser_click / browser_type /
 //       browser_screenshot / browser_get_text / browser_wait
 // ============================================================
-import { chromium, type Browser, type BrowserContext, type Page } from 'playwright'
+import { chromium, type BrowserContext, type Page } from 'playwright'
 import { app } from 'electron'
 import * as path from 'node:path'
 import * as fs from 'node:fs'
 import type { ToolHandler, ToolContext } from './registry'
 import { log } from '../llm/logger'
+import { getSettings } from '../store/db'
 
-// 全局浏览器实例（懒加载，首次调用时启动）
-let browser: Browser | null = null
+/** 浏览器模式（设置项 browserMode，默认 local） */
+type BrowserMode = 'local' | 'headless'
+
+// 全局浏览器实例（懒加载，首次调用时启动）。
+// 统一用 launchPersistentContext（专用持久化 profile）：
+// cookies / 登录态 / 本地存储跨会话保留——人工过一次验证码后长期有效，
+// 同时避免"每次全新空白浏览器"这一最强的机器人特征。
 let context: BrowserContext | null = null
 let activePage: Page | null = null
+/** 当前实例按哪种模式启动（null = 未启动）。设置变更后用于判断是否需要重启 */
+let launchedMode: BrowserMode | null = null
+
+function closeBrowserInternal(): Promise<void> {
+  const c = context
+  context = null
+  activePage = null
+  launchedMode = null
+  return c ? c.close().catch(() => {}) : Promise.resolve()
+}
+
+/** 专用持久化 profile 目录（与用户日常 Chrome profile 隔离，避免锁冲突） */
+function profileDir(): string {
+  return path.join(app.getPath('userData'), 'browser-profile')
+}
+
+/**
+ * 反检测注入（两种模式都生效）：
+ * - navigator.webdriver → undefined（Playwright 默认注入 true，是 Cloudflare/DataDome 等的首要信号）
+ * - languages/plugins 补齐（自动化浏览器常见异常值）
+ * - window.chrome 兜底（真实 Chrome 必有该全局对象）
+ * 配合 launch 参数 --disable-blink-features=AutomationControlled（禁用 blink 层的自动化标志）。
+ */
+const ANTI_DETECTION_SCRIPT = `
+  Object.defineProperty(navigator, 'webdriver', { get: () => undefined });
+  Object.defineProperty(navigator, 'languages', { get: () => ['en-US', 'en'] });
+  Object.defineProperty(navigator, 'plugins', { get: () => [1, 2, 3, 4, 5] });
+  if (!window.chrome) { window.chrome = { runtime: {} }; }
+`
+
+const LAUNCH_ARGS = [
+  '--disable-blink-features=AutomationControlled',
+  '--no-first-run',
+  '--no-default-browser-check'
+]
 
 /**
  * 解析 Chromium 可执行文件路径
@@ -53,22 +94,46 @@ function resolveChromiumPath(): string | undefined {
 }
 
 async function ensureBrowser(): Promise<Page> {
-  if (!browser) {
-    log('info', '[Playwright] Launching chromium...')
-    const executablePath = resolveChromiumPath()
-    browser = await chromium.launch({
-      headless: true,
-      ...(executablePath ? { executablePath } : {})
-    })
-    context = await browser.newContext({
+  const mode: BrowserMode = getSettings().browserMode === 'headless' ? 'headless' : 'local'
+  // 已运行的浏览器模式与当前设置不一致（用户中途切换了设置）→ 重启使其生效
+  if (context && launchedMode !== null && launchedMode !== mode) {
+    log('info', `[Playwright] Browser mode changed to ${mode}, restarting browser...`)
+    await closeBrowserInternal()
+  }
+  if (!context) {
+    const opts = {
+      headless: mode === 'headless',
+      args: LAUNCH_ARGS,
       viewport: { width: 1280, height: 800 },
-      locale: 'en-US'
-    })
-    activePage = await context.newPage()
+      locale: 'en-US',
+      userAgentLocale: 'en-US,en;q=0.9',
+      // 每个新文档加载前注入反检测脚本（先于页面 JS 执行）
+      addInitScript: { content: ANTI_DETECTION_SCRIPT }
+    }
+    if (mode === 'local') {
+      // 调用本机 Google Chrome（channel 由 Playwright 自动定位安装路径，
+      // 未安装会抛错 → 回退内置 Chromium 可视模式，行为不变）
+      try {
+        log('info', '[Playwright] Launching local Chrome (visible window)...')
+        context = await chromium.launchPersistentContext(profileDir(), { ...opts, channel: 'chrome' })
+      } catch (err) {
+        log('warn', `[Playwright] Local Chrome unavailable (${(err as Error).message}); falling back to bundled Chromium`)
+        context = await chromium.launchPersistentContext(profileDir(), opts)
+      }
+    } else {
+      log('info', '[Playwright] Launching bundled chromium (headless)...')
+      const executablePath = resolveChromiumPath()
+      context = await chromium.launchPersistentContext(
+        profileDir(),
+        ...(executablePath ? { ...opts, executablePath } : opts)
+      )
+    }
+    launchedMode = mode
+    activePage = context.pages()[0] ?? (await context.newPage())
     log('info', '[Playwright] Browser ready')
   }
-  if (!activePage) {
-    activePage = await context!.newPage()
+  if (!activePage || activePage.isClosed()) {
+    activePage = await context.newPage()
   }
   return activePage
 }
@@ -356,11 +421,8 @@ export const browserCloseTool: ToolHandler = {
   permission: 'safe' as const,
   async execute() {
     try {
-      if (browser) {
-        await browser.close()
-        browser = null
-        context = null
-        activePage = null
+      if (context) {
+        await closeBrowserInternal()
         log('info', '[Playwright] Browser closed')
         return 'Browser closed'
       }

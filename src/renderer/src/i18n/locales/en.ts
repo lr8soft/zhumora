@@ -202,7 +202,13 @@ export default {
       agent: 'Agent Behavior',
       agentHint: 'Safety net for the tool-call loop: repeated identical calls trigger warnings / hard stop; the round cap ends the run with an automatic summary.',
       memory: 'Long-term Memory',
-      memoryHint: 'Automatically capture preferences and facts from conversations so the agent can personalize future replies.'
+      memoryHint: 'Automatically capture preferences and facts from conversations so the agent can personalize future replies.',
+      browser: 'Browser',
+      browserHint: 'Browser mode used by the browser_* tools. Both modes enable anti-detection injection and a persistent login profile (a CAPTCHA solved by hand stays effective).',
+      browserMode: 'Browser mode',
+      browserModeLocal: 'Use local Chrome (visible window)',
+      browserModeHeadless: 'Built-in browser (headless)',
+      browserModeHint: 'Local mode uses the system-installed Chrome with a visible window so you can watch the agent and step in manually when bot detection blocks it (falls back to the built-in browser in windowed mode if Chrome is not installed). Headless mode runs silently in the background.'
     },
     usage: {
       hint: 'Token usage statistics. Recorded in 30-minute buckets, aggregated across sessions.',

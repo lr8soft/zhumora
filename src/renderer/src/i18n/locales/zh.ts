@@ -213,6 +213,12 @@ export default {
       agentHint: '工具调用循环的安全网：重复相同调用会被警告/硬停，轮数达到上限后自动收尾。',
       memory: '长期记忆',
       memoryHint: '从对话中自动沉淀偏好与事实，让 agent 在后续对话中个性化回应。',
+      browser: '浏览器',
+      browserHint: 'browser_* 工具使用的浏览器模式。两种模式都启用反检测注入与持久化登录态（人工过一次验证码后长期有效）。',
+      browserMode: '浏览器模式',
+      browserModeLocal: '调用本地 Chrome（显示窗口）',
+      browserModeHeadless: '内置浏览器（无头后台）',
+      browserModeHint: '本地模式使用系统安装的 Chrome 并弹出窗口，可实时查看 agent 操作、被机器人验证拦截时人工接手（未安装 Chrome 时自动回退为内置浏览器窗口模式）；无头模式在后台静默运行。',
     },
     usage: {
       hint: 'Token 用量统计。每 30 分钟一个数据点，跨会话汇总。',
