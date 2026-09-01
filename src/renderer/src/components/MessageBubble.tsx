@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState } from 'react'
+import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
 import { ChevronDown, ChevronRight, ChevronUp, Brain, Terminal, Wrench, XCircle, Archive } from 'lucide-react'
@@ -15,7 +15,7 @@ interface Props {
   retryStatus?: { failedAttempt: number; maxRetries: number }
 }
 
-export default function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Props) {
+function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Props) {
   const { t } = useTranslation()
 
   // 上下文压缩摘要消息：以 user 角色存库，但渲染为可折叠的系统摘要块（默认收起）
@@ -94,6 +94,11 @@ export default function MessageBubble({ message, toolStatuses, toolResults, retr
   )
 }
 
+// React.memo：流式期间每个 flush 只有"内容变化的那一条" message 引用会变，
+// 其余消息引用不变 → memo 浅比较直接跳过，避免整列表所有气泡
+// 都重新执行组件函数 + 重解析 Markdown（长会话卡顿的另一大根因）。
+export default React.memo(MessageBubble)
+
 /* ---------- 深度思考块（reasoning）----------
  * 默认折叠：只显示"深度思考 + 最新一行"；点击展开看完整思考（Markdown 渲染、可滚动）。
  * 流式期间最新一行实时滚动更新。
@@ -102,10 +107,55 @@ function ThinkingBlock({ reasoning, streaming }: { reasoning: string; streaming:
   const { t } = useTranslation()
   const [expanded, setExpanded] = useState(false)
   const bodyRef = useRef<HTMLDivElement>(null)
-  // 折叠预览：取最后一个非空行（CSS 单行省略）
+  // 折叠预览：取最后一个非空行（CSS 单行省略，与 split 版语义一致）。
+  // 增量计算：换行位置只在"新增区间"内回扫，行尾回退扫描的代价受
+  // 尾部空行数约束 —— 避免每个 flush 都对整段思考文本（可达数万字符）split，
+  // O(全文长) → O(增量)。
+  // 前缀守卫：phase=end 的权威值可能覆盖 UI 累积值且前缀分叉（个别 chunk
+  // 丢失时），此时 startsWith 不成立 → 全量重算一次，之后恢复增量。
+  // startsWith 是原生 memcmp 级操作（5 万字符 ~50µs），远低于旧实现的
+  // split + 数千个子串分配。
+  const prevText = useRef('')
+  const nlState = useRef({ upTo: 0, lastNewline: -1 })
   const lastLine = useMemo(() => {
-    const lines = reasoning.split('\n').map(l => l.trim()).filter(Boolean)
-    return lines[lines.length - 1] || ''
+    const s = nlState.current
+    if (!reasoning.startsWith(prevText.current)) {
+      s.upTo = 0
+      s.lastNewline = -1
+    }
+    const L = reasoning.length
+    const isNL = (i: number) => reasoning.charCodeAt(i) === 10
+    // 行边界空白：对齐原实现 trim() 的语义（space / tab / \r）
+    const isSp = (c: number) => c === 32 || c === 9 || c === 13
+    // 定位最后一个换行（热路径只扫新增区间 [upTo, L)）
+    let lastNewline = s.lastNewline
+    for (let i = L - 1; i >= s.upTo; i--) {
+      if (isNL(i)) { lastNewline = i; break }
+    }
+    // 末行 = [lastNewline+1, L)，两端去空白
+    let ls = lastNewline + 1
+    while (ls < L && isSp(reasoning.charCodeAt(ls))) ls++
+    let le = L
+    while (le > ls && isSp(reasoning.charCodeAt(le - 1))) le--
+    let text = ls < le ? reasoning.slice(ls, le) : ''
+    if (!text && lastNewline >= 0) {
+      // 末行为空（文本以换行结尾）→ 回退到最近一个非空行
+      let end = lastNewline
+      for (;;) {
+        let e = end
+        while (e > 0 && !isNL(e - 1)) e--
+        let a = e, b = end
+        while (a < b && isSp(reasoning.charCodeAt(a))) a++
+        while (b > a && isSp(reasoning.charCodeAt(b - 1))) b--
+        if (a < b) { text = reasoning.slice(a, b); break }
+        if (e === 0) break
+        end = e - 1 // char(e-1) 是换行 → 越过它看上一行
+      }
+    }
+    s.upTo = L
+    s.lastNewline = lastNewline
+    prevText.current = reasoning
+    return text
   }, [reasoning])
   // 展开期间流式输出时自动滚到底部
   useEffect(() => {

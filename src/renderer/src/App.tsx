@@ -17,21 +17,169 @@ function pushMessage(sessionId: string, fn: (msgs: import('@shared/types').UIMes
   })
 }
 
+// ============================================================
+// 流式 token 批量缓冲（长会话卡顿的核心修复）
+//
+// 问题：LLM 流式输出可达 50-100 token/s，旧实现每个 token 都
+// setState 一次 → 每次触发 ChatView 全树 reconcile + 流式消息的
+// 整段 Markdown 重解析。成本 = 每 token × O(会话总长度)，
+// 会话越长单 token 越贵，宏观上表现为"工作时间越长越卡"。
+//
+// 修复：token/reasoning 事件只写入内存缓冲（不碰 store），
+// 固定 32ms 节拍批量 flush 一次 → setState 频率从每 token 降到
+// ≤31 次/秒；结构事件（tool_call / assistant phase / complete）
+// 先强制 flush 再处理，保证顺序语义与旧实现一致。
+// ============================================================
+
+interface TokenPending {
+  /** 目标消息 id（缓冲时刻解析；新消息兜底时为空） */
+  msgId: string | null
+  /** 新建兜底消息的 id（onToken 的 messageId；无则 flush 时生成） */
+  newId?: string
+  content: string
+  reasoning: string
+}
+
+/** 缓冲键：sessionId\0messageId */
+let pendingTokens = new Map<string, TokenPending>()
+let flushTimer: ReturnType<typeof setInterval> | null = null
+/** 待 flush 的会话集合（避免 flush 时遍历全量缓冲键） */
+const pendingSessions = new Set<string>()
+
+const TOKEN_FLUSH_MS = 32
+
+function keyOf(sessionId: string, msgId: string | null): string {
+  return `${sessionId}\0${msgId ?? 'new'}`
+}
+
+/**
+ * 缓冲一个流式增量。targetId = 缓冲时刻解析到的目标消息 id；
+ * null = 走兜底逻辑（flush 时按"最后一条 thinking/streaming assistant"或新建）。
+ */
+function bufferToken(sessionId: string, targetId: string | null, kind: 'content' | 'reasoning', text: string, newId?: string) {
+  // 目标 id 可能因结构事件在缓冲期间变化 —— 同一会话同一 kind 的增量
+  // 总是属于同一条消息，所以按 (sessionId, kind) 归并；targetId 以首次写入为准
+  const k = keyOf(sessionId, targetId)
+  let p = pendingTokens.get(k)
+  if (!p) {
+    p = { msgId: targetId, content: '', reasoning: '' }
+    pendingTokens.set(k, p)
+    if (newId) p.newId = newId
+  }
+  if (kind === 'content') p.content += text
+  else p.reasoning += text
+  pendingSessions.add(sessionId)
+  ensureFlushTimer()
+}
+
+function ensureFlushTimer() {
+  if (flushTimer !== null) return
+  flushTimer = setInterval(flushPending, TOKEN_FLUSH_MS)
+}
+
+/** 把缓冲里的增量一次性写进 store。无增量时 no-op。 */
+function flushPending() {
+  if (pendingTokens.size === 0) return
+  const toFlush = pendingTokens
+  const sessions = [...pendingSessions]
+  pendingTokens = new Map()
+  pendingSessions.clear()
+  if (flushTimer !== null) {
+    clearInterval(flushTimer)
+    flushTimer = null
+  }
+
+  // 按会话分组（缓冲条目本身不带 sessionId —— 从 key 解析）
+  const grouped = new Map<string, TokenPending[]>()
+  for (const [k, p] of toFlush) {
+    const sid = k.slice(0, k.indexOf('\0'))
+    let g = grouped.get(sid)
+    if (!g) { g = []; grouped.set(sid, g) }
+    g.push(p)
+  }
+
+  useAppStore.setState((s) => {
+    let messages = s.messages
+    for (const sid of sessions) {
+      const msgs = messages[sid]
+      if (msgs === undefined) continue
+      const items = grouped.get(sid)
+      if (!items) continue
+      const next = [...msgs]
+      let changed = false
+      const append = (p: TokenPending, m: typeof next[number]): typeof next[number] => ({
+        ...m,
+        content: p.content ? m.content + p.content : m.content,
+        reasoning: p.reasoning ? (m.reasoning || '') + p.reasoning : m.reasoning,
+        // thinking 收到增量即转为 streaming；done/error 保持终态
+        status: m.status === 'thinking' || m.status === 'streaming' ? ('streaming' as const) : m.status
+      })
+      for (const p of items) {
+        if (!p.content && !p.reasoning) continue
+        if (p.msgId) {
+          const idx = next.findIndex(m => m.id === p.msgId)
+          if (idx >= 0) {
+            next[idx] = append(p, next[idx])
+            changed = true
+            continue
+          }
+          // 缓冲期间消息被结构事件移除/替换 → 降级走兜底
+        }
+        // 兜底：最后一条可流式的 assistant 消息
+        const last = next[next.length - 1]
+        if (last && last.role === 'assistant' && (last.status === 'thinking' || last.status === 'streaming')) {
+          next[next.length - 1] = append(p, last)
+          changed = true
+          continue
+        }
+        // 兜底条目可能携带 newId（token 到达时消息尚不存在，之后 assistant:start
+        // 已把它建出来）→ 找到就追加，避免重复创建消息
+        if (p.newId) {
+          const idx = next.findIndex(m => m.id === p.newId)
+          if (idx >= 0) {
+            next[idx] = append(p, next[idx])
+            changed = true
+            continue
+          }
+        }
+        // 最终兜底：新建流式消息
+        next.push({
+          id: p.newId || `stream-${Date.now()}`,
+          sessionId: sid,
+          role: 'assistant' as const,
+          content: p.content,
+          reasoning: p.reasoning || undefined,
+          timestamp: Date.now(),
+          status: 'streaming' as const
+        })
+        changed = true
+      }
+      if (changed) messages = { ...messages, [sid]: next }
+    }
+    return { messages }
+  })
+}
+
 export default function App() {
-  const { view, loadSessions, loadSettings, setActiveSession, theme, fontSize } = useAppStore()
+  // 注意：必须用 selector 订阅（无选择器 useAppStore() 会订阅全 store，
+  // 每个流式 token 都触发 App 整树重渲染 → 长会话 UI 卡顿的根因之一）
+  const view = useAppStore(s => s.view)
+  const theme = useAppStore(s => s.theme)
+  const fontSize = useAppStore(s => s.fontSize)
   const sidebarWidth = useAppStore(s => s.sidebarWidth)
   const sidebarCollapsed = useAppStore(s => s.sidebarCollapsed)
 
   // 初始化
   useEffect(() => {
-    loadSessions().then(() => {
+    const st = useAppStore.getState()
+    st.loadSessions().then(() => {
       const { sessions } = useAppStore.getState()
       if (sessions.length > 0) {
-        setActiveSession(sessions[0].id)
+        useAppStore.getState().setActiveSession(sessions[0].id)
       }
     })
     // 加载设置后同步语言（DB 为权威来源）
-    loadSettings().then(() => {
+    st.loadSettings().then(() => {
       const { settings } = useAppStore.getState()
       if (settings.language) {
         const lang = settings.language as AppLanguage
@@ -70,60 +218,21 @@ export default function App() {
   // 事件落在对应会话的消息缓存里（后台会话照常累积），
   // 只有"当前显示会话"的状态变化才会引起界面刷新，从而会话之间互不串台。
   useEffect(() => {
+    // 结构事件处理器开头强制 flush：保证"token 先于结构事件落库"的
+    // 顺序语义（与旧实现一致，防止 phase=start 替换消息时丢失未 flush 的 token）
     const unsubs = [
-      // 流式思考内容 → 路由到对应消息（thinking 占位收到首个思考 token 即转为流式，
-      // 用户能实时看到"思考中 + 最新一行"而非干等转圈）
+      // 流式思考内容 → 写缓冲（不直接 setState；32ms 节拍批量落 store）
       window.api.agent.onReasoning(({ sessionId, messageId, token }) => {
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
-        const idx = msgs.findIndex(m => m.id === messageId)
-        if (idx >= 0) {
-          pushMessage(sessionId, (m) => m.map((x, i) =>
-            i === idx ? { ...x, reasoning: (x.reasoning || '') + token, status: x.status === 'done' || x.status === 'error' ? x.status : ('streaming' as const) } : x
-          ))
-          return
-        }
-        // 兜底：路由到最后一条 thinking / streaming 的 assistant 消息
-        const last = msgs[msgs.length - 1]
-        if (last && last.role === 'assistant' && (last.status === 'thinking' || last.status === 'streaming')) {
-          pushMessage(sessionId, (m) => {
-            const next = [...m]
-            next[next.length - 1] = { ...last, reasoning: (last.reasoning || '') + token, status: 'streaming' as const }
-            return next
-          })
-        }
+        bufferToken(sessionId, msgs.some(m => m.id === messageId) ? messageId : null, 'reasoning', token)
       }),
 
-      // 流式 token → 精确路由到 messageId 对应的消息（占位消息收到首 token 即转为流式）
+      // 流式 token → 写缓冲（精确路由到 messageId 对应的消息）
       window.api.agent.onToken(({ sessionId, messageId, token }) => {
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
-        const idx = msgs.findIndex(m => m.id === messageId)
-        if (idx >= 0) {
-          pushMessage(sessionId, (m) => m.map((x, i) =>
-            i === idx ? { ...x, content: x.content + token, status: 'streaming' as const } : x
-          ))
-          return
-        }
-        // 兜底：assistant 消息事件丢失时，append 到最后一条可流式的 assistant 消息
-        const last = msgs[msgs.length - 1]
-        if (last && last.role === 'assistant' && (last.status === 'thinking' || last.status === 'streaming')) {
-          pushMessage(sessionId, (m) => {
-            const next = [...m]
-            next[next.length - 1] = { ...last, content: last.content + token, status: 'streaming' as const }
-            return next
-          })
-          return
-        }
-        // 再兜底：新建一条流式消息
-        pushMessage(sessionId, (m) => [...m, {
-          id: messageId || `stream-${Date.now()}`,
-          sessionId,
-          role: 'assistant' as const,
-          content: token,
-          timestamp: Date.now(),
-          status: 'streaming' as const
-        }])
+        bufferToken(sessionId, msgs.some(m => m.id === messageId) ? messageId : null, 'content', token, messageId)
       }),
 
       // assistant 消息事件（phase=start：本轮开始，替换 thinking 占位为流式消息；
@@ -131,6 +240,7 @@ export default function App() {
       // 工具行不在此渲染（onToolCall 事件负责，避免重复）；
       // 纯工具调用且无文本的轮次不创建空气泡。
       window.api.agent.onAssistantMessage(({ sessionId, messageId, content, phase, reasoning }) => {
+        flushPending()
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
         pushMessage(sessionId, (m) => {
@@ -195,6 +305,7 @@ export default function App() {
 
       // 工具调用 → 插入到对应会话（不再依赖 activeSessionId，后台会话同样累积）
       window.api.agent.onToolCall(({ sessionId, toolCall }) => {
+        flushPending()
         pushMessage(sessionId, (m) => {
           const next = m.filter(x => x.status !== 'thinking')
           next.push({
@@ -212,6 +323,7 @@ export default function App() {
 
       // 工具结果 → 插入到对应会话
       window.api.agent.onToolResult(({ sessionId, toolCallId, toolName, result, isError }) => {
+        flushPending()
         pushMessage(sessionId, (m) => [...m, {
           id: `tr-${toolCallId}-${Date.now()}`,
           sessionId,
@@ -226,6 +338,7 @@ export default function App() {
 
       // 对话完成 → 该会话退出运行态；若正显示该会话则刷新完整数据库记录
       window.api.agent.onComplete(({ sessionId }) => {
+        flushPending()
         const st = useAppStore.getState()
         st.markRunning(sessionId, false)
         st.setRetryStatus(sessionId, null)
@@ -240,6 +353,7 @@ export default function App() {
 
       // 错误 → 该会话退出运行态；错误消息已由 main 存入 DB
       window.api.agent.onError(({ sessionId }) => {
+        flushPending()
         const st = useAppStore.getState()
         st.markRunning(sessionId, false)
         st.setRetryStatus(sessionId, null)
@@ -254,6 +368,7 @@ export default function App() {
 
       // 用户中止 → 该会话退出运行态
       window.api.agent.onAborted(({ sessionId }) => {
+        flushPending()
         const st = useAppStore.getState()
         st.markRunning(sessionId, false)
         st.setRetryStatus(sessionId, null)
@@ -354,7 +469,15 @@ export default function App() {
       })
     ]
 
-    return () => unsubs.forEach(fn => fn())
+    return () => {
+      unsubs.forEach(fn => fn())
+      // 卸载（HMR / 刷新）时落掉缓冲里残留的增量，并停掉节拍器
+      if (flushTimer !== null) {
+        clearInterval(flushTimer)
+        flushTimer = null
+      }
+      flushPending()
+    }
   }, [])
 
   return (

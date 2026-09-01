@@ -22,7 +22,19 @@ export default function ChatView() {
   const compaction = useAppStore(s => (activeSessionId ? s.compactionMarkers[activeSessionId] : undefined))
   // 单轮输出被 max_tokens 截断的通知（自动消失）
   const truncatedNotice = useAppStore(s => (activeSessionId ? s.truncatedNotices[activeSessionId] : undefined))
-  const { sessions, settings, selectedProviderModel, setSelectedProviderModel, approveMode, setApproveMode, isCompacting, sendMessage, abortAgent, compactNow } = useAppStore()
+  // 全部用 selector 订阅 —— 无选择器 useAppStore() 会订阅全 store，
+  // 流式 token 更新 messages 时连带 sessions/settings 等无关字段也触发重渲染
+  const sessions = useAppStore(s => s.sessions)
+  const settings = useAppStore(s => s.settings)
+  const selectedProviderModel = useAppStore(s => s.selectedProviderModel)
+  const approveMode = useAppStore(s => s.approveMode)
+  const isCompacting = useAppStore(s => s.isCompacting)
+  // actions 引用恒定（create 时固定）—— 单独取，避免走无选择器订阅
+  const sendMessage = useAppStore(s => s.sendMessage)
+  const abortAgent = useAppStore(s => s.abortAgent)
+  const compactNow = useAppStore(s => s.compactNow)
+  const setApproveMode = useAppStore(s => s.setApproveMode)
+  const setSelectedProviderModel = useAppStore(s => s.setSelectedProviderModel)
   const [input, setInput] = useState('')
   const scrollRef = useRef<HTMLDivElement>(null)
   const inputRef = useRef<HTMLTextAreaElement>(null)
@@ -195,39 +207,38 @@ export default function ChatView() {
     }
   }
 
-  // 工具调用状态：从工具结果消息按 toolCallId 匹配
-  const toolStatuses = useMemo(() => {
-    const map: Record<string, 'done' | 'error'> = {}
+  // 工具调用派生数据：三个容器对象**引用恒定**（useRef 初始化一次，之后原地增删），
+  // 否则每次 flush 都生成新对象 → 作为 prop 传给 MessageBubble 会让 React.memo
+  // 的浅比较对全部气泡失效，退化成整列表重渲染。
+  const toolMapsRef = useRef<{
+    statuses: Record<string, 'done' | 'error'>
+    results: Record<string, { content: string; isError: boolean }>
+    referenced: Set<string>
+  }>({ statuses: {}, results: {}, referenced: new Set() })
+
+  const { toolStatuses, toolResults, referencedToolCallIds } = useMemo(() => {
+    const { statuses, results, referenced } = toolMapsRef.current
+    for (const k of Object.keys(statuses)) delete statuses[k]
+    for (const k of Object.keys(results)) delete results[k]
+    referenced.clear()
     for (const m of messages) {
       if (m.role === 'tool' && m.toolCallId) {
-        map[m.toolCallId] = m.status === 'error' ? 'error' : 'done'
+        // 工具结果消息创建后内容不变（status 可能从 pending 语义补全为 done/error）
+        statuses[m.toolCallId] = m.status === 'error' ? 'error' : 'done'
+        const prev = results[m.toolCallId]
+        const isError = m.status === 'error'
+        // 内容未变时复用旧值对象引用（进一步保证深层 prop 稳定）
+        if (!prev || prev.content !== m.content || prev.isError !== isError) {
+          results[m.toolCallId] = { content: m.content, isError }
+        }
       }
-    }
-    return map
-  }, [messages])
-
-  // 工具调用结果：按 toolCallId 聚合（合并进工具调用折叠块内展示，
-  // 时间线里不再单独渲染大块工具结果，保持对话流紧凑）
-  const toolResults = useMemo(() => {
-    const map: Record<string, { content: string; isError: boolean }> = {}
-    for (const m of messages) {
-      if (m.role === 'tool' && m.toolCallId) {
-        map[m.toolCallId] = { content: m.content, isError: m.status === 'error' }
-      }
-    }
-    return map
-  }, [messages])
-
-  // 被 assistant 消息 tool_calls 引用的 tool_call id 集合。
-  // 有主的结果 → 已并入工具调用折叠块，时间线里跳过；孤儿结果（无主）→ 兜底显示
-  const referencedToolCallIds = useMemo(() => {
-    const set = new Set<string>()
-    for (const m of messages) {
+      // 被 assistant 消息 tool_calls 引用的 tool_call id 集合：
+      // 有主的结果 → 已并入工具调用折叠块，时间线里跳过；孤儿结果（无主）→ 兜底显示
       if (m.role === 'assistant' && m.toolCalls) {
-        for (const tc of m.toolCalls) if (tc.id) set.add(tc.id)
+        for (const tc of m.toolCalls) if (tc.id) referenced.add(tc.id)
       }
     }
-    return set
+    return { toolStatuses: statuses, toolResults: results, referencedToolCallIds: referenced }
   }, [messages])
 
   // 无活跃会话
