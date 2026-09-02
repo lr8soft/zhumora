@@ -11,6 +11,8 @@ interface Props {
   toolStatuses?: Record<string, 'done' | 'error'>
   /** 工具调用结果（按 toolCall.id 索引，由 ChatView 从 role=tool 消息聚合，合并进折叠块展示） */
   toolResults?: Record<string, { content: string; isError: boolean }>
+  /** 对本气泡所含工具结果的修订标记；让 React.memo 感知原地更新的状态表。 */
+  toolRevision?: string
   /** 当前会话的重试状态（按会话传入，避免后台并行会话的状态串到前台） */
   retryStatus?: { failedAttempt: number; maxRetries: number }
 }

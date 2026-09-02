@@ -16,6 +16,8 @@ export type PermissionLevel = 'safe' | 'normal' | 'dangerous'
 export interface ToolContext {
   workspacePath: string
   sessionId?: string
+  /** 当前 Agent 运行的取消信号；长时间工具必须响应它 */
+  signal?: AbortSignal
   onProgress?: (msg: string) => void
   /** 请求权限（如果用户配置了需要确认），返回是否允许 */
   requestPermission?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>

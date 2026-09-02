@@ -466,7 +466,7 @@ export async function runAgent(
           }
 
           // 执行工具
-          const ctx: ToolContext = { workspacePath, sessionId, onSessionTitleUpdate }
+          const ctx: ToolContext = { workspacePath, sessionId, signal, onSessionTitleUpdate }
           const start = Date.now()
           try {
             log('info', `Executing tool: ${tc.function.name}(${JSON.stringify(parsedArgs).slice(0, 200)})`)

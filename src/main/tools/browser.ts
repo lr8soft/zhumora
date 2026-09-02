@@ -10,6 +10,7 @@ import * as fs from 'node:fs'
 import type { ToolHandler, ToolContext } from './registry'
 import { log } from '../llm/logger'
 import { getSettings } from '../store/db'
+import { findBundledChromium } from './browserRuntime'
 
 /** 浏览器模式（设置项 browserMode，默认 local） */
 type BrowserMode = 'local' | 'headless'
@@ -67,29 +68,21 @@ function resolveChromiumPath(): string | undefined {
     return undefined
   }
 
-  // 打包模式：在 extraResources/browsers/ 下查找 chromium-XXXX/chrome-win64/chrome.exe
+  // 打包模式：在 extraResources/browsers/ 下递归识别当前平台的 Chromium 布局。
+  // Playwright 在 Windows/macOS/Linux 以及不同 CPU 架构下使用不同的中间目录名。
   const browsersDir = path.join(process.resourcesPath, 'browsers')
   if (!fs.existsSync(browsersDir)) {
     log('warn', `[Playwright] Browsers directory not found: ${browsersDir}`)
     return undefined
   }
 
-  // 查找 chromium-XXXX 目录
-  const entries = fs.readdirSync(browsersDir)
-  const chromiumDir = entries.find(e => e.startsWith('chromium-'))
-  if (!chromiumDir) {
-    log('warn', `[Playwright] No chromium directory found in: ${browsersDir}`)
-    return undefined
-  }
-
-  // Windows: chromium-XXXX/chrome-win64/chrome.exe
-  const exePath = path.join(browsersDir, chromiumDir, 'chrome-win64', 'chrome.exe')
-  if (fs.existsSync(exePath)) {
+  const exePath = findBundledChromium(browsersDir)
+  if (exePath) {
     log('info', `[Playwright] Using bundled chromium: ${exePath}`)
     return exePath
   }
 
-  log('warn', `[Playwright] Chromium executable not found at: ${exePath}`)
+  log('warn', `[Playwright] Chromium executable not found in: ${browsersDir}`)
   return undefined
 }
 
@@ -125,7 +118,7 @@ async function ensureBrowser(): Promise<Page> {
       const executablePath = resolveChromiumPath()
       context = await chromium.launchPersistentContext(
         profileDir(),
-        ...(executablePath ? { ...opts, executablePath } : opts)
+        executablePath ? { ...opts, executablePath } : opts
       )
     }
     launchedMode = mode

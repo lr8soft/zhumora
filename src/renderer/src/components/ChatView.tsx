@@ -6,6 +6,7 @@ import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/ima
 import { useAppStore, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT } from '../store'
 import MessageBubble from './MessageBubble'
 import type { AutoApproveMode, UIMessage } from '@shared/types'
+import { toolPresentationRevision } from '@shared/toolPresentation'
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
@@ -213,13 +214,15 @@ export default function ChatView() {
   const toolMapsRef = useRef<{
     statuses: Record<string, 'done' | 'error'>
     results: Record<string, { content: string; isError: boolean }>
+    revisions: Record<string, string>
     referenced: Set<string>
-  }>({ statuses: {}, results: {}, referenced: new Set() })
+  }>({ statuses: {}, results: {}, revisions: {}, referenced: new Set() })
 
-  const { toolStatuses, toolResults, referencedToolCallIds } = useMemo(() => {
-    const { statuses, results, referenced } = toolMapsRef.current
+  const { toolStatuses, toolResults, toolRevisions, referencedToolCallIds } = useMemo(() => {
+    const { statuses, results, revisions, referenced } = toolMapsRef.current
     for (const k of Object.keys(statuses)) delete statuses[k]
     for (const k of Object.keys(results)) delete results[k]
+    for (const k of Object.keys(revisions)) delete revisions[k]
     referenced.clear()
     for (const m of messages) {
       if (m.role === 'tool' && m.toolCallId) {
@@ -231,6 +234,7 @@ export default function ChatView() {
         if (!prev || prev.content !== m.content || prev.isError !== isError) {
           results[m.toolCallId] = { content: m.content, isError }
         }
+        revisions[m.toolCallId] = `${m.id}:${m.status || 'done'}`
       }
       // 被 assistant 消息 tool_calls 引用的 tool_call id 集合：
       // 有主的结果 → 已并入工具调用折叠块，时间线里跳过；孤儿结果（无主）→ 兜底显示
@@ -238,7 +242,12 @@ export default function ChatView() {
         for (const tc of m.toolCalls) if (tc.id) referenced.add(tc.id)
       }
     }
-    return { toolStatuses: statuses, toolResults: results, referencedToolCallIds: referenced }
+    return {
+      toolStatuses: statuses,
+      toolResults: results,
+      toolRevisions: revisions,
+      referencedToolCallIds: referenced
+    }
   }, [messages])
 
   // 无活跃会话
@@ -366,7 +375,13 @@ export default function ChatView() {
             <React.Fragment key={msg.id}>
               {/* 有主工具结果不单独渲染（已合并进工具调用折叠块）；孤儿结果仍兜底显示 */}
               {!(msg.role === 'tool' && msg.toolCallId && referencedToolCallIds.has(msg.toolCallId)) && (
-                <MessageBubble message={msg} toolStatuses={toolStatuses} toolResults={toolResults} retryStatus={retryStatus} />
+                <MessageBubble
+                  message={msg}
+                  toolStatuses={toolStatuses}
+                  toolResults={toolResults}
+                  toolRevision={toolPresentationRevision(msg.toolCalls, toolRevisions)}
+                  retryStatus={retryStatus}
+                />
               )}
               {/* 压缩标记：渲染在边界消息之后。完整历史仍可见，
                   标记仅说明"此处的历史在发给 LLM 时已被摘要折叠" */}
