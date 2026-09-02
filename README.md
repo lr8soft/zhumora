@@ -23,6 +23,16 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Permission prompts for potentially dangerous actions
 - Light / dark themes and multilingual UI
 
+## Desktop control
+
+Zhumora can operate the Windows desktop directly:
+
+- **Observe** — list running applications, capture screens, and read the UI accessibility tree of any window (with stable element targets)
+- **Act** — click, double-click, right-click, type, press keys, scroll, drag, focus, and toggle controls, targeting elements by accessibility reference or screenshot coordinates
+- **Verify** — attach a screenshot after each action so the agent can confirm the result before continuing
+
+This lets Zhumora drive native Windows apps that have no API or CLI — not just files, shell, and the browser.
+
 ## Quick start
 
 ### Requirements
