@@ -276,7 +276,10 @@ export const useAppStore = create<AppState>((set, get) => ({
   sessions: [],
   activeSessionId: null,
   setActiveSession: (id) => {
-    set({ activeSessionId: id })
+    // 选择会话 = 回到聊天视图（修复停留在设置页时点会话不切换的问题）
+    // 设置页草稿与"取消"按钮同语义：离开即丢弃，避免脏状态残留影响下次进入
+    get().cancelSettings()
+    set({ activeSessionId: id, view: 'chat' })
     // 缓存未命中才拉取（后台会话的消息由事件流持续累积，切回无需重拉）
     if (id && get().messages[id] === undefined) {
       void get().loadMessages(id)
@@ -291,10 +294,12 @@ export const useAppStore = create<AppState>((set, get) => ({
     set({ sessions })
   },
   createSession: async () => {
+    get().cancelSettings()
     const session = await api.session.create()
     set((s) => ({
       sessions: [session, ...s.sessions],
       activeSessionId: session.id,
+      view: 'chat',
       messages: { ...s.messages, [session.id]: [] }
     }))
   },
