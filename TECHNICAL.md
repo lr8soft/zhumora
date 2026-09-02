@@ -26,7 +26,7 @@ The agent can use built-in local tools, browser automation, desktop capture, mem
 | i18n | i18next + react-i18next |
 | LLM transport | Native `fetch`, OpenAI-compatible `/chat/completions`, SSE streaming |
 | Browser automation | Playwright + Chromium |
-| Desktop capture | Electron `desktopCapturer` |
+| Desktop control | Terminator (Windows UI Automation) + Electron `desktopCapturer` |
 | MCP | `@modelcontextprotocol/sdk` |
 | Storage | better-sqlite3 |
 | Skill parsing | gray-matter |
@@ -195,15 +195,25 @@ Available browser tools currently include:
 - `browser_wait`
 - `browser_close`
 
-### 6.3 Desktop capture
+### 6.3 Desktop control
 
-Desktop observation is implemented with Electron `desktopCapturer` (robotjs was
-removed; mouse/keyboard input is no longer supported).
+Desktop control is exposed through a platform-neutral `DesktopAdapter`. The
+current `WindowsTerminatorAdapter` uses Terminator for Windows UI Automation,
+semantic element targeting, mouse input, and keyboard input. macOS and Linux
+have explicit adapter slots but are not implemented yet.
 
-The `desktop` tool exposes a single `screenshot` action: it captures the primary
-screen, scales it to at most 1280px wide, and returns a PNG that is sent to the
-model for visual analysis. It is **observation-only** — to interact with
-on-screen content, use the browser tools (`browser_*`) or `bash`.
+The model-facing API contains two tools:
+
+- `desktop_observe` lists applications, reads a window accessibility tree, and
+  optionally attaches a display screenshot.
+- `desktop_action` clicks, types, presses keys, scrolls, drags, invokes, or sets
+  controls. It is classified as a dangerous tool by the permission layer.
+
+Screenshots still use Electron `desktopCapturer`, are scaled to at most 1280px
+wide, and carry a short-lived `frame_id`. Coordinate actions use that frame to
+map image pixels back to the selected display's physical coordinate space,
+including mixed-DPI and negative-origin multi-monitor layouts. Semantic
+`target_ref` values are preferred because they are less brittle than pixels.
 
 ## 7. Permission model
 

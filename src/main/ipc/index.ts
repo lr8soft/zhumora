@@ -85,7 +85,7 @@ export function setupIpc(win: BrowserWindow): void {
   for (const { name, handler } of memoryTools) {
     registerTool(name, handler, 'builtin')
   }
-  // 注册桌面观察工具（仅截图，无鼠标/键盘控制）
+  // 注册桌面观察与控制工具（Windows 由 Terminator 适配器实现）
   for (const { name, handler } of desktopTools) {
     registerTool(name, handler, 'builtin')
   }

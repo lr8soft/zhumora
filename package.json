@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "test": "node --no-warnings tests/history.test.ts && node --no-warnings tests/loopDetector.test.ts && node --no-warnings tests/multimodal.test.ts && node --no-warnings tests/truncation.test.ts",
+    "test": "node --no-warnings tests/desktop.test.ts && node --no-warnings tests/history.test.ts && node --no-warnings tests/loopDetector.test.ts && node --no-warnings tests/multimodal.test.ts && node --no-warnings tests/truncation.test.ts",
     "preview": "electron-vite preview",
     "build:win": "electron-vite build && electron-builder --win --x64",
     "postinstall": "npx --yes cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js && npx --yes cross-env PLAYWRIGHT_BROWSERS_PATH=node_modules/playwright-core/.local-browsers npx playwright install chromium"
@@ -21,6 +21,7 @@
     "electron_mirror": "https://npmmirror.com/mirrors/electron/"
   },
   "dependencies": {
+    "@mediar-ai/terminator": "0.24.32",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "better-sqlite3": "^13.0.3",
     "gray-matter": "^4.0.3",
@@ -59,6 +60,7 @@
       "out/**/*",
       "node_modules/playwright/**/*",
       "node_modules/playwright-core/**/*",
+      "node_modules/@mediar-ai/**/*",
       "node_modules/@modelcontextprotocol/**/*",
       "node_modules/gray-matter/**/*",
       "node_modules/zod/**/*",
@@ -72,7 +74,8 @@
       "!node_modules/**/__tests__/**"
     ],
     "asarUnpack": [
-      "node_modules/better-sqlite3/**/*"
+      "node_modules/better-sqlite3/**/*",
+      "node_modules/@mediar-ai/terminator-win32-*/**/*"
     ],
     "extraResources": [
       {

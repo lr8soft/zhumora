@@ -87,7 +87,7 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
   },
   {
     label: 'Desktop Control',
-    tools: ['desktop']
+    tools: ['desktop_observe', 'desktop_action']
   },
   {
     label: 'Memory',

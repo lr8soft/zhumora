@@ -16,7 +16,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Read, edit, search, and manage files in the selected workspace
 - Run terminal commands
 - Automate Chromium with Playwright
-- Capture desktop screen screenshots for visual analysis (observation only)
+- Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input
 - Extend tools through MCP servers
 - Load reusable skills from Markdown files
 - Local session history, long-term memory, and token usage records
