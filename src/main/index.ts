@@ -8,6 +8,7 @@ import { initDatabase, getSettings } from './store/db'
 import { setupIpc } from './ipc'
 import { reconnectAllMcpServers } from './mcp/client'
 import { log, onLog } from './llm/logger'
+import { disposeDesktopAdapter } from './desktop/adapter'
 
 export let mainWindow: BrowserWindow | null = null
 
@@ -94,4 +95,10 @@ app.whenReady().then(async () => {
 
 app.on('window-all-closed', () => {
   if (process.platform !== 'darwin') app.quit()
+})
+
+app.on('before-quit', () => {
+  void disposeDesktopAdapter().catch(error => {
+    log('warn', `Failed to stop desktop automation process: ${String(error)}`)
+  })
 })

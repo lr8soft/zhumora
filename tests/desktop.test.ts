@@ -1,5 +1,10 @@
 import { DesktopFrameStore } from '../src/main/desktop/frameStore.ts'
 import { screenshotPointToScreen } from '../src/main/desktop/coordinates.ts'
+import {
+  TerminatorProcessAdapter,
+  type DesktopWorkerProcess
+} from '../src/main/desktop/processAdapter.ts'
+import type { DesktopProcessRequest } from '../src/main/desktop/processProtocol.ts'
 
 let passed = 0
 let failed = 0
@@ -16,10 +21,65 @@ function test(name: string, fn: () => void) {
   }
 }
 
+async function asyncTest(name: string, fn: () => Promise<void>) {
+  try {
+    await fn()
+    passed++
+    console.log(`  ✓ ${name}`)
+  } catch (error) {
+    failed++
+    console.error(`  ✗ ${name}`)
+    console.error(`    ${(error as Error).message}`)
+  }
+}
+
 function assertEqual(actual: unknown, expected: unknown): void {
   if (actual !== expected) {
     throw new Error(`got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`)
   }
+}
+
+class FakeDesktopWorker implements DesktopWorkerProcess {
+  readonly pid: number
+  killCount = 0
+  private messageListeners: Array<(message: unknown) => void> = []
+  private readonly alwaysHang: boolean
+
+  constructor(pid: number, alwaysHang = false) {
+    this.pid = pid
+    this.alwaysHang = alwaysHang
+  }
+
+  postMessage(message: DesktopProcessRequest): void {
+    if (this.alwaysHang || this.pid === 1) return
+    queueMicrotask(() => {
+      for (const listener of this.messageListeners) {
+        listener({
+          id: message.id,
+          ok: true,
+          value: {
+            backend: 'fake',
+            platform: 'win32',
+            frameId: 'recovered-frame',
+            monitors: []
+          }
+        })
+      }
+    })
+  }
+
+  kill(): boolean {
+    this.killCount += 1
+    return true
+  }
+
+  onMessage(listener: (message: unknown) => void): void {
+    this.messageListeners.push(listener)
+  }
+
+  onExit(_listener: (code: number) => void): void {}
+
+  onError(_listener: (description: string) => void): void {}
 }
 
 console.log('\ndesktop adapters')
@@ -83,6 +143,61 @@ test('screenshot coordinate validation rejects out-of-frame points', () => {
     message = (error as Error).message
   }
   if (!message.includes('[INVALID_COORDINATES]')) throw new Error(`unexpected error: ${message}`)
+})
+
+await asyncTest('stuck Terminator process is killed and the next call uses a fresh process', async () => {
+  const workers: FakeDesktopWorker[] = []
+  const adapter = new TerminatorProcessAdapter(() => {
+    const worker = new FakeDesktopWorker(workers.length + 1)
+    workers.push(worker)
+    return worker
+  }, { observeTimeoutMs: 20 })
+
+  let timeoutMessage = ''
+  try {
+    await adapter.observe({ mode: 'applications' })
+  } catch (error) {
+    timeoutMessage = (error as Error).message
+  }
+  if (!timeoutMessage.includes('[DESKTOP_TIMEOUT]')) throw new Error(`unexpected error: ${timeoutMessage}`)
+  assertEqual(workers.length, 1)
+  assertEqual(workers[0].killCount, 1)
+
+  const observation = await adapter.observe({ mode: 'applications' })
+  assertEqual(workers.length, 2)
+  assertEqual(observation.frameId, 'recovered-frame')
+  await adapter.dispose()
+})
+
+await asyncTest('cancelling a desktop call kills its isolated process immediately', async () => {
+  const worker = new FakeDesktopWorker(1, true)
+  const adapter = new TerminatorProcessAdapter(() => worker, { observeTimeoutMs: 10_000 })
+  const controller = new AbortController()
+  const pending = adapter.observe({ mode: 'applications' }, controller.signal)
+  await Promise.resolve()
+  controller.abort()
+
+  let abortName = ''
+  try {
+    await pending
+  } catch (error) {
+    abortName = (error as Error).name
+  }
+  assertEqual(abortName, 'AbortError')
+  assertEqual(worker.killCount, 1)
+  await adapter.dispose()
+})
+
+await asyncTest('disposing during a stuck call settles the call and shutdown', async () => {
+  const worker = new FakeDesktopWorker(1, true)
+  const adapter = new TerminatorProcessAdapter(() => worker, { observeTimeoutMs: 10_000 })
+  const pending = adapter.observe({ mode: 'window', process: 'stuck.exe' }).catch(error => error as Error)
+  await Promise.resolve()
+
+  await adapter.dispose()
+  const error = await pending
+  if (!error.message.includes('[DESKTOP_DISPOSED]')) throw new Error(`unexpected error: ${error.message}`)
+  assertEqual(worker.killCount, 1)
 })
 
 console.log(`\n${passed} passed, ${failed} failed`)

@@ -97,7 +97,7 @@ export interface DesktopActionResult {
 export interface DesktopAdapter {
   readonly name: string
   readonly platform: NodeJS.Platform
-  observe(request: DesktopObserveRequest): Promise<DesktopObservation>
-  action(request: DesktopActionRequest): Promise<DesktopActionResult>
+  observe(request: DesktopObserveRequest, signal?: AbortSignal): Promise<DesktopObservation>
+  action(request: DesktopActionRequest, signal?: AbortSignal): Promise<DesktopActionResult>
   dispose(): Promise<void>
 }

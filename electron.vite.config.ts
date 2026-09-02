@@ -13,7 +13,11 @@ export default defineConfig({
   main: {
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/main/index.ts') },
+        input: {
+          index: resolve(__dirname, 'src/main/index.ts'),
+          terminatorWorker: resolve(__dirname, 'src/main/desktop/terminatorWorker.ts')
+        },
+        output: { entryFileNames: '[name].js' },
         external: ['@mediar-ai/terminator', '@mediar-ai/terminator-win32-x64-msvc']
       }
     }

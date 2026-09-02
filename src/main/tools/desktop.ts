@@ -62,26 +62,40 @@ export const desktopObserveTool: ToolHandler = {
     }
   },
   permission: 'normal',
-  async execute(args) {
-    const adapter = await getDesktopAdapter()
+  async execute(args, ctx) {
     const mode = args.mode as DesktopObserveMode
+    const includeScreenshot = typeof args.include_screenshot === 'boolean'
+      ? args.include_screenshot
+      : mode !== 'applications'
+
+    // A plain screenshot must never wait on UI Automation. Electron owns this
+    // path entirely, so even a wedged Terminator process cannot block capture.
+    if (mode === 'screen') {
+      if (!includeScreenshot) return JSON.stringify(createElectronScreenObservation(), null, 2)
+      const capture = await captureDisplay(undefined, optionalString(args.display_id), undefined, ctx.signal)
+      const observation = createElectronScreenObservation(capture.frame.frameId, capture.displayId)
+      return formatImageResult(capture, {
+        observation,
+        screenshot: screenshotMetadata(capture)
+      })
+    }
+
+    const adapter = await getDesktopAdapter()
     const observation = await adapter.observe({
       mode,
       process: optionalString(args.process),
       title: optionalString(args.title),
       maxDepth: optionalNumber(args.max_depth),
       maxElements: optionalNumber(args.max_elements)
-    })
-    const includeScreenshot = typeof args.include_screenshot === 'boolean'
-      ? args.include_screenshot
-      : mode !== 'applications'
+    }, ctx.signal)
 
     if (!includeScreenshot) return JSON.stringify(observation, null, 2)
 
     const capture = await captureDisplay(
       observation,
       optionalString(args.display_id),
-      observation.frameId
+      observation.frameId,
+      ctx.signal
     )
     return formatImageResult(capture, {
       observation,
@@ -134,7 +148,7 @@ export const desktopActionTool: ToolHandler = {
     }
   },
   permission: 'dangerous',
-  async execute(args) {
+  async execute(args, ctx) {
     const adapter = await getDesktopAdapter()
     const request: DesktopActionRequest = {
       action: args.action as DesktopActionName,
@@ -154,24 +168,26 @@ export const desktopActionTool: ToolHandler = {
       timeoutMs: optionalNumber(args.timeout_ms)
     }
     translateScreenshotCoordinates(request, optionalString(args.frame_id))
-    const result = await adapter.action(request)
+    const result = await adapter.action(request, ctx.signal)
     const after = optionalString(args.after) || 'screenshot'
     if (after === 'none') return JSON.stringify(result, null, 2)
 
-    let observation: DesktopObservation
-    if (after === 'observe') {
+    let observation: DesktopObservation | undefined
+    if (after === 'observe' && result.process) {
       observation = await adapter.observe({
-        mode: result.process ? 'window' : 'screen',
+        mode: 'window',
         process: result.process
-      })
-    } else {
-      observation = await adapter.observe({ mode: 'screen' })
+      }, ctx.signal)
     }
     const capture = await captureDisplay(
       observation,
       optionalString(args.display_id),
-      observation?.frameId
+      observation?.frameId,
+      ctx.signal
     )
+    if (after === 'observe' && !observation) {
+      observation = createElectronScreenObservation(capture.frame.frameId, capture.displayId)
+    }
     return formatImageResult(capture, {
       result,
       observation: after === 'observe' ? observation : undefined,
@@ -183,8 +199,10 @@ export const desktopActionTool: ToolHandler = {
 async function captureDisplay(
   observation?: DesktopObservation,
   requestedDisplayId?: string,
-  preferredFrameId?: string
+  preferredFrameId?: string,
+  signal?: AbortSignal
 ): Promise<CapturedDisplay> {
+  throwIfAborted(signal)
   const displays = electronScreen.getAllDisplays()
   if (displays.length === 0) throw new Error('[CAPTURE_FAILED] Electron did not report any displays.')
   const display = selectDisplay(displays, observation, requestedDisplayId)
@@ -193,15 +211,16 @@ async function captureDisplay(
   const aspect = physicalBounds.width / physicalBounds.height
   const targetWidth = Math.min(MAX_IMAGE_WIDTH, physicalBounds.width)
   const targetHeight = Math.max(1, Math.round(targetWidth / aspect))
-  const sources = await desktopCapturer.getSources({
+  const sources = await abortable(desktopCapturer.getSources({
     types: ['screen'],
     thumbnailSize: { width: targetWidth, height: targetHeight },
     fetchWindowIcons: false
-  })
+  }), signal)
   const source = sources.find(item => item.display_id === String(display.id))
     || (display.id === electronScreen.getPrimaryDisplay().id ? sources[0] : undefined)
   if (!source) throw new Error(`[CAPTURE_FAILED] No desktop capture source matched display ${display.id}.`)
 
+  throwIfAborted(signal)
   const size = source.thumbnail.getSize()
   const frame: ScreenshotCoordinateFrame = {
     frameId: preferredFrameId || createScreenshotFrameId(),
@@ -216,6 +235,32 @@ async function captureDisplay(
     displayId: String(display.id),
     displayName: display.label || physicalMonitor?.name || `Display ${display.id}`,
     scaleFactor: physicalMonitor?.scaleFactor || display.scaleFactor || 1
+  }
+}
+
+function createElectronScreenObservation(
+  frameId = createScreenshotFrameId(),
+  activeDisplayId?: string
+): DesktopObservation {
+  const displays = electronScreen.getAllDisplays()
+  if (displays.length === 0) throw new Error('[CAPTURE_FAILED] Electron did not report any displays.')
+  const primaryId = electronScreen.getPrimaryDisplay().id
+  const activeDisplay = activeDisplayId
+    ? displays.find(display => String(display.id) === activeDisplayId)
+    : electronScreen.getDisplayNearestPoint(electronScreen.getCursorScreenPoint())
+
+  return {
+    backend: 'electron-desktop-capturer',
+    platform: process.platform,
+    frameId,
+    monitors: displays.map(display => ({
+      id: String(display.id),
+      name: display.label || `Display ${display.id}`,
+      isPrimary: display.id === primaryId,
+      bounds: electronPhysicalBounds(display),
+      scaleFactor: display.scaleFactor || 1
+    })),
+    activeMonitorId: activeDisplay ? String(activeDisplay.id) : String(primaryId)
   }
 }
 
@@ -237,7 +282,7 @@ function selectDisplay(
   if (activeMonitor) {
     return [...displays].sort((a, b) => monitorScore(a, activeMonitor) - monitorScore(b, activeMonitor))[0]
   }
-  return electronScreen.getPrimaryDisplay()
+  return electronScreen.getDisplayNearestPoint(electronScreen.getCursorScreenPoint())
 }
 
 function matchPhysicalMonitor(display: Display, monitors: DesktopMonitor[]): DesktopMonitor | undefined {
@@ -305,6 +350,38 @@ function pruneScreenshotFrames(): void {
 function createScreenshotFrameId(): string {
   screenshotSequence += 1
   return `c${Date.now().toString(36)}_${screenshotSequence.toString(36)}`
+}
+
+function throwIfAborted(signal?: AbortSignal): void {
+  if (!signal?.aborted) return
+  const error = new Error('[DESKTOP_ABORTED] Desktop capture was cancelled.')
+  error.name = 'AbortError'
+  throw error
+}
+
+function abortable<T>(operation: Promise<T>, signal?: AbortSignal): Promise<T> {
+  if (!signal) return operation
+  if (signal.aborted) return Promise.reject(desktopAbortError())
+  return new Promise<T>((resolve, reject) => {
+    const onAbort = () => reject(desktopAbortError())
+    signal.addEventListener('abort', onAbort, { once: true })
+    operation.then(
+      value => {
+        signal.removeEventListener('abort', onAbort)
+        resolve(value)
+      },
+      error => {
+        signal.removeEventListener('abort', onAbort)
+        reject(error)
+      }
+    )
+  })
+}
+
+function desktopAbortError(): Error {
+  const error = new Error('[DESKTOP_ABORTED] Desktop capture was cancelled.')
+  error.name = 'AbortError'
+  return error
 }
 
 function screenshotMetadata(capture: CapturedDisplay) {
