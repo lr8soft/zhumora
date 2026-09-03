@@ -26,10 +26,18 @@ export interface StreamCallbacks {
   onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
 }
 
+export type ToolChoice =
+  | 'auto'
+  | 'none'
+  | 'required'
+  | { type: 'function'; function: { name: string } }
+
 export interface CompletionParams {
   messages: ChatMessage[]
   model?: string
   tools?: ToolDefinition[]
+  /** OpenAI-compatible tool selection mode. Defaults to auto when tools are present. */
+  toolChoice?: ToolChoice
   temperature?: number
   maxTokens?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
@@ -82,7 +90,7 @@ export async function streamChat(
   }
   if (params.tools?.length) {
     body.tools = params.tools
-    body.tool_choice = 'auto'
+    body.tool_choice = params.toolChoice ?? 'auto'
   }
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.maxTokens) body.max_tokens = params.maxTokens
@@ -95,7 +103,7 @@ export async function streamChat(
   const state = { emitted: false }
 
   try {
-    const result = await withRetry(
+    const runRequest = () => withRetry(
       () => attemptStreamChat(url, body, provider, params, cb, state),
       {
         maxRetries,
@@ -105,6 +113,26 @@ export async function streamChat(
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
       }
     )
+    let result
+    try {
+      result = await runRequest()
+    } catch (err) {
+      // Some OpenAI-compatible local servers accept tool_choice=auto but not
+      // tool_choice=required. Office routing still removes bash/write/edit, so
+      // falling back to auto preserves the important execution boundary.
+      if (
+        params.toolChoice === 'required'
+        && err instanceof HttpError
+        && err.status === 400
+        && /tool.?choice|required|unsupported/i.test(err.message)
+      ) {
+        log('warn', 'LLM endpoint rejected tool_choice=required; retrying with auto and the same filtered tools')
+        body.tool_choice = 'auto'
+        result = await runRequest()
+      } else {
+        throw err
+      }
+    }
     cb?.onComplete?.(result.content, result.toolCalls)
     return { content: result.content, toolCalls: result.toolCalls, usage: result.usage, finishReason: result.finishReason }
   } catch (err) {

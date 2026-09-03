@@ -14,7 +14,7 @@
 // 总是取"被折叠的最后一条真实历史消息 id"（跳过虚拟摘要位 null）。
 // ============================================================
 import type { ChatMessage, ContentPart, ProviderConfig, ToolCall, ReasoningEffort } from '../../shared/types'
-import { streamChat, type TokenUsage } from '../llm/provider'
+import { streamChat, type TokenUsage, type ToolChoice } from '../llm/provider'
 import { log } from '../llm/logger'
 import { getTool, getAllTools, type ToolContext } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
@@ -28,6 +28,7 @@ import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
 import { getSettings } from '../store/db'
 import { AgentAbortedError } from '../../shared/types'
+import { detectOfficeRoute, selectToolsForOfficeRoute } from './officeRouting'
 
 export const DEFAULT_MAX_TOOL_ROUNDS = 20
 
@@ -143,6 +144,16 @@ export async function runAgent(
   // 对话级思考强度（'off'/undefined = 不发送参数，模型默认行为）。
   // 收窄为 streamChat 接受的 'low'|'medium'|'high'
   const reasoningEffort = opts.reasoningEffort && opts.reasoningEffort !== 'off' ? opts.reasoningEffort : undefined
+  const latestUserText = extractTextContent(getLastUserMessage(messages))
+  const recentRouteContext = messages.slice(-12, -1).map(message => {
+    const calledTools = message.tool_calls?.map(call => call.function.name).join(' ') || ''
+    return `${extractTextContent(message.content)} ${message.name || ''} ${calledTools}`
+  }).join('\n')
+  const officeRoute = detectOfficeRoute(latestUserText, recentRouteContext)
+  let officeToolAttempted = false
+  if (officeRoute) {
+    log('info', `Office artifact route selected: ${officeRoute.format} -> ${officeRoute.toolName}`)
+  }
 
   // 构建系统提示词（含记忆注入 + MCP 工具动态列表）
   const skillsPrompt = skillsPromptGetter ? skillsPromptGetter() : ''
@@ -256,13 +267,16 @@ export async function runAgent(
     // 若不显式抛出，agent 会带着部分回复继续下一轮 / 执行工具
     if (signal?.aborted) throw new AgentAbortedError()
 
-    const tools = getAllTools()
+    const tools = selectToolsForOfficeRoute(getAllTools(), officeRoute)
+    const routedOfficeAvailable = !!officeRoute && tools.some(tool => tool.function.name === officeRoute.toolName)
+    const toolChoice: ToolChoice = routedOfficeAvailable && !officeToolAttempted ? 'required' : 'auto'
     const model = modelOverride || provider.defaultModel
     // 当前轮思考内容（每轮独立；落库 + UI 展示，不进入模型上下文）
     let roundReasoning = ''
     const { content, toolCalls, usage, finishReason } = await streamChat(provider, {
       messages: workingMessages,
       tools: tools.length > 0 ? tools : undefined,
+      toolChoice,
       model,
       temperature: provider.temperature,
       reasoningEffort,
@@ -394,6 +408,7 @@ export async function runAgent(
     // 执行每个工具调用
     for (const tc of toolCalls) {
       cb.onToolCall?.(tc)
+      if (officeRoute && tc.function.name === officeRoute.toolName) officeToolAttempted = true
 
       // 循环检测：工具名 + 参数完全相同地连续调用
       const verdict = loopDetector.inspect(tc.function.name, tc.function.arguments || '')

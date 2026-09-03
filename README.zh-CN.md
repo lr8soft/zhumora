@@ -14,6 +14,7 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 
 - 支持 OpenAI 兼容 API，也可接入 Ollama、llama.cpp、vLLM 等本地端点
 - 在指定工作目录内读取、编辑、搜索和管理文件
+- 通过按格式划分的内置工具读写 Word、Excel、PowerPoint 和 PDF 文件
 - 执行终端命令
 - 使用 Playwright 自动化 Chromium
 - 通过无障碍元素、截图、鼠标和键盘观察并控制 Windows 应用

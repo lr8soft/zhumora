@@ -9,9 +9,11 @@ const MAX_LINE_CHARS = 2_000
 const BINARY_EXTENSIONS = new Set([
   '.7z', '.a', '.avi', '.bin', '.bmp', '.class', '.db', '.dll', '.dylib', '.eot', '.exe',
   '.flac', '.gif', '.gz', '.ico', '.jar', '.jpeg', '.jpg', '.lockb', '.mov', '.mp3', '.mp4',
-  '.o', '.otf', '.pdf', '.png', '.pyc', '.so', '.sqlite', '.tar', '.ttf', '.wav', '.webm',
-  '.webp', '.woff', '.woff2', '.xz', '.zip'
+  '.o', '.otf', '.pdf', '.png', '.pptx', '.pyc', '.so', '.sqlite', '.tar', '.ttf', '.wav',
+  '.webm', '.webp', '.woff', '.woff2', '.xlsx', '.xz', '.zip', '.docx'
 ])
+
+const OFFICE_EXTENSIONS = new Set(['.docx', '.xlsx', '.pptx', '.pdf'])
 
 export function resolveToolPath(workspacePath: string, requestedPath: string): string {
   if (!requestedPath?.trim()) throw new Error('A file path is required')
@@ -68,7 +70,11 @@ export async function readPath(
 
   const sample = await readSample(resolved)
   if (detectBinary(sample, resolved)) {
-    throw new Error(`Cannot read binary file as text: ${resolved}`)
+    const ext = path.extname(resolved).toLowerCase()
+    const hint = OFFICE_EXTENSIONS.has(ext)
+      ? ` This is an office document — use the "office" tool (action=read) instead of bash or python.`
+      : ''
+    throw new Error(`Cannot read binary file as text: ${resolved}.${hint}`)
   }
 
   const decoder = new TextDecoder('utf-8', { fatal: true })

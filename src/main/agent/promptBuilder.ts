@@ -36,13 +36,14 @@ const EDITING_APPROACH = `## Editing Approach
 - NEVER proactively create documentation files (*.md) or README files unless the user asks.
 - Do not add code comments unless the logic is genuinely non-obvious.
 - ALWAYS read a file before editing it. Never use edit with a guessed oldString — if it doesn't match, the edit will fail.
-- For large changes across many files, prefer bash with sed/awk or write the entire file.
+- For large changes across many non-Office text/code files, prefer bash with sed/awk or write the entire file.
 - Always verify your edits at the end: read the edited file back or run the project's build/lint/tests.`
 
 const TOOL_USAGE_POLICY = `## Tool Usage Policy
 - You can call multiple tools in a single response. When several independent reads, searches, commands, or edits are needed, emit them all together — do not serialize independent work across turns.
 - Good parallelism: read all known relevant files at once; run independent inspection commands together; edit multiple files in one response.
 - For file operations, prefer the dedicated tools over bash: use read (not cat/type), glob (not dir /s / find), grep (not findstr / grep in bash), edit (not sed), write (not echo > file).
+- For Office artifacts, use the matching word_document, excel_workbook, powerpoint_presentation, or pdf_document tool first. Use shell/code tools only when the user explicitly asks for source code or the Office tool reports that the requested capability is unsupported.
 - When referencing code, use the format \`file_path:line_number\` so the user can navigate to the source.`
 
 const TASK_GUIDELINES = `## Guidelines
@@ -52,7 +53,7 @@ const TASK_GUIDELINES = `## Guidelines
 - When the task is complete, provide a brief summary of what you did.
 - NEVER commit, push, or create PRs unless the user explicitly asks.
 - NEVER use destructive commands like \`git reset --hard\` or \`git checkout --\` unless the user explicitly requests them.
-- IMPORTANT: At the start of every new conversation, call the set_title tool with a short title (max 6 words) summarizing the user's request. Do this before doing anything else.`
+- Call set_title early in a new conversation when useful, but never let title-setting delay the task's required tool call.`
 
 const MEMORY_GUIDE = `## Long-term Memory
 You have access to a persistent memory system. You can proactively use these tools:
@@ -62,7 +63,7 @@ You have access to a persistent memory system. You can proactively use these too
 - memory_delete: Delete an outdated or incorrect memory (confirm with user first).
 
 When to use memory tools:
-- At the START of a conversation, proactively call memory_search with keywords from the user's message to check if you have relevant context.
+- Use memory_search near the start only when prior preferences or project context are likely to matter.
 - When the user mentions a preference, habit, or important context, call memory_save to store it.
 - When the user asks "do you remember..." or refers to past conversations, use memory_search to find relevant memories.
 - Do NOT save trivial information (e.g. "user said hello"). Only save durable, useful facts.`
@@ -91,7 +92,7 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
   },
   {
     label: 'Office Documents',
-    tools: ['office']
+    tools: ['word_document', 'excel_workbook', 'powerpoint_presentation', 'pdf_document']
   },
   {
     label: 'Memory',

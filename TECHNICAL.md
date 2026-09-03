@@ -215,6 +215,34 @@ map image pixels back to the selected display's physical coordinate space,
 including mixed-DPI and negative-origin multi-monitor layouts. Semantic
 `target_ref` values are preferred because they are less brittle than pixels.
 
+### 6.4 Office artifacts
+
+Office support is exposed as four format-specific tools instead of one generic
+multi-format schema:
+
+- `word_document`
+- `excel_workbook`
+- `powerpoint_presentation`
+- `pdf_document`
+
+When the latest request directly reads, creates, or changes an Office artifact,
+the runner selects the matching route, removes unrelated execution tools such as
+`bash`, `write`, and `edit` from that run, and requires a tool call until the
+matching Office tool has been attempted. Explicit requests to write source code
+or scripts are excluded from artifact routing. Recent conversation context keeps
+the route active for follow-ups such as "make the colors brighter."
+
+The format-specific schemas use `create_or_replace` for complete artifact writes.
+Internally it maps to the Office implementation's `create` action. The legacy
+generic `office` handler remains available to direct callers and tests but is not
+registered as a model-facing tool.
+
+PowerPoint creation also accepts a high-level theme (`modern_blue`, `dark_tech`,
+`warm_minimal`, `forest`, or `corporate`) plus an optional font family. Themes
+apply a wide-screen layout, semantic palette, accent treatment, styled content
+cards and tables, and slide numbering without requiring the model to generate
+low-level coordinates or color values.
+
 ## 7. Permission model
 
 Tools are divided by risk.

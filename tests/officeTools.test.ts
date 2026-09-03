@@ -3,7 +3,7 @@ import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { executeOffice } from '../src/main/tools/office.ts'
-import { officeTool } from '../src/main/tools/officeTool.ts'
+import { officeTool, officeTools } from '../src/main/tools/officeTool.ts'
 import { splitFontCollection } from '../src/main/tools/officeFonts.ts'
 import { getToolPermission } from '../src/main/tools/registry.ts'
 import { registerTool } from '../src/main/tools/registry.ts'
@@ -22,6 +22,7 @@ async function check(name: string, fn: () => Promise<void>) {
 // 权限模型
 // ============================================================
 registerTool('office', officeTool, 'builtin')
+for (const { name, handler } of officeTools) registerTool(name, handler, 'builtin')
 await check('permission: read=safe', async () => {
   assert.equal(getToolPermission('office', { action: 'read', file_path: 'a.docx' }), 'safe')
 })
@@ -33,6 +34,10 @@ await check('permission: edit=normal', async () => {
 })
 // 无 args 回退静态 permission
 assert.equal(getToolPermission('office'), 'normal')
+await check('format-specific permissions', async () => {
+  assert.equal(getToolPermission('word_document', { action: 'read', file_path: 'a.docx' }), 'safe')
+  assert.equal(getToolPermission('powerpoint_presentation', { action: 'create_or_replace', file_path: 'a.pptx' }), 'normal')
+})
 
 // ============================================================
 // docx
@@ -68,6 +73,17 @@ await check('docx read back', async () => {
   assert.match(text, /第一项/)
   assert.match(text, /收入/)
   assert.match(text, /120万/)
+})
+
+await check('word_document create_or_replace maps to create', async () => {
+  const wrapped = path.join(root, 'wrapped.docx')
+  const handler = officeTools.find(tool => tool.name === 'word_document')!.handler
+  await handler.execute({ action: 'create_or_replace', file_path: wrapped, content: '# Wrapped' }, { workspacePath: root })
+  assert.match(await executeOffice({ action: 'read', file_path: wrapped }, root), /Wrapped/)
+  await assert.rejects(
+    () => handler.execute({ action: 'read', file_path: path.join(root, 'wrong.pdf') }, { workspacePath: root }),
+    /only accepts \.docx/
+  )
 })
 
 await check('docx nested dir + overwrite', async () => {
@@ -151,6 +167,19 @@ await check('pptx read back (slides + table)', async () => {
   assert.match(text, /## Slide 2/)
   assert.match(text, /数据页/)
   assert.match(text, /Q1/)
+})
+
+await check('pptx built-in theme + subtitle', async () => {
+  const themed = path.join(root, 'themed.pptx')
+  const content = JSON.stringify([{ title: '深色主题', subtitle: '自动配色', bullets: ['统一字体', '强调色'] }])
+  await executeOffice({ action: 'create', file_path: themed, content, theme: 'dark_tech' }, root)
+  const text = await executeOffice({ action: 'read', file_path: themed }, root)
+  assert.match(text, /深色主题/)
+  assert.match(text, /自动配色/)
+  await assert.rejects(
+    () => executeOffice({ action: 'create', file_path: path.join(root, 'bad-theme.pptx'), content, theme: 'unknown' }, root),
+    /Unknown pptx theme/
+  )
 })
 
 await check('pptx bad JSON rejected', async () => {

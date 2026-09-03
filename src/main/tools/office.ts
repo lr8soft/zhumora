@@ -133,11 +133,11 @@ async function readPdf(filePath: string): Promise<string> {
 // 创建
 // ============================================================
 
-async function createOfficeFile(filePath: string, format: OfficeFormat, content: string, font?: string): Promise<string> {
+async function createOfficeFile(filePath: string, format: OfficeFormat, content: string, font?: string, theme?: string): Promise<string> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
   if (format === 'docx') await writeDocxFromMarkdown(filePath, content)
   else if (format === 'xlsx') await writeXlsxFromCsv(filePath, content)
-  else if (format === 'pptx') await writePptxFromSlides(filePath, content)
+  else if (format === 'pptx') await writePptxFromSlides(filePath, content, theme, font)
   else await writePdfFromText(filePath, content, font)
   const stat = await fs.stat(filePath)
   return `Created ${format} file: ${filePath} (${stat.size} bytes)`
@@ -347,12 +347,54 @@ async function writeXlsxFromCsv(filePath: string, csv: string): Promise<void> {
 
 interface PptxSlideSpec {
   title?: string
+  subtitle?: string
   bullets?: string[]
   table?: { header?: string[]; rows?: string[][] }
   notes?: string
 }
 
-async function writePptxFromSlides(filePath: string, content: string): Promise<void> {
+interface PptxTheme {
+  background: string
+  surface: string
+  primary: string
+  accent: string
+  title: string
+  body: string
+  muted: string
+  tableAlt: string
+}
+
+const PPTX_THEMES: Record<string, PptxTheme> = {
+  modern_blue: {
+    background: 'F7F9FC', surface: 'FFFFFF', primary: '2563EB', accent: '14B8A6',
+    title: '172033', body: '344054', muted: '667085', tableAlt: 'EEF4FF'
+  },
+  dark_tech: {
+    background: '0B1020', surface: '151C32', primary: '7C3AED', accent: '22D3EE',
+    title: 'F8FAFC', body: 'D0D5DD', muted: '98A2B3', tableAlt: '202A44'
+  },
+  warm_minimal: {
+    background: 'FFF9F2', surface: 'FFFFFF', primary: 'C2410C', accent: 'EAB308',
+    title: '3F2D20', body: '5F4635', muted: '8C6F5A', tableAlt: 'FEF0DF'
+  },
+  forest: {
+    background: 'F4F8F5', surface: 'FFFFFF', primary: '166534', accent: '65A30D',
+    title: '173A2A', body: '365347', muted: '6B7F75', tableAlt: 'E7F3EA'
+  },
+  corporate: {
+    background: 'F5F7FA', surface: 'FFFFFF', primary: '17365D', accent: '4F81BD',
+    title: '17365D', body: '334155', muted: '64748B', tableAlt: 'EAF0F7'
+  }
+}
+
+function resolvePptxTheme(name?: string): PptxTheme {
+  if (!name) return PPTX_THEMES.modern_blue
+  const theme = PPTX_THEMES[name]
+  if (!theme) throw new Error(`Unknown pptx theme "${name}" (expected: ${Object.keys(PPTX_THEMES).join(', ')})`)
+  return theme
+}
+
+async function writePptxFromSlides(filePath: string, content: string, themeName?: string, fontFace?: string): Promise<void> {
   let slides: PptxSlideSpec[]
   try {
     slides = JSON.parse(content)
@@ -362,29 +404,94 @@ async function writePptxFromSlides(filePath: string, content: string): Promise<v
   if (!Array.isArray(slides) || !slides.length) throw new Error('pptx content must be a non-empty JSON array of slides')
   const PptxGenJS = (await import('pptxgenjs')).default
   const pres = new PptxGenJS()
-  for (const spec of slides) {
+  const theme = resolvePptxTheme(themeName)
+  const face = fontFace || 'Microsoft YaHei'
+  pres.layout = 'LAYOUT_WIDE'
+  pres.author = 'Zhumora'
+  pres.subject = 'Generated presentation'
+  for (let slideIndex = 0; slideIndex < slides.length; slideIndex++) {
+    const spec = slides[slideIndex]
     if (typeof spec !== 'object' || spec === null) throw new Error('each slide must be an object like {title, bullets, table}')
     const slide = pres.addSlide()
-    let cursorY = 0.6
+    slide.background = { color: theme.background }
+    slide.addShape(pres.ShapeType.rect, {
+      x: 0, y: 0, w: 0.16, h: 7.5,
+      line: { color: theme.primary, transparency: 100 },
+      fill: { color: theme.primary }
+    })
+    slide.addShape(pres.ShapeType.rect, {
+      x: 0.48, y: 0.43, w: 0.08, h: 0.48,
+      line: { color: theme.accent, transparency: 100 },
+      fill: { color: theme.accent }
+    })
+    let cursorY = 0.55
     if (spec.title) {
-      slide.addText(String(spec.title), { x: 0.5, y: 0.35, w: 9, h: 0.9, fontSize: 30, bold: true, color: '222222' })
-      cursorY = 1.5
+      slide.addText(String(spec.title), {
+        x: 0.72, y: 0.32, w: 11.7, h: 0.72,
+        fontFace: face, fontSize: 28, bold: true, color: theme.title,
+        margin: 0, breakLine: false, fit: 'shrink'
+      })
+      cursorY = 1.35
+    }
+    if (spec.subtitle) {
+      slide.addText(String(spec.subtitle), {
+        x: 0.72, y: 1.02, w: 11.4, h: 0.4,
+        fontFace: face, fontSize: 13, color: theme.muted, margin: 0, fit: 'shrink'
+      })
+      cursorY = 1.62
     }
     if (spec.bullets?.length) {
+      const bulletHeight = Math.min(4.9, Math.max(1.2, spec.bullets.length * 0.52 + 0.35))
+      slide.addShape(pres.ShapeType.roundRect, {
+        x: 0.62, y: cursorY - 0.12, w: 12.05, h: bulletHeight,
+        rectRadius: 0.06,
+        line: { color: theme.surface, transparency: 100 },
+        fill: { color: theme.surface, transparency: theme.background === theme.surface ? 100 : 0 },
+        shadow: { type: 'outer', color: '000000', opacity: 0.12, blur: 1, angle: 45, offset: 1 }
+      })
       slide.addText(
-        spec.bullets.map(b => ({ text: String(b), options: { bullet: true, breakLine: true, paraSpaceAfter: 6 } })),
-        { x: 0.7, y: cursorY, w: 8.8, h: 5.2, fontSize: 16, color: '333333' }
+        spec.bullets.map(b => ({
+          text: String(b),
+          options: { bullet: { color: theme.accent }, breakLine: true, paraSpaceAfter: 11 }
+        })),
+        {
+          x: 0.92, y: cursorY + 0.08, w: 11.35, h: bulletHeight - 0.3,
+          fontFace: face, fontSize: 17, color: theme.body,
+          margin: 0.08, breakLine: false, fit: 'shrink', valign: 'mid'
+        }
       )
-      cursorY += 0.3 + spec.bullets.length * 0.4
+      cursorY += bulletHeight + 0.22
     }
     if (spec.table) {
       const header = (spec.table.header || []).map(String)
       const rows = (spec.table.rows || []).map(r => (r || []).map(String))
-      const all: string[][] = header.length ? [header, ...rows] : rows
+      const all = [
+        ...(header.length ? [header.map(text => ({
+          text,
+          options: { bold: true, color: 'FFFFFF', fill: { color: theme.primary }, align: 'center' }
+        }))] : []),
+        ...rows.map((row, rowIndex) => row.map(text => ({
+          text,
+          options: {
+            color: theme.body,
+            fill: { color: rowIndex % 2 === 0 ? theme.surface : theme.tableAlt }
+          }
+        })))
+      ]
       if (all.length) {
-        slide.addTable(all as never, { x: 0.7, y: Math.min(cursorY, 5.4), w: 8.8, fontSize: 13, border: { pt: 0.5, color: '999999' } })
+        slide.addTable(all as never, {
+          x: 0.72, y: Math.min(cursorY, 5.25), w: 11.7,
+          fontFace: face, fontSize: 12, color: theme.body,
+          border: { pt: 0.6, color: theme.tableAlt },
+          margin: 0.08, rowH: 0.4, autoFit: false,
+          valign: 'mid', breakLine: false
+        })
       }
     }
+    slide.addText(`${slideIndex + 1} / ${slides.length}`, {
+      x: 11.55, y: 7.08, w: 0.85, h: 0.2,
+      fontFace: face, fontSize: 9, color: theme.muted, align: 'right', margin: 0
+    })
     if (spec.notes) slide.addNotes(String(spec.notes))
   }
   await pres.writeFile({ fileName: filePath })
@@ -545,6 +652,7 @@ export interface OfficeArgs {
   format?: string
   content?: string
   font?: string
+  theme?: string
   ops?: XlsxOp[]
   edit?: PdfEditOp
 }
@@ -560,7 +668,7 @@ export async function executeOffice(args: OfficeArgs, workspacePath: string, sig
 
   if (action === 'create') {
     if (!args.content?.trim()) throw new Error('create requires "content"')
-    return createOfficeFile(filePath, format, args.content, args.font)
+    return createOfficeFile(filePath, format, args.content, args.font, args.theme)
   }
 
   if (action === 'edit') {

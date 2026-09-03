@@ -14,6 +14,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 
 - Connect to OpenAI-compatible APIs, including local endpoints such as Ollama, llama.cpp, and vLLM
 - Read, edit, search, and manage files in the selected workspace
+- Read and write Word, Excel, PowerPoint, and PDF artifacts with format-specific built-in tools
 - Run terminal commands
 - Automate Chromium with Playwright
 - Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input
