@@ -11,64 +11,30 @@
 // - 工具执行 / 权限 / 附件协议：toolExecutor.executeToolCall。
 // - 恢复预算：recoveryPolicy.RecoveryBudget。
 // ============================================================
-import type { ChatMessage, ProviderConfig, ToolCall, ReasoningEffort } from '../../shared/types'
-import { streamChat, type TokenUsage, type ToolChoice } from '../llm/provider'
+import type { ChatMessage, ProviderConfig, ReasoningEffort } from '../../shared/types'
+import { streamChat, type ToolChoice } from '../llm/provider'
 import { log } from '../llm/logger'
 import { toolRegistry, type ToolRegistry } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
-import { needsCompact, fetchContextWindow } from '../agent/context'
+import { fetchContextWindow } from '../agent/context'
 import { buildSystemPrompt, type PromptRuntimeSnapshot } from '../agent/promptBuilder'
 import { buildEffectiveConversation, sanitizeHistoryWithIds, type CompactionState } from './history'
 import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
 import { AgentAbortedError } from '../../shared/types'
 import { detectOfficeRoute, selectToolsForOfficeRoute } from './officeRouting'
-import { executeToolCall } from './toolExecutor'
-import {
-  EMPTY_CONTINUE_PROMPT,
-  MAX_EMPTY_CONTINUATIONS,
-  MAX_TRUNCATION_CONTINUATIONS,
-  RecoveryBudget,
-  TRUNCATION_CONTINUE_PROMPT,
-  TRUNCATION_TOOL_ERROR
-} from './recoveryPolicy'
+import { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS, RecoveryBudget } from './recoveryPolicy'
 import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
 import { decideTurnOutcome } from './turnDecision'
+import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
+import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
 
 export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
+// 回调契约定义在 eventCallbacks；runner 是其主要消费者，从这里再导出以兼容既有引用
+export type { AgentEventCallbacks } from './eventCallbacks'
 
 export const DEFAULT_MAX_TOOL_ROUNDS = 20
-
-export interface AgentEventCallbacks {
-  /** LLM 流式 token */
-  onToken?: (token: string) => void
-  /** LLM 流式思考内容（reasoning_content；仅供 UI 展示，不回传模型） */
-  onReasoningToken?: (token: string) => void
-  /** LLM 请求了工具调用 */
-  onToolCall?: (toolCall: ToolCall, assistantMessageId: string | null) => void
-  /** 工具执行完成。返回该 tool 消息落库后的 id（供压缩边界定位），未落库返回 null */
-  onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => string | null
-  /** 一轮 LLM 调用完成（可能继续循环或结束）。返回该 assistant 消息落库后的 id，未落库返回 null */
-  onAssistantMessage?: (content: string, toolCalls: ToolCall[], reasoning?: string) => string | null
-  /** Token 用量回调 */
-  onTokenUsage?: (usage: TokenUsage, model: string) => void
-  /** 整个对话完成 */
-  onComplete?: () => void
-  /** 出错 */
-  onError?: (error: Error) => void
-  /** LLM 网络失败，正在自动重试 */
-  onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
-  /** 上下文压缩完成（通知前端展示提示 + 更新压缩标记位置） */
-  onCompact?: (info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }) => void
-  /**
-   * 单轮输出达到 max_tokens 上限被截断（finish_reason = length）。
-   * 通知前端展示"输出被截断"提示条 —— 这是"工作没做完却无报错停止"
-   * 的根因场景，必须让用户可见（对齐 opencode / Cline 的 finish_reason 处理）。
-   * 截断的文本/工具调用已按原样保留，runner 会自动引导模型续写或重试工具调用。
-   */
-  onTruncated?: (kind: 'tool' | 'text') => void
-}
 
 export interface AgentRunOptions {
   /** 完整会话历史（无 system，按时间升序） */
@@ -109,15 +75,6 @@ export interface AgentRunOptions {
   onAutoCompact?: (state: { upToMessageId: string; summary: string }) => void
 }
 
-/** streamChat 一次调用的结果 + 本轮思考内容（思考内容不进入模型上下文） */
-interface RoundResult {
-  content: string
-  toolCalls: ToolCall[]
-  usage: TokenUsage | null | undefined
-  finishReason: string | undefined
-  reasoning: string
-}
-
 /**
  * 运行一次完整的 Agent 对话
  */
@@ -143,15 +100,6 @@ export async function runAgent(
     onCompact: (info) => cb.onCompact?.(info)
   }, compaction)
 
-  /**
-   * 发送前检查并折叠上下文（工具结果可能很大，导致逐轮膨胀）。
-   */
-  async function compactIfNeeded(trigger: string): Promise<void> {
-    if (!needsCompact(conversation.messages, contextWindow)) return
-    log('info', `Auto compact triggered ${trigger}`)
-    await compactor.apply(conversation)
-  }
-
   const maxRounds = opts.maxRounds ?? DEFAULT_MAX_TOOL_ROUNDS
   const loopConfig = opts.loopConfig || DEFAULT_LOOP_CONFIG
   const loopDetector = new LoopDetector()
@@ -168,6 +116,22 @@ export async function runAgent(
   if (officeRoute) log('info', `Office artifact route selected: ${officeRoute.format} -> ${officeRoute.toolName}`)
   let officeToolAttempted = false
 
+  // 工具阶段的静态依赖只构造一次；hardStop / officeToolAttempted 每轮从
+  // 局部变量同步进 base（phase 内部推进后由返回值带回）
+  const toolPhaseBase: Omit<ToolPhaseOptions, 'hardStop' | 'officeToolAttempted'> = {
+    conversation,
+    toolsRegistry,
+    workspacePath,
+    sessionId,
+    signal,
+    permissionCheck: opts.permissionCheck,
+    onSessionTitleUpdate,
+    loopDetector,
+    loopConfig,
+    officeRoute,
+    cb
+  }
+
   let round = 0
   while (maxRounds <= 0 || round < maxRounds) {
     round++
@@ -175,11 +139,14 @@ export async function runAgent(
 
     // 轮间中止检查优先于压缩：用户已中止时不再发起摘要 LLM 调用
     if (signal?.aborted) throw new AgentAbortedError()
-    await compactIfNeeded(`at round ${round}`)
+    // round=1 的检查即"发送前检查"，后续轮检查工具结果带来的膨胀
+    await compactor.applyIfOverThreshold(conversation, `at round ${round}`)
 
     const tools = selectToolsForOfficeRoute(toolsRegistry.definitions(), officeRoute)
-    const routedOfficeAvailable = !!officeRoute && tools.some(tool => tool.function.name === officeRoute.toolName)
-    const toolChoice: ToolChoice = routedOfficeAvailable && !officeToolAttempted ? 'required' : 'auto'
+    // office 路由：首选工具可用且尚未尝试 → 强制 tool_choice=required
+    const routedOfficeAvailable = !!officeRoute && !officeToolAttempted
+      && tools.some(tool => tool.function.name === officeRoute.toolName)
+    const toolChoice: ToolChoice = routedOfficeAvailable ? 'required' : 'auto'
 
     const result = await streamRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, toolChoice, signal, cb)
     if (result.usage) cb.onTokenUsage?.(result.usage, opts.modelOverride || provider.defaultModel)
@@ -202,52 +169,9 @@ export async function runAgent(
       canRecoverEmptyResponse: recovery.canRecoverEmptyResponse()
     })
 
-    if (decision.kind === 'recover_truncated_tool') {
-      // 截断发生在工具轮：tool_calls 参数 JSON 多半不完整，不能执行。
-      // 把截断的 assistant 消息作为真实上下文保留（模型能看到自己写到哪里），
-      // 给每个调用补一条解释性 tool 结果 → 下一轮引导模型拆小步重发。
-      const assistantMsg: ChatMessage = { role: 'assistant', content: result.content || null, tool_calls: result.toolCalls }
-      const truncatedAssistantId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined) ?? null
-      conversation.append(assistantMsg, truncatedAssistantId)
-      allAssistantMessages.push(assistantMsg)
-
-      cb.onTruncated?.('tool')
-      const continuation = recovery.recordTruncation()
-      log('warn', `Round ${round}: output truncated at token limit (finish_reason=length) — tool call(s) incomplete, asking model to retry with smaller output (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
-      for (const tc of result.toolCalls) {
-        cb.onToolCall?.(tc, truncatedAssistantId)
-        const persistId = cb.onToolResult?.(tc.id, tc.function.name, TRUNCATION_TOOL_ERROR, true, 0) ?? null
-        conversation.append({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: TRUNCATION_TOOL_ERROR }, persistId)
-      }
-      continue
-    }
-
-    if (decision.kind === 'recover_truncated_text') {
-      // content 为空时不推空 assistant 消息（部分严格后端会拒绝），直接续写
-      if (result.content) {
-        conversation.append({ role: 'assistant', content: result.content }, cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined) ?? null)
-        allAssistantMessages.push({ role: 'assistant', content: result.content })
-      } else {
-        cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
-      }
-      cb.onTruncated?.('text')
-      const continuation = recovery.recordTruncation()
-      log('warn', `Round ${round}: text output truncated at token limit (finish_reason=length) — continuing (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
-      conversation.appendSyntheticUser(TRUNCATION_CONTINUE_PROMPT)
-      continue
-    }
-
-    if (decision.kind === 'recover_empty_response') {
-      // 空响应自动继续：无正文、无工具调用、且不是截断（finish_reason=stop）。
-      // 推理模型偶发"只思考不输出"或空补全 —— 工作没做完却提前收尾。
-      // 空 assistant 消息不落库也不进上下文（部分严格后端拒绝空 content），
-      // 只追加 user 继续指令。上限防"空响应→继续→再空响应"死循环烧 token。
-      // 仍要调用 onAssistantMessage 收尾本轮（回调内部不落库，但重置轮次 id、
-      // 通知前端把本轮流式气泡归位）。
-      cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined)
-      const continuation = recovery.recordEmptyResponse()
-      log('warn', `Round ${round}: empty response (no content, no tool call, finish_reason=${result.finishReason || 'stop'}) — injecting continue prompt (continuation ${continuation}/${MAX_EMPTY_CONTINUATIONS})`)
-      conversation.appendSyntheticUser(EMPTY_CONTINUE_PROMPT)
+    // 恢复类决策（截断工具轮 / 截断文本轮 / 空响应轮）执行完即进入下一轮
+    if (decision.kind !== 'complete' && decision.kind !== 'execute_tools') {
+      applyRecoveryDecision(decision, result, round, conversation, allAssistantMessages, recovery, cb)
       continue
     }
 
@@ -260,12 +184,7 @@ export async function runAgent(
         cb.onTruncated?.('text')
       }
       log('info', `Agent completed after ${round} round(s)`)
-      cb.onComplete?.()
-      // 异步提取记忆（不阻塞返回）
-      if (memoryEnabled && sessionId) {
-        captureMemories(provider, conversation.messages, sessionId).catch(() => {})
-      }
-      return allAssistantMessages
+      return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 
     // decision.kind === 'execute_tools'
@@ -278,35 +197,13 @@ export async function runAgent(
     conversation.append(assistantMsg, assistantPersistId)
     allAssistantMessages.push(assistantMsg)
 
-    // 执行每个工具调用
-    for (const tc of result.toolCalls) {
-      cb.onToolCall?.(tc, assistantPersistId)
-      if (officeRoute && tc.function.name === officeRoute.toolName) officeToolAttempted = true
-
-      // 循环检测：工具名 + 参数完全相同地连续调用
-      const verdict = loopDetector.inspect(tc.function.name, tc.function.arguments || '', loopConfig)
-      if (verdict.kind === 'hard' && !hardStop) {
-        hardStop = `Detected ${verdict.count} consecutive identical calls to "${tc.function.name}"`
-        log('warn', `Loop detected (hard): ${hardStop} — stopping to avoid a loop`)
-      }
-
-      const executed = await executeToolCall({
-        toolCall: tc,
-        registry: toolsRegistry,
-        context: { workspacePath, sessionId, signal, onSessionTitleUpdate },
-        permissionCheck: opts.permissionCheck,
-        hardStop,
-        loopWarningCount: verdict.kind === 'soft' ? verdict.count : undefined
-      })
-      const persistId = cb.onToolResult?.(
-        tc.id,
-        tc.function.name,
-        executed.displayContent,
-        executed.isError,
-        executed.durationMs
-      ) ?? null
-      conversation.append(executed.llmMessage, persistId)
-    }
+    const toolPhase = await runToolCallPhase(result.toolCalls, assistantPersistId, {
+      ...toolPhaseBase,
+      hardStop,
+      officeToolAttempted
+    })
+    hardStop = toolPhase.hardStop
+    officeToolAttempted = toolPhase.officeToolAttempted
 
     // 继续下一轮，让 LLM 看到工具结果后决定下一步
   }
@@ -320,8 +217,21 @@ export async function runAgent(
   // 优雅收尾：不带 tools 的最后一次调用，强制模型纯文本总结进度
   await finalizeRun(provider, opts.modelOverride, signal, hardStop, conversation, allAssistantMessages, cb, reasoningEffort)
 
+  return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
+}
+
+/**
+ * 正常完成 / 收尾后的公共结束流程：通知完成 + 异步提取长期记忆（不阻塞返回）。
+ */
+function finishRun(
+  allAssistantMessages: ChatMessage[],
+  conversation: WorkingConversation,
+  provider: ProviderConfig,
+  memoryEnabled: boolean | undefined,
+  sessionId: string | undefined,
+  cb: AgentEventCallbacks
+): ChatMessage[] {
   cb.onComplete?.()
-  // 异步提取记忆（不阻塞返回）
   if (memoryEnabled && sessionId) {
     captureMemories(provider, conversation.messages, sessionId).catch(() => {})
   }

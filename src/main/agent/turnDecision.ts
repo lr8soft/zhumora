@@ -37,6 +37,12 @@ export type TurnDecision =
   /** 有工具调用且未截断：进入工具执行阶段 */
   | { kind: 'execute_tools' }
 
+/** 恢复类决策（执行后 continue 下一轮），与终止/工具执行决策相对 */
+export type RecoveryDecision =
+  | { kind: 'recover_truncated_tool' }
+  | { kind: 'recover_truncated_text' }
+  | { kind: 'recover_empty_response' }
+
 /**
  * 决定 streamChat 返回后的下一步。纯函数：相同的信号必得相同的决策。
  * 决策优先级（不可随意调整，逐条对应已知失败模式）：

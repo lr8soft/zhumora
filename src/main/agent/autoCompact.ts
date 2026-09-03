@@ -9,7 +9,7 @@
 // - 压缩边界 = 被折叠的最后一条真实历史消息 id（跳过虚拟摘要位 null）。
 // ============================================================
 import type { ProviderConfig } from '../../shared/types'
-import { planAutoCompact, makeSummaryMessage } from './context'
+import { planAutoCompact, makeSummaryMessage, needsCompact } from './context'
 import type { CompactionState } from './history'
 import { log } from '../llm/logger'
 import type { WorkingConversation } from './workingConversation'
@@ -43,6 +43,16 @@ export class AutoCompactor {
 
   current(): CompactionState | null {
     return this.compactionState
+  }
+
+  /**
+   * 超过阈值才折叠（每轮发送前调用；工具结果可能很大，导致逐轮膨胀）。
+   * 未超阈值时 no-op。
+   */
+  async applyIfOverThreshold(conversation: WorkingConversation, trigger: string): Promise<void> {
+    if (!needsCompact(conversation.messages, this.deps.contextWindow)) return
+    log('info', `Auto compact triggered ${trigger}`)
+    await this.apply(conversation)
   }
 
   /**
