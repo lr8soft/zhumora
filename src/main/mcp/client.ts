@@ -7,7 +7,7 @@ import type { CallToolResult } from '@modelcontextprotocol/sdk/types.js'
 import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
-import type { McpServerConfig, ToolDefinition } from '../../shared/types'
+import type { McpServerConfig, ToolDefinition, ToolImageAttachment } from '../../shared/types'
 import { registerTool, unregisterToolsBySource, type ToolHandler, type ToolContext } from '../tools/registry'
 import { log } from '../llm/logger'
 import { getMaxRetries, withRetry } from '../net/retry'
@@ -183,12 +183,21 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
           try {
             // SDK 1.30 的 callTool 返回类型是联合（常规结果 | task 结果），这里按常规结果处理
             const result = (await client.callTool({ name: tool.name, arguments: args })) as CallToolResult
+            const attachments: ToolImageAttachment[] = []
             const text = result.content
-              ?.map(c => (c.type === 'text' ? c.text : JSON.stringify(c)))
-              .join('\n') || '(no output)'
-            return text
+              ?.map(content => {
+                if (content.type === 'text') return content.text
+                if (content.type === 'image' && isSupportedImageType(content.mimeType)) {
+                  attachments.push({ type: 'image', mediaType: content.mimeType, base64: content.data })
+                  return ''
+                }
+                return JSON.stringify(content)
+              })
+              .filter(Boolean)
+              .join('\n') || (attachments.length ? '' : '(no output)')
+            return { content: text, attachments, isError: result.isError === true }
           } catch (err) {
-            return `MCP tool error: ${(err as Error).message}`
+            return { content: `MCP tool error: ${(err as Error).message}`, isError: true }
           }
         }
       }
@@ -205,6 +214,10 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
     log('error', `Failed to connect MCP "${config.name}": ${errMsg}`)
     throw err
   }
+}
+
+function isSupportedImageType(value: string): value is ToolImageAttachment['mediaType'] {
+  return value === 'image/png' || value === 'image/jpeg' || value === 'image/webp' || value === 'image/gif'
 }
 
 /**

@@ -426,8 +426,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     if (get().runningIds.has(sid)) return
 
     // 添加用户消息 + 思考占位消息（发送后立即显示"思考中 + 转圈动画"）
+    const pendingUserId = `pending-user-${crypto.randomUUID()}`
     const userMsg: UIMessage = {
-      id: `local-${Date.now()}`,
+      id: pendingUserId,
       sessionId: sid,
       role: 'user',
       content: text,
@@ -490,6 +491,16 @@ export const useAppStore = create<AppState>((set, get) => ({
           }
         })
         return
+      }
+      if (result.userMessage) {
+        set((s) => ({
+          messages: {
+            ...s.messages,
+            [sid]: (s.messages[sid] || []).map(message =>
+              message.id === pendingUserId ? result.userMessage! : message
+            )
+          }
+        }))
       }
       // 运行状态由 main 进程的 agent:running 事件权威驱动（事件先于 invoke 响应到达，
       // 无需在这里乐观标记 —— 避免"运行已快速失败但 UI 仍显示 running"的竞态）

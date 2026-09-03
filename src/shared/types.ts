@@ -99,10 +99,36 @@ export interface ToolDefinition {
   }
 }
 
-/** 工具执行结果 */
-export interface ToolResult {
-  id: string                       // 关联的 tool_call_id
+/** 工具返回给模型的附件。二进制内容保持结构化，禁止嵌入魔法字符串。 */
+export interface ToolImageAttachment {
+  type: 'image'
+  mediaType: 'image/png' | 'image/jpeg' | 'image/webp' | 'image/gif'
+  base64: string
+  detail?: 'auto' | 'low' | 'high'
+}
+
+export type ToolAttachment = ToolImageAttachment
+
+/**
+ * 工具 handler 的标准输出。
+ * content 用于持久化和 UI；attachments 只进入本轮 LLM 多模态上下文。
+ */
+export interface ToolExecutionResult {
   content: string
+  attachments?: ToolAttachment[]
+  /** 预期内的工具失败（例如远端 MCP 返回 isError），无需通过 throw 编码。 */
+  isError?: boolean
+}
+
+/**
+ * 兼容尚未迁移的纯文本工具。新增工具必须返回 ToolExecutionResult；
+ * registry 边界会把旧 string 输出归一化，runner 只处理标准结构。
+ */
+export type ToolHandlerOutput = ToolExecutionResult | string
+
+/** 已完成的一次工具调用（跨进程/观测层使用） */
+export interface ToolResult extends ToolExecutionResult {
+  id: string                       // 关联的 tool_call_id
   isError: boolean
   durationMs: number
 }
@@ -166,6 +192,8 @@ export type AutoApproveMode = 'manual' | 'auto' | 'full'
 
 /** 设置 */
 export interface AppSettings {
+  /** settings JSON 的结构版本；由存储层迁移，调用方不自行修改 */
+  schemaVersion?: number
   providers: ProviderConfig[]
   mcpServers: McpServerConfig[]
   skills: SkillConfig[]

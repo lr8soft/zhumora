@@ -102,12 +102,7 @@ export async function withRetry<T>(fn: (attempt: number) => Promise<T>, opts: Re
  * -1 = 无限，0 = 不重试，默认 5（兼容旧设置无此字段）；钳制到 -1…99
  */
 export function getMaxRetries(): number {
-  let r: unknown
-  try {
-    r = getSettings().maxRetries
-  } catch {
-    return DEFAULT_MAX_RETRIES
-  }
+  const r: unknown = getSettings().maxRetries
   if (typeof r !== 'number' || !Number.isFinite(r)) return DEFAULT_MAX_RETRIES
   const v = Math.round(r)
   if (v < 0) return UNLIMITED_RETRIES

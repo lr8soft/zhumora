@@ -17,11 +17,7 @@ import { log } from '../llm/logger'
 
 /** 当前是否使用系统证书库（net.fetch）。读取失败时保守回退内置 fetch */
 export function useSystemCerts(): boolean {
-  try {
-    return getSettings().useSystemCerts === true
-  } catch {
-    return false
-  }
+  return getSettings().useSystemCerts === true
 }
 
 /**

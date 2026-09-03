@@ -38,6 +38,8 @@ export interface CompletionParams {
   tools?: ToolDefinition[]
   /** OpenAI-compatible tool selection mode. Defaults to auto when tools are present. */
   toolChoice?: ToolChoice
+  /** required 被兼容端点拒绝时允许的显式降级策略；仅由上层路由决定。 */
+  toolChoiceFallback?: 'auto'
   temperature?: number
   maxTokens?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
@@ -117,16 +119,14 @@ export async function streamChat(
     try {
       result = await runRequest()
     } catch (err) {
-      // Some OpenAI-compatible local servers accept tool_choice=auto but not
-      // tool_choice=required. Office routing still removes bash/write/edit, so
-      // falling back to auto preserves the important execution boundary.
       if (
         params.toolChoice === 'required'
+        && params.toolChoiceFallback === 'auto'
         && err instanceof HttpError
         && err.status === 400
         && /tool.?choice|required|unsupported/i.test(err.message)
       ) {
-        log('warn', 'LLM endpoint rejected tool_choice=required; retrying with auto and the same filtered tools')
+        log('warn', 'LLM endpoint rejected tool_choice=required; applying caller-approved auto fallback')
         body.tool_choice = 'auto'
         result = await runRequest()
       } else {

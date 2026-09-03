@@ -2,9 +2,14 @@
 // 系统提示词构建 — 从工具注册表动态生成工具描述
 // 参考 Cline / opencode 的提示词设计，针对 Zhumora 的 Electron 桌面环境定制
 // ============================================================
-import { getAllTools, getToolsBySource } from '../tools/registry'
-import { getMcpConnectionStatus } from '../mcp/client'
 import type { ToolDefinition } from '../../shared/types'
+
+export interface PromptRuntimeSnapshot {
+  tools: ToolDefinition[]
+  builtinTools: ToolDefinition[]
+  mcpTools: ToolDefinition[]
+  mcpServers: Array<{ id: string; name: string; connected: boolean }>
+}
 
 // ============================================================
 // 静态指导文本（与具体工具列表无关的通用规则）
@@ -129,8 +134,7 @@ function summarizeDescription(def: ToolDefinition): string {
 }
 
 /** 从注册表获取内置工具并按分类生成描述段落 */
-function buildBuiltinToolSection(): string {
-  const allTools = getAllTools()
+function buildBuiltinToolSection(allTools: ToolDefinition[]): string {
   const toolMap = new Map(allTools.map(t => [t.function.name, t]))
 
   const sections: string[] = ['## Core Tools']
@@ -171,8 +175,8 @@ function buildBuiltinToolSection(): string {
 }
 
 /** 构建 MCP 工具段落（动态获取连接状态 + 工具列表） */
-function buildMcpSection(): string {
-  const mcpStatus = getMcpConnectionStatus()
+function buildMcpSection(snapshot: PromptRuntimeSnapshot): string {
+  const mcpStatus = snapshot.mcpServers
   const connectedServers = mcpStatus.filter(s => s.connected)
   const disconnectedServers = mcpStatus.filter(s => !s.connected)
 
@@ -180,7 +184,7 @@ function buildMcpSection(): string {
   const lines: string[] = ['\n\n## MCP Tools (External integrations)']
 
   if (connectedServers.length > 0) {
-    const mcpTools = getToolsBySource((s) => s.startsWith('mcp:'))
+    const mcpTools = snapshot.mcpTools
     if (mcpTools.length > 0) {
       lines.push('The following MCP tools are connected and available. Use them when the task matches their capabilities:')
       for (const t of mcpTools) {
@@ -200,8 +204,7 @@ function buildMcpSection(): string {
   }
 
   // 自管理指南：仅当工具确实注册了才输出
-  const allBuiltins = getToolsBySource('builtin')
-  const hasManager = allBuiltins.some(t => t.function.name === 'mcp_add_server')
+  const hasManager = snapshot.builtinTools.some(t => t.function.name === 'mcp_add_server')
   if (hasManager) {
     lines.push(`
 ### MCP Self-Management
@@ -225,10 +228,11 @@ export function buildSystemPrompt(
   workspacePath: string,
   skillsPrompt: string,
   memoryPrompt: string,
+  runtime: PromptRuntimeSnapshot,
   extra?: string
 ): string {
-  const builtinSection = buildBuiltinToolSection()
-  const mcpSection = buildMcpSection()
+  const builtinSection = buildBuiltinToolSection(runtime.tools)
+  const mcpSection = buildMcpSection(runtime)
   const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 

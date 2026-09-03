@@ -5,8 +5,11 @@ import Database from 'better-sqlite3'
 import * as path from 'node:path'
 import { app } from 'electron'
 import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory } from '../../shared/types'
+import { runDatabaseMigrations } from './migrations'
+import { generateId } from '../id'
 
 let db: Database.Database | null = null
+let settingsCache: AppSettings | null = null
 
 export function initDatabase(): void {
   const userDataPath = app.getPath('userData')
@@ -15,120 +18,9 @@ export function initDatabase(): void {
   db.pragma('journal_mode = WAL')
   db.pragma('foreign_keys = ON')
 
-  db.exec(`
-    CREATE TABLE IF NOT EXISTS sessions (
-      id TEXT PRIMARY KEY,
-      title TEXT NOT NULL DEFAULT 'New Session',
-      created_at INTEGER NOT NULL,
-      updated_at INTEGER NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS messages (
-      id TEXT PRIMARY KEY,
-      session_id TEXT NOT NULL,
-      role TEXT NOT NULL,
-      content TEXT,
-      reasoning TEXT,
-      tool_calls TEXT,
-      tool_call_id TEXT,
-      tool_name TEXT,
-      images TEXT,
-      timestamp INTEGER NOT NULL,
-      status TEXT,
-      FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id, timestamp);
-
-    CREATE TABLE IF NOT EXISTS settings (
-      key TEXT PRIMARY KEY,
-      value TEXT NOT NULL
-    );
-
-    CREATE TABLE IF NOT EXISTS memory_entries (
-      id TEXT PRIMARY KEY,
-      category TEXT NOT NULL,
-      content TEXT NOT NULL,
-      importance INTEGER NOT NULL DEFAULT 3,
-      source_session_id TEXT,
-      created_at INTEGER NOT NULL,
-      last_accessed INTEGER NOT NULL,
-      access_count INTEGER NOT NULL DEFAULT 0,
-      tags TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS idx_memory_category ON memory_entries(category);
-    CREATE INDEX IF NOT EXISTS idx_memory_importance ON memory_entries(importance DESC);
-
-    -- token_usage：30 分钟桶（全局，不随会话删除）。
-    -- 每次 LLM 调用把 input/output 累加进当前 30 分钟桶（upsert），
-    -- 一个 (model, bucket_start) = 一个数据点。
-    CREATE TABLE IF NOT EXISTS token_usage (
-      model TEXT NOT NULL,
-      bucket_start INTEGER NOT NULL,
-      input_tokens INTEGER NOT NULL DEFAULT 0,
-      output_tokens INTEGER NOT NULL DEFAULT 0,
-      request_count INTEGER NOT NULL DEFAULT 0,
-      PRIMARY KEY (model, bucket_start)
-    );
-    -- 注意：token_usage 的索引在下方"结构迁移"之后再建。
-    -- 若库里有旧结构 token_usage（无 bucket_start 列），上面的 CREATE IF NOT EXISTS
-    -- 会跳过，必须等迁移把表重建为新结构后才能建 bucket_start 索引，
-    -- 否则 "no such column: bucket_start"。
-
-    -- compactions：上下文压缩状态（每会话一行，始终为最新一次压缩）。
-    -- 压缩只影响"发给 LLM 的上下文"，不删除/不改写 messages 表，
-    -- 用户侧始终能看到完整历史。up_to_message_id 之前的消息在构建
-    -- LLM 上下文时会被替换为 summary。
-    CREATE TABLE IF NOT EXISTS compactions (
-      session_id TEXT PRIMARY KEY,
-      up_to_message_id TEXT NOT NULL,
-      summary TEXT NOT NULL,
-      created_at INTEGER NOT NULL
-    );
-  `)
-
-  // 迁移：token_usage 旧结构（每次调用一行、session 级联）→ 新结构（30 分钟桶、全局）。
-  // 旧库有 session_id 列且无 bucket_start 列时执行；新库直接跳过。
-  const tuCols = db!.prepare("PRAGMA table_info(token_usage)").all() as { name: string }[]
-  if (tuCols.some(c => c.name === 'session_id') && !tuCols.some(c => c.name === 'bucket_start')) {
-    db!.exec(`
-      CREATE TABLE token_usage_new (
-        model TEXT NOT NULL,
-        bucket_start INTEGER NOT NULL,
-        input_tokens INTEGER NOT NULL DEFAULT 0,
-        output_tokens INTEGER NOT NULL DEFAULT 0,
-        request_count INTEGER NOT NULL DEFAULT 0,
-        PRIMARY KEY (model, bucket_start)
-      );
-      INSERT INTO token_usage_new (model, bucket_start, input_tokens, output_tokens, request_count)
-        SELECT model, (created_at / 1800000) * 1800000, SUM(input_tokens), SUM(output_tokens), COUNT(*)
-        FROM token_usage
-        GROUP BY model, (created_at / 1800000) * 1800000;
-      DROP TABLE token_usage;
-      ALTER TABLE token_usage_new RENAME TO token_usage;
-    `)
-  }
-
-  // token_usage 索引：无论新库还是迁移后的旧库，此时表已是新结构（含 bucket_start）
-  db!.exec('CREATE INDEX IF NOT EXISTS idx_token_usage_bucket ON token_usage(bucket_start)')
-
-  // 迁移：给 sessions 加 workspace_path 列（如果不存在）
-  const columns = db!.prepare("PRAGMA table_info(sessions)").all() as { name: string }[]
-  if (!columns.some(c => c.name === 'workspace_path')) {
-    db!.exec('ALTER TABLE sessions ADD COLUMN workspace_path TEXT')
-  }
-
-  // 迁移：给 messages 加 images 列（用户图片附件，JSON 数组）
-  const msgColumns = db!.prepare("PRAGMA table_info(messages)").all() as { name: string }[]
-  if (!msgColumns.some(c => c.name === 'images')) {
-    db!.exec('ALTER TABLE messages ADD COLUMN images TEXT')
-  }
-
-  // 迁移：给 messages 加 reasoning 列（模型思考内容，与 Cline/opencode 对齐：单独存储、不喂回 LLM）
-  if (!msgColumns.some(c => c.name === 'reasoning')) {
-    db!.exec('ALTER TABLE messages ADD COLUMN reasoning TEXT')
-  }
+  runDatabaseMigrations(db)
+  settingsCache = loadSettings()
+  persistSettings(settingsCache)
 }
 
 // ============================================================
@@ -136,7 +28,7 @@ export function initDatabase(): void {
 // ============================================================
 
 export function createSession(title = 'New Session', workspacePath?: string): Session {
-  const id = genId()
+  const id = generateId()
   const now = Date.now()
   db!.prepare('INSERT INTO sessions (id, title, created_at, updated_at, workspace_path) VALUES (?, ?, ?, ?, ?)')
     .run(id, title, now, now, workspacePath || null)
@@ -244,22 +136,32 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
+export const SETTINGS_SCHEMA_VERSION = 1
+
 export function getSettings(): AppSettings {
-  const row = db!.prepare('SELECT value FROM settings WHERE key = ?').get('app_settings') as any
-  if (row) {
-    try { return JSON.parse(row.value) }
-    catch { /* fall through to default */ }
-  }
-  return defaultSettings()
+  if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
+  return structuredClone(settingsCache)
 }
 
 export function saveSettings(settings: AppSettings): void {
+  if (!db) throw new Error('Database has not been initialized')
+  const normalized = normalizeSettings(settings)
+  persistSettings(normalized)
+  settingsCache = normalized
+}
+
+function persistSettings(settings: AppSettings): void {
   db!.prepare('INSERT OR REPLACE INTO settings (key, value) VALUES (?, ?)')
     .run('app_settings', JSON.stringify(settings))
 }
 
 function defaultSettings(): AppSettings {
+  let workspacePath = process.cwd()
+  try {
+    if (app.isReady()) workspacePath = app.getPath('home')
+  } catch { /* Electron app is unavailable in isolated unit tests */ }
   return {
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
     providers: [
       {
         id: 'zhuminet-default',
@@ -273,11 +175,40 @@ function defaultSettings(): AppSettings {
     mcpServers: [],
     skills: [],
     activeProviderId: 'zhuminet-default',
-    workspacePath: app.getPath('home'),
+    workspacePath,
     memoryEnabled: true,
     language: 'auto',
     maxRetries: 5,
     maxRounds: 20
+  }
+}
+
+function loadSettings(): AppSettings {
+  const row = db!.prepare('SELECT value FROM settings WHERE key = ?').get('app_settings') as { value: string } | undefined
+  if (!row) return defaultSettings()
+  try {
+    return normalizeSettings(JSON.parse(row.value))
+  } catch {
+    return defaultSettings()
+  }
+}
+
+/** JSON blob 的前向迁移与默认值合并集中在存储边界。 */
+export function normalizeSettings(input: unknown): AppSettings {
+  const defaults = defaultSettings()
+  if (!input || typeof input !== 'object') return defaults
+  const raw = input as Partial<AppSettings>
+  return {
+    ...defaults,
+    ...raw,
+    schemaVersion: SETTINGS_SCHEMA_VERSION,
+    providers: Array.isArray(raw.providers) ? raw.providers : defaults.providers,
+    mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
+    skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,
+    activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
+      ? raw.activeProviderId
+      : defaults.activeProviderId,
+    workspacePath: typeof raw.workspacePath === 'string' ? raw.workspacePath : defaults.workspacePath
   }
 }
 
@@ -291,16 +222,12 @@ function safeJsonParse<T>(raw: string): T | null {
   }
 }
 
-function genId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-}
-
 // ============================================================
 // Memory 操作 — longterm-skill
 // ============================================================
 
 export function addMemory(entry: Omit<MemoryEntry, 'id' | 'createdAt' | 'lastAccessed' | 'accessCount'>): MemoryEntry {
-  const id = genId()
+  const id = generateId()
   const now = Date.now()
   db!.prepare(`
     INSERT INTO memory_entries (id, category, content, importance, source_session_id, created_at, last_accessed, access_count, tags)

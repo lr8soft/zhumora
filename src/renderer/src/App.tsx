@@ -32,10 +32,8 @@ function pushMessage(sessionId: string, fn: (msgs: import('@shared/types').UIMes
 // ============================================================
 
 interface TokenPending {
-  /** 目标消息 id（缓冲时刻解析；新消息兜底时为空） */
-  msgId: string | null
-  /** 新建兜底消息的 id（onToken 的 messageId；无则 flush 时生成） */
-  newId?: string
+  /** main 进程分配的权威消息 id */
+  msgId: string
   content: string
   reasoning: string
 }
@@ -48,23 +46,20 @@ const pendingSessions = new Set<string>()
 
 const TOKEN_FLUSH_MS = 32
 
-function keyOf(sessionId: string, msgId: string | null): string {
-  return `${sessionId}\0${msgId ?? 'new'}`
+function keyOf(sessionId: string, msgId: string): string {
+  return `${sessionId}\0${msgId}`
 }
 
 /**
- * 缓冲一个流式增量。targetId = 缓冲时刻解析到的目标消息 id；
- * null = 走兜底逻辑（flush 时按"最后一条 thinking/streaming assistant"或新建）。
+ * 缓冲一个流式增量。IPC 保证 assistant:start 先于 token，renderer
+ * 只按 main 分配的 id 路由，不猜测“最后一条消息”。
  */
-function bufferToken(sessionId: string, targetId: string | null, kind: 'content' | 'reasoning', text: string, newId?: string) {
-  // 目标 id 可能因结构事件在缓冲期间变化 —— 同一会话同一 kind 的增量
-  // 总是属于同一条消息，所以按 (sessionId, kind) 归并；targetId 以首次写入为准
+function bufferToken(sessionId: string, targetId: string, kind: 'content' | 'reasoning', text: string) {
   const k = keyOf(sessionId, targetId)
   let p = pendingTokens.get(k)
   if (!p) {
     p = { msgId: targetId, content: '', reasoning: '' }
     pendingTokens.set(k, p)
-    if (newId) p.newId = newId
   }
   if (kind === 'content') p.content += text
   else p.reasoning += text
@@ -116,42 +111,9 @@ function flushPending() {
       })
       for (const p of items) {
         if (!p.content && !p.reasoning) continue
-        if (p.msgId) {
-          const idx = next.findIndex(m => m.id === p.msgId)
-          if (idx >= 0) {
-            next[idx] = append(p, next[idx])
-            changed = true
-            continue
-          }
-          // 缓冲期间消息被结构事件移除/替换 → 降级走兜底
-        }
-        // 兜底：最后一条可流式的 assistant 消息
-        const last = next[next.length - 1]
-        if (last && last.role === 'assistant' && (last.status === 'thinking' || last.status === 'streaming')) {
-          next[next.length - 1] = append(p, last)
-          changed = true
-          continue
-        }
-        // 兜底条目可能携带 newId（token 到达时消息尚不存在，之后 assistant:start
-        // 已把它建出来）→ 找到就追加，避免重复创建消息
-        if (p.newId) {
-          const idx = next.findIndex(m => m.id === p.newId)
-          if (idx >= 0) {
-            next[idx] = append(p, next[idx])
-            changed = true
-            continue
-          }
-        }
-        // 最终兜底：新建流式消息
-        next.push({
-          id: p.newId || `stream-${Date.now()}`,
-          sessionId: sid,
-          role: 'assistant' as const,
-          content: p.content,
-          reasoning: p.reasoning || undefined,
-          timestamp: Date.now(),
-          status: 'streaming' as const
-        })
+        const idx = next.findIndex(m => m.id === p.msgId)
+        if (idx < 0) continue
+        next[idx] = append(p, next[idx])
         changed = true
       }
       if (changed) messages = { ...messages, [sid]: next }
@@ -225,21 +187,21 @@ export default function App() {
       window.api.agent.onReasoning(({ sessionId, messageId, token }) => {
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
-        bufferToken(sessionId, msgs.some(m => m.id === messageId) ? messageId : null, 'reasoning', token)
+        bufferToken(sessionId, messageId, 'reasoning', token)
       }),
 
       // 流式 token → 写缓冲（精确路由到 messageId 对应的消息）
       window.api.agent.onToken(({ sessionId, messageId, token }) => {
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
-        bufferToken(sessionId, msgs.some(m => m.id === messageId) ? messageId : null, 'content', token, messageId)
+        bufferToken(sessionId, messageId, 'content', token)
       }),
 
       // assistant 消息事件（phase=start：本轮开始，替换 thinking 占位为流式消息；
       // phase=end：本轮结束，把流式消息收尾为 done）。
       // 工具行不在此渲染（onToolCall 事件负责，避免重复）；
       // 纯工具调用且无文本的轮次不创建空气泡。
-      window.api.agent.onAssistantMessage(({ sessionId, messageId, content, phase, reasoning }) => {
+      window.api.agent.onAssistantMessage(({ sessionId, messageId, content, toolCalls, phase, reasoning }) => {
         flushPending()
         const msgs = useAppStore.getState().messages[sessionId]
         if (msgs === undefined) return
@@ -277,7 +239,7 @@ export default function App() {
             const finalContent = content || m[existingIdx].content
             // 纯工具轮（无任何文本、无思考内容）：start 时创建的空流式气泡直接移除，
             // 工具行由 onToolCall 事件渲染，避免留下空气泡
-            if (!finalContent && !reasoning && !m[existingIdx].reasoning) {
+            if (!finalContent && !reasoning && !m[existingIdx].reasoning && toolCalls.length === 0) {
               return m.filter((_, i) => i !== existingIdx)
             }
             // 流式消息收尾（reasoning 用 end 事件的权威值覆盖 UI 侧累积值）
@@ -286,30 +248,41 @@ export default function App() {
               ...updated[existingIdx],
               content: finalContent,
               reasoning: reasoning || updated[existingIdx].reasoning,
-              status: 'done' as const
+              toolCalls: toolCalls.length > 0 ? toolCalls : updated[existingIdx].toolCalls,
+              status: toolCalls.length > 0 ? ('pending' as const) : ('done' as const)
             }
             return updated
           }
-          if (!content && !reasoning) return m
+          if (!content && !reasoning && toolCalls.length === 0) return m
           return [...m, {
             id: messageId,
             sessionId,
             role: 'assistant' as const,
             content,
             reasoning,
+            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
             timestamp: Date.now(),
-            status: 'done' as const
+            status: toolCalls.length > 0 ? ('pending' as const) : ('done' as const)
           }]
         })
       }),
 
       // 工具调用 → 插入到对应会话（不再依赖 activeSessionId，后台会话同样累积）
-      window.api.agent.onToolCall(({ sessionId, toolCall }) => {
+      window.api.agent.onToolCall(({ sessionId, messageId, toolCall }) => {
         flushPending()
         pushMessage(sessionId, (m) => {
+          if (!messageId) return m
           const next = m.filter(x => x.status !== 'thinking')
+          const idx = next.findIndex(x => x.id === messageId)
+          if (idx >= 0) {
+            const calls = next[idx].toolCalls || []
+            if (!calls.some(call => call.id === toolCall.id)) {
+              next[idx] = { ...next[idx], toolCalls: [...calls, toolCall], status: 'pending' }
+            }
+            return next
+          }
           next.push({
-            id: `tc-${toolCall.id || Date.now()}`,
+            id: messageId,
             sessionId,
             role: 'assistant' as const,
             content: '',
@@ -322,10 +295,10 @@ export default function App() {
       }),
 
       // 工具结果 → 插入到对应会话
-      window.api.agent.onToolResult(({ sessionId, toolCallId, toolName, result, isError }) => {
+      window.api.agent.onToolResult(({ sessionId, messageId, toolCallId, toolName, result, isError }) => {
         flushPending()
         pushMessage(sessionId, (m) => [...m, {
-          id: `tr-${toolCallId}-${Date.now()}`,
+          id: messageId,
           sessionId,
           role: 'tool' as const,
           content: result,

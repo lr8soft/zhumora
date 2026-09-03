@@ -396,8 +396,16 @@ function screenshotMetadata(capture: CapturedDisplay) {
   }
 }
 
-function formatImageResult(capture: CapturedDisplay, payload: Record<string, unknown>): string {
-  return `__IMAGE_BASE64__:${capture.base64}\n${JSON.stringify(payload, null, 2)}`
+function formatImageResult(capture: CapturedDisplay, payload: Record<string, unknown>) {
+  return {
+    content: JSON.stringify(payload, null, 2),
+    attachments: [{
+      type: 'image' as const,
+      mediaType: 'image/png' as const,
+      base64: capture.base64,
+      detail: 'auto' as const
+    }]
+  }
 }
 
 function optionalString(value: unknown): string | undefined {

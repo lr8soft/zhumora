@@ -53,7 +53,7 @@ const api = {
   // ============================================================
   agent: {
     /** 发送消息并启动 agent 运行（立即返回；agent 在后台独立运行，多个会话可并行） */
-    run: (sessionId: string, message: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode; reasoningEffort?: ReasoningEffort }): Promise<{ ok?: boolean; error?: string }> =>
+    run: (sessionId: string, message: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode; reasoningEffort?: ReasoningEffort }): Promise<{ ok?: boolean; error?: string; userMessage?: UIMessage }> =>
       ipcRenderer.invoke('agent:run', sessionId, message, options),
     /** 查询正在运行的会话 ID 列表（用于启动时恢复侧边栏运行指示） */
     running: (): Promise<string[]> =>
@@ -105,12 +105,12 @@ const api = {
       ipcRenderer.on('agent:running', handler)
       return () => ipcRenderer.removeListener('agent:running', handler)
     },
-    onToolCall: (cb: (data: { sessionId: string; toolCall: any }) => void) => {
+    onToolCall: (cb: (data: { sessionId: string; messageId: string | null; toolCall: any }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:tool_call', handler)
       return () => ipcRenderer.removeListener('agent:tool_call', handler)
     },
-    onToolResult: (cb: (data: { sessionId: string; toolCallId: string; toolName: string; result: string; isError: boolean; durationMs: number }) => void) => {
+    onToolResult: (cb: (data: { sessionId: string; messageId: string; toolCallId: string; toolName: string; result: string; isError: boolean; durationMs: number }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:tool_result', handler)
       return () => ipcRenderer.removeListener('agent:tool_result', handler)

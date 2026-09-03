@@ -14,12 +14,7 @@ import { COMPACT_SUMMARY_PREFIX } from '../../shared/types'
 import { complete } from '../llm/provider'
 import { getFetch } from '../net/fetch'
 import { log } from '../llm/logger'
-import { planCompactByTokens, buildEffectiveConversation, type CompactionState } from './history'
-
-// 纯函数 buildEffectiveConversation 与 CompactionState 定义在 ./history，
-// 这里再导出，方便 runner / ipc 从 context 统一引用
-export { buildEffectiveConversation }
-export type { CompactionState }
+import { planCompactByTokens } from './history'
 
 // 默认上下文窗口（API 未返回、启发式也未命中时的 fallback）
 const DEFAULT_CONTEXT_WINDOW = 32768

@@ -13,62 +13,33 @@
 // assistant / tool 消息追加时同时 push 到两个数组，保证 id 对齐；压缩边界
 // 总是取"被折叠的最后一条真实历史消息 id"（跳过虚拟摘要位 null）。
 // ============================================================
-import type { ChatMessage, ContentPart, ProviderConfig, ToolCall, ReasoningEffort } from '../../shared/types'
+import type { ChatMessage, ProviderConfig, ToolCall, ReasoningEffort } from '../../shared/types'
 import { streamChat, type TokenUsage, type ToolChoice } from '../llm/provider'
 import { log } from '../llm/logger'
-import { getTool, getAllTools, type ToolContext } from '../tools/registry'
+import { toolRegistry, type ToolRegistry } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
 import {
-  needsCompact, fetchContextWindow, buildEffectiveConversation,
-  planAutoCompact, makeSummaryMessage, type CompactionState
+  needsCompact, fetchContextWindow, planAutoCompact, makeSummaryMessage
 } from '../agent/context'
-import { buildSystemPrompt } from '../agent/promptBuilder'
-import { sanitizeHistoryWithIds } from './history'
+import { buildSystemPrompt, type PromptRuntimeSnapshot } from '../agent/promptBuilder'
+import { buildEffectiveConversation, sanitizeHistoryWithIds, type CompactionState } from './history'
 import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
-import { getSettings } from '../store/db'
 import { AgentAbortedError } from '../../shared/types'
 import { detectOfficeRoute, selectToolsForOfficeRoute } from './officeRouting'
+import { executeToolCall } from './toolExecutor'
+import {
+  EMPTY_CONTINUE_PROMPT,
+  MAX_EMPTY_CONTINUATIONS,
+  MAX_TRUNCATION_CONTINUATIONS,
+  RecoveryBudget,
+  TRUNCATION_CONTINUE_PROMPT,
+  TRUNCATION_TOOL_ERROR
+} from './recoveryPolicy'
+
+export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
 
 export const DEFAULT_MAX_TOOL_ROUNDS = 20
-
-/** 同一轮次内"输出被截断"的自动续写次数上限（防止截断 → 续写 → 再截断的死循环） */
-export const MAX_TRUNCATION_CONTINUATIONS = 2
-
-/** 单轮输出达到 max_tokens 上限被截断时回传给模型的提示（喂 LLM，固定英文） */
-const TRUNCATION_TOOL_ERROR =
-  '[Output truncated] Your previous response hit the per-response token limit and was cut off: the tool call arguments are incomplete. Re-issue the call with smaller output — e.g. split file writes into multiple smaller chunks — or take the next smaller step.'
-
-/** 单轮输出达到 max_tokens 上限被截断（纯文本轮）时追加的续写指令（喂 LLM，固定英文） */
-const TRUNCATION_CONTINUE_PROMPT =
-  '[System notice] Your previous response was truncated by the per-response token limit (max_tokens) and is incomplete. Continue exactly from where you stopped. Do not repeat what you already wrote. If you were about to call a tool, call it now with a smaller output (split large file writes into chunks).'
-
-/**
- * 空响应（finish_reason=stop 但无正文、无工具调用）的自动继续次数上限。
- * 推理模型偶发"只思考不输出"或空补全：工作没做完却提前收尾，
- * 用户必须手动发"继续"。超过该次数后不再自动继续，走正常收尾，
- * 防止"空响应 → 继续 → 再空响应"死循环烧 token。
- */
-export const MAX_EMPTY_CONTINUATIONS = 2
-
-/** 空响应时回传给模型的继续指令（喂 LLM，固定英文） */
-const EMPTY_CONTINUE_PROMPT =
-  '[System notice] Your previous response was empty — it contained no text and no tool call. Do not stop now. If the task is already fully complete, write a brief final summary of what you did. Otherwise continue: take the next step by calling a tool or writing your answer.'
-
-/** 单次对话最大工具轮数（0 = 不限制）。设置 maxRounds 可配，默认 20 */
-export function getMaxToolRounds(): number {
-  try {
-    const v = getSettings().maxRounds
-    if (typeof v === 'number' && Number.isFinite(v) && v >= 0) return Math.round(v)
-  } catch { /* DB 未初始化等场景 → 默认值 */ }
-  return DEFAULT_MAX_TOOL_ROUNDS
-}
-
-// Skill 提示词通过函数延迟获取，避免初始化顺序问题
-let skillsPromptGetter: (() => string) | null = null
-export function setSkillsPromptGetter(fn: () => string) {
-  skillsPromptGetter = fn
-}
 
 export interface AgentEventCallbacks {
   /** LLM 流式 token */
@@ -76,7 +47,7 @@ export interface AgentEventCallbacks {
   /** LLM 流式思考内容（reasoning_content；仅供 UI 展示，不回传模型） */
   onReasoningToken?: (token: string) => void
   /** LLM 请求了工具调用 */
-  onToolCall?: (toolCall: ToolCall) => void
+  onToolCall?: (toolCall: ToolCall, assistantMessageId: string | null) => void
   /** 工具执行完成。返回该 tool 消息落库后的 id（供压缩边界定位），未落库返回 null */
   onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => string | null
   /** 一轮 LLM 调用完成（可能继续循环或结束）。返回该 assistant 消息落库后的 id，未落库返回 null */
@@ -114,6 +85,12 @@ export interface AgentRunOptions {
   permissionCheck?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
   signal?: AbortSignal
   systemPromptExtra?: string
+  /** 由组合根提供的已加载 Skill 提示词，runner 不读取模块级全局状态。 */
+  skillsPrompt?: string
+  /** 构建系统提示词所需的运行时快照，避免 prompt builder 反向依赖 MCP/registry。 */
+  promptRuntime?: PromptRuntimeSnapshot
+  /** 应用组合根构造的工具注册表；测试可传隔离实例。 */
+  toolRegistry?: ToolRegistry
   /** 覆盖模型名（如果用户在聊天页选了别的模型） */
   modelOverride?: string
   /** 对话级思考强度（聊天输入框选择；'off'/undefined = 不发送 reasoning_effort 参数） */
@@ -141,6 +118,7 @@ export async function runAgent(
   cb: AgentEventCallbacks
 ): Promise<ChatMessage[]> {
   const { provider, workspacePath, messages, messageIds, compaction, signal, permissionCheck, modelOverride, sessionId, memoryEnabled, onSessionTitleUpdate, onAutoCompact } = opts
+  const toolsRegistry = opts.toolRegistry || toolRegistry
   // 对话级思考强度（'off'/undefined = 不发送参数，模型默认行为）。
   // 收窄为 streamChat 接受的 'low'|'medium'|'high'
   const reasoningEffort = opts.reasoningEffort && opts.reasoningEffort !== 'off' ? opts.reasoningEffort : undefined
@@ -156,9 +134,15 @@ export async function runAgent(
   }
 
   // 构建系统提示词（含记忆注入 + MCP 工具动态列表）
-  const skillsPrompt = skillsPromptGetter ? skillsPromptGetter() : ''
+  const skillsPrompt = opts.skillsPrompt || ''
   const memoryPrompt = memoryEnabled ? buildMemoryPrompt(extractTextContent(getLastUserMessage(messages))) : ''
-  const systemPrompt = buildSystemPrompt(workspacePath, skillsPrompt, memoryPrompt, opts.systemPromptExtra)
+  const promptRuntime = opts.promptRuntime || {
+    tools: toolsRegistry.definitions(),
+    builtinTools: [],
+    mcpTools: [],
+    mcpServers: []
+  }
+  const systemPrompt = buildSystemPrompt(workspacePath, skillsPrompt, memoryPrompt, promptRuntime, opts.systemPromptExtra)
 
   // 清洗 abort/崩溃遗留的非法序列（孤儿 tool 结果、不完整的 tool_call 组），
   // 否则第一轮请求就会 400。ids 与消息平行对齐（清洗删除中间消息时不错位）。
@@ -235,7 +219,7 @@ export async function runAgent(
     await applyAutoCompact()
   }
 
-  const maxRounds = opts.maxRounds ?? getMaxToolRounds()
+  const maxRounds = opts.maxRounds ?? DEFAULT_MAX_TOOL_ROUNDS
   const loopConfig = opts.loopConfig || DEFAULT_LOOP_CONFIG
   const loopDetector = new LoopDetector()
   /** 硬停原因（循环检测 / 达到轮数上限）；非 null 时本轮剩余工具跳过，循环结束后触发优雅收尾 */
@@ -250,8 +234,7 @@ export async function runAgent(
    * 防止"截断 → 续写 → 再截断"死循环烧 token。
    * 每个新的原始轮次（用户输入 / 工具结果驱动）重置为 0。
    */
-  let truncationContinuations = 0
-  let emptyContinuations = 0
+  const recovery = new RecoveryBudget()
 
   while (maxRounds <= 0 || round < maxRounds) {
     round++
@@ -267,7 +250,7 @@ export async function runAgent(
     // 若不显式抛出，agent 会带着部分回复继续下一轮 / 执行工具
     if (signal?.aborted) throw new AgentAbortedError()
 
-    const tools = selectToolsForOfficeRoute(getAllTools(), officeRoute)
+    const tools = selectToolsForOfficeRoute(toolsRegistry.definitions(), officeRoute)
     const routedOfficeAvailable = !!officeRoute && tools.some(tool => tool.function.name === officeRoute.toolName)
     const toolChoice: ToolChoice = routedOfficeAvailable && !officeToolAttempted ? 'required' : 'auto'
     const model = modelOverride || provider.defaultModel
@@ -277,6 +260,7 @@ export async function runAgent(
       messages: workingMessages,
       tools: tools.length > 0 ? tools : undefined,
       toolChoice,
+      toolChoiceFallback: routedOfficeAvailable ? 'auto' : undefined,
       model,
       temperature: provider.temperature,
       reasoningEffort,
@@ -308,7 +292,7 @@ export async function runAgent(
     // 不处理的话截断轮会"看起来像正常完成"—— 工作没做完、无报错，
     // 这是本修复要解决的根因（对齐 opencode / Cline：finish_reason 是一等信号）。
     const wasTruncated = finishReason === 'length'
-    const canRecover = truncationContinuations < MAX_TRUNCATION_CONTINUATIONS
+    const canRecover = recovery.canRecoverTruncation()
 
     if (wasTruncated && canRecover && toolCalls.length > 0) {
       // 截断发生在工具轮：tool_calls 参数 JSON 多半不完整，不能执行。
@@ -319,15 +303,16 @@ export async function runAgent(
         content: content || null,
         tool_calls: toolCalls
       }
+      const truncatedAssistantId = cb.onAssistantMessage?.(content, toolCalls, roundReasoning || undefined) ?? null
       workingMessages.push(assistantMsg)
-      workingIds.push(cb.onAssistantMessage?.(content, toolCalls, roundReasoning || undefined) ?? null)
+      workingIds.push(truncatedAssistantId)
       allAssistantMessages.push(assistantMsg)
 
       cb.onTruncated?.('tool')
-      truncationContinuations++
-      log('warn', `Round ${round}: output truncated at token limit (finish_reason=length) — tool call(s) incomplete, asking model to retry with smaller output (continuation ${truncationContinuations}/${MAX_TRUNCATION_CONTINUATIONS})`)
+      const continuation = recovery.recordTruncation()
+      log('warn', `Round ${round}: output truncated at token limit (finish_reason=length) — tool call(s) incomplete, asking model to retry with smaller output (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
       for (const tc of toolCalls) {
-        cb.onToolCall?.(tc)
+        cb.onToolCall?.(tc, truncatedAssistantId)
         const persistId = cb.onToolResult?.(tc.id, tc.function.name, TRUNCATION_TOOL_ERROR, true, 0) ?? null
         workingMessages.push({
           role: 'tool',
@@ -357,8 +342,8 @@ export async function runAgent(
         }
 
         cb.onTruncated?.('text')
-        truncationContinuations++
-        log('warn', `Round ${round}: text output truncated at token limit (finish_reason=length) — continuing (continuation ${truncationContinuations}/${MAX_TRUNCATION_CONTINUATIONS})`)
+        const continuation = recovery.recordTruncation()
+        log('warn', `Round ${round}: text output truncated at token limit (finish_reason=length) — continuing (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
         workingMessages.push({ role: 'user', content: TRUNCATION_CONTINUE_PROMPT })
         workingIds.push(null)
         continue
@@ -373,9 +358,9 @@ export async function runAgent(
       // 防止 空响应→继续→再空响应 死循环烧 token）。
       // 注意：空 assistant 消息不落库也不进上下文（部分严格后端拒绝空 content 的
       // assistant 消息，见上方截断分支同款处理），只追加 user 继续指令。
-      if (!wasTruncated && !content.trim() && emptyContinuations < MAX_EMPTY_CONTINUATIONS) {
-        emptyContinuations++
-        log('warn', `Round ${round}: empty response (no content, no tool call, finish_reason=${finishReason || 'stop'}) — injecting continue prompt (continuation ${emptyContinuations}/${MAX_EMPTY_CONTINUATIONS})`)
+      if (!wasTruncated && !content.trim() && recovery.canRecoverEmptyResponse()) {
+        const continuation = recovery.recordEmptyResponse()
+        log('warn', `Round ${round}: empty response (no content, no tool call, finish_reason=${finishReason || 'stop'}) — injecting continue prompt (continuation ${continuation}/${MAX_EMPTY_CONTINUATIONS})`)
         workingMessages.push({ role: 'user', content: EMPTY_CONTINUE_PROMPT })
         workingIds.push(null)
         continue
@@ -390,9 +375,7 @@ export async function runAgent(
     }
 
     // 新的原始工具轮 → 重置截断恢复计数（上一轮截断已被正常消化）
-    truncationContinuations = 0
-    // 模型恢复了有效输出（工具调用）→ 重置空响应计数（统计的是连续空响应次数）
-    emptyContinuations = 0
+    recovery.resetAfterToolRound()
 
     // 记录 assistant 消息（含 tool_calls）到工作上下文。
     // workingIds 对应位置 = 落库 id（无则 null），保证压缩边界定位正确。
@@ -407,7 +390,7 @@ export async function runAgent(
 
     // 执行每个工具调用
     for (const tc of toolCalls) {
-      cb.onToolCall?.(tc)
+      cb.onToolCall?.(tc, assistantPersistId)
       if (officeRoute && tc.function.name === officeRoute.toolName) officeToolAttempted = true
 
       // 循环检测：工具名 + 参数完全相同地连续调用
@@ -417,114 +400,23 @@ export async function runAgent(
         log('warn', `Loop detected (hard): ${hardStop} — stopping to avoid a loop`)
       }
 
-      const toolEntry = getTool(tc.function.name)
-      let resultText = ''
-      let isError = false
-      let durationMs = 0
-      let imageContent: ContentPart[] | undefined = undefined
-
-      // 把 tool 结果追加进工作上下文（id = 落库 id，无则 null）
-      const pushToolResult = (persistId: string | null) => {
-        workingMessages.push({
-          role: 'tool',
-          tool_call_id: tc.id,
-          name: tc.function.name,
-          content: imageContent ?? resultText
-        })
-        workingIds.push(persistId)
-      }
-
-      // 中止短路：用户按 Stop 后本轮剩余工具不再执行（占位结果保证消息序列合法）。
-      // 下一轮 while 顶部的 signal 检查会抛出 AgentAbortedError 结束本次运行。
-      if (signal?.aborted) {
-        resultText = 'Execution skipped: aborted by user'
-        isError = true
-        const id = cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0) ?? null
-        pushToolResult(id)
-        continue
-      }
-
-      if (!toolEntry) {
-        resultText = `Error: Tool "${tc.function.name}" not found`
-        isError = true
-        log('error', `Tool not found: ${tc.function.name}`)
-      } else {
-        let parsedArgs: Record<string, unknown> = {}
-        try {
-          parsedArgs = JSON.parse(tc.function.arguments || '{}')
-        } catch {
-          resultText = `Error: Invalid JSON arguments: ${tc.function.arguments}`
-          isError = true
-        }
-
-        if (!isError && hardStop) {
-          // 硬停已触发：本条及剩余工具调用不再执行（占位结果保证消息序列合法）
-          resultText = `Execution skipped: agent hard-stopped (${hardStop})`
-          isError = true
-          const id = cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0) ?? null
-          pushToolResult(id)
-          continue
-        }
-
-        if (!isError) {
-          // 权限检查 — 统一由 permissionCheck 决策
-          // permissionCheck 内部根据三档批准模式 + 工具权限等级判断是否需要弹窗
-          if (permissionCheck) {
-            const allowed = await permissionCheck(tc.function.name, parsedArgs)
-            if (!allowed) {
-              resultText = 'Permission denied by user'
-              isError = true
-              const id = cb.onToolResult?.(tc.id, tc.function.name, resultText, true, 0) ?? null
-              pushToolResult(id)
-              continue
-            }
-          }
-
-          // 执行工具
-          const ctx: ToolContext = { workspacePath, sessionId, signal, onSessionTitleUpdate }
-          const start = Date.now()
-          try {
-            log('info', `Executing tool: ${tc.function.name}(${JSON.stringify(parsedArgs).slice(0, 200)})`)
-            resultText = await toolEntry.handler.execute(parsedArgs, ctx)
-            durationMs = Date.now() - start
-            log('info', `Tool ${tc.function.name} completed in ${durationMs}ms`)
-            // 循环检测软警告：追加提示引导模型换方法
-            if (verdict.kind === 'soft') {
-              log('warn', `Loop detected (soft): ${verdict.count} consecutive identical calls to ${tc.function.name}`)
-              resultText += `\n\n[Loop warning] This exact call to ${tc.function.name} has now been made ${verdict.count} times in a row. Stop repeating it — try a different approach or proceed to the next step.`
-            }
-          } catch (err) {
-            durationMs = Date.now() - start
-            resultText = `Error: ${(err as Error).message}`
-            isError = true
-            log('error', `Tool ${tc.function.name} failed: ${(err as Error).message}`)
-          }
-        }
-      }
-
-      // 截图结果可能混在文本中（desktop 工具 after=true 时：动作文本 + 截图 marker），
-      // 用正则提取 base64 段；传给前端/DB 的只剩文本，避免 base64 爆炸
-      const imgMatch = !isError ? resultText.match(/__IMAGE_BASE64__:\s*([A-Za-z0-9+/=]+)/) : null
-      const isImageResult = !!imgMatch
-      const imageBase64 = imgMatch ? imgMatch[1] : ''
-      const imageTextPart = imgMatch ? resultText.replace(/\n?__IMAGE_BASE64__:[A-Za-z0-9+/=]+/, '').trim() : ''
-      const displayResult = isImageResult
-        ? imageTextPart
-          ? `${imageTextPart}\n[screenshot attached, sent to LLM for visual analysis]`
-          : 'Screenshot captured (image sent to LLM for visual analysis)'
-        : resultText
-
-      // 追加 tool 消息 — 如果结果是 base64 图片，组装为 OpenAI 多模态格式
-      if (isImageResult) {
-        imageContent = []
-        if (imageTextPart) imageContent.push({ type: 'text', text: imageTextPart })
-        imageContent.push({
-          type: 'image_url',
-          image_url: { url: `data:image/png;base64,${imageBase64}`, detail: 'auto' }
-        })
-      }
-      const persistId = cb.onToolResult?.(tc.id, tc.function.name, displayResult, isError, durationMs) ?? null
-      pushToolResult(persistId)
+      const executed = await executeToolCall({
+        toolCall: tc,
+        registry: toolsRegistry,
+        context: { workspacePath, sessionId, signal, onSessionTitleUpdate },
+        permissionCheck,
+        hardStop,
+        loopWarningCount: verdict.kind === 'soft' ? verdict.count : undefined
+      })
+      const persistId = cb.onToolResult?.(
+        tc.id,
+        tc.function.name,
+        executed.displayContent,
+        executed.isError,
+        executed.durationMs
+      ) ?? null
+      workingMessages.push(executed.llmMessage)
+      workingIds.push(persistId)
     }
 
     // 继续下一轮，让 LLM 看到工具结果后决定下一步

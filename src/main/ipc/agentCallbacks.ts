@@ -9,10 +9,7 @@ import type { AutoApproveMode } from '../../shared/types'
 import { getToolPermission, isAlwaysConfirm } from '../tools/registry'
 import * as db from '../store/db'
 import { log } from '../llm/logger'
-
-export function genId(): string {
-  return Date.now().toString(36) + Math.random().toString(36).slice(2, 8)
-}
+import { generateId } from '../id'
 
 /**
  * 构建 Agent 事件回调对象
@@ -38,7 +35,7 @@ export function buildAgentCallbacks(
    *  在首个 token（含思考 token）之前就发出，解决旧实现"token 的 messageId 滞后一轮"的串台问题。 */
   const ensureRoundMsgId = (): string => {
     if (!roundMsgId) {
-      roundMsgId = genId()
+      roundMsgId = generateId()
       sender.send('agent:assistant_message', { sessionId, messageId: roundMsgId, content: '', toolCalls: [], phase: 'start' })
     }
     return roundMsgId
@@ -58,12 +55,12 @@ export function buildAgentCallbacks(
       streamingReasoning = roundReasoning
       sender.send('agent:reasoning', { sessionId, messageId: ensureRoundMsgId(), token })
     },
-    onToolCall: (toolCall) => {
-      sender.send('agent:tool_call', { sessionId, toolCall })
+    onToolCall: (toolCall, assistantMessageId) => {
+      sender.send('agent:tool_call', { sessionId, messageId: assistantMessageId, toolCall })
     },
     onToolResult: (toolCallId, toolName, result, isError, durationMs) => {
       const toolMsg = {
-        id: genId(),
+        id: generateId(),
         sessionId,
         role: 'tool' as const,
         content: result,
@@ -73,7 +70,7 @@ export function buildAgentCallbacks(
         status: isError ? ('error' as const) : ('done' as const)
       }
       db.addMessage(toolMsg)
-      sender.send('agent:tool_result', { sessionId, toolCallId, toolName, result, isError, durationMs })
+      sender.send('agent:tool_result', { sessionId, messageId: toolMsg.id, toolCallId, toolName, result, isError, durationMs })
       // 返回落库 id：runner 把它记进 workingIds，供压缩边界定位
       return toolMsg.id
     },
@@ -116,7 +113,7 @@ export function buildAgentCallbacks(
       // 如果最后一轮没有 toolCalls（纯文本回复），onAssistantMessage 已存
       // 如果 onAssistantMessage 没被调用（空回复），补存一条
       if (!streamingMsgId) {
-        const msgId = genId()
+        const msgId = generateId()
         db.addMessage({
           id: msgId,
           sessionId,
@@ -145,7 +142,7 @@ export function buildAgentCallbacks(
       } else if (!streamingMsgId) {
         // 还没开始任何一轮 → 存一条错误消息
         db.addMessage({
-          id: genId(),
+          id: generateId(),
           sessionId,
           role: 'assistant',
           content: errMsg,
@@ -210,7 +207,7 @@ export function buildPermissionCheck(
     // 到达这里 = 需要弹窗确认：
     //   manual 模式的 normal + dangerous
     //   auto 模式的 dangerous
-    const permId = genId()
+    const permId = generateId()
     log('info', `Permission dialog needed: tool=${toolName}, level=${level}, mode=${mode}, permId=${permId}`)
     return new Promise<boolean>((resolve) => {
       pendingPermissions.set(permId, { sessionId, resolve })

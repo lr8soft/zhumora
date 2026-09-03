@@ -9,6 +9,8 @@ import { setupIpc } from './ipc'
 import { reconnectAllMcpServers } from './mcp/client'
 import { log, onLog } from './llm/logger'
 import { disposeDesktopAdapter } from './desktop/adapter'
+import { createApplicationServices } from './composition'
+import { reloadSkills } from './skill/manager'
 
 export let mainWindow: BrowserWindow | null = null
 
@@ -68,11 +70,14 @@ app.whenReady().then(async () => {
   // 初始化数据库
   initDatabase()
 
+  // 组合根：集中构造并注册进程级服务，避免 IPC 层承担初始化副作用。
+  const services = createApplicationServices()
+
   // 创建窗口
   const win = createWindow()
 
   // 设置 IPC
-  setupIpc(win)
+  setupIpc(win, services)
 
   // 注册日志转发：主进程 → 渲染进程
   onLog(({ level, msg, ts }) => {
@@ -81,6 +86,7 @@ app.whenReady().then(async () => {
 
   // 启动时自动连接已配置的 MCP 服务器
   const settings = getSettings()
+  await reloadSkills(settings.skills)
   if (settings.mcpServers?.length > 0) {
     log('info', `Auto-connecting ${settings.mcpServers.length} MCP server(s) on startup`)
     reconnectAllMcpServers(settings.mcpServers).catch((err) => {

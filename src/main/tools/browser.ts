@@ -280,8 +280,10 @@ export const browserScreenshotTool: ToolHandler = {
       const base64 = Buffer.isBuffer(screenshotBuffer)
         ? screenshotBuffer.toString('base64')
         : Buffer.from(screenshotBuffer).toString('base64')
-      // 返回 __IMAGE_BASE64__ 前缀标记，runner 会将其转换为多模态 content part
-      return `__IMAGE_BASE64__:${base64}`
+      return {
+        content: `Screenshot saved to ${filePath} (${size} bytes)`,
+        attachments: [{ type: 'image', mediaType: 'image/png', base64, detail: 'auto' }]
+      }
     } catch (err) {
       return `Error taking screenshot: ${(err as Error).message}`
     }
