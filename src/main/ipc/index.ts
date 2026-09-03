@@ -17,6 +17,7 @@ import { builtinTools } from '../tools/builtin'
 import { browserTools } from '../tools/browser'
 import { memoryTools } from '../tools/memory'
 import { desktopTools } from '../tools/desktop'
+import { officeTool } from '../tools/officeTool'
 import { reconnectAllMcpServers, connectMcpServer, disconnectMcpServer } from '../mcp/client'
 import { mcpManagerTools } from '../mcp/managerTools'
 import { logCertModeChanged } from '../net/fetch'
@@ -93,6 +94,8 @@ export function setupIpc(win: BrowserWindow): void {
   for (const { name, handler } of mcpManagerTools) {
     registerTool(name, handler, 'builtin')
   }
+  // 注册办公文件工具（docx/xlsx/pptx/pdf 读写；read 为 safe，create/edit 为 normal）
+  registerTool('office', officeTool, 'builtin')
 
   // Skill prompt getter
   setSkillsPromptGetter(() => getSkillsSystemPrompt())

@@ -31,6 +31,11 @@ export interface ToolHandler {
   /** 权限等级，默认 normal */
   permission?: PermissionLevel
   /**
+   * 动态权限：根据参数返回权限等级，覆盖静态 permission。
+   * 用于"一个工具内含只读和写入"的场景（如 office：read 为 safe，create/edit 为 normal）。
+   */
+  getPermission?: (args: Record<string, unknown>) => PermissionLevel
+  /**
    * 强制弹窗确认：即使 full（全自动批准）模式也弹窗。
    * 用于"配置变更类"工具（如 MCP 服务器增删改）——
    * full 模式的语义是信任 agent 的日常操作，但不包括改变 agent 自身能力边界的操作。
@@ -82,11 +87,15 @@ export function clearTools(source?: string) {
 }
 
 /**
- * 获取工具的权限等级
+ * 获取工具的权限等级。
+ * 传入 args 时优先使用 handler.getPermission(args)（动态权限，如 office 的 read/create/edit），
+ * 否则回退到静态 permission。
  */
-export function getToolPermission(name: string): PermissionLevel {
+export function getToolPermission(name: string, args?: Record<string, unknown>): PermissionLevel {
   const entry = registry.get(name)
-  return entry?.handler.permission || 'normal'
+  if (!entry) return 'normal'
+  if (args && entry.handler.getPermission) return entry.handler.getPermission(args)
+  return entry.handler.permission || 'normal'
 }
 
 /** 工具是否强制弹窗（full 模式也不放行） */

@@ -90,6 +90,10 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
     tools: ['desktop_observe', 'desktop_action']
   },
   {
+    label: 'Office Documents',
+    tools: ['office']
+  },
+  {
     label: 'Memory',
     tools: ['memory_search', 'memory_save', 'memory_list', 'memory_delete']
   },

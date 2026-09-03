@@ -192,7 +192,7 @@ export function buildPermissionCheck(
   pendingPermissions: Map<string, { sessionId: string; resolve: (ok: boolean) => void }>
 ): (toolName: string, args: Record<string, unknown>) => Promise<boolean> {
   return async (toolName: string, args: Record<string, unknown>): Promise<boolean> => {
-    const level: PermissionLevel = getToolPermission(toolName)
+    const level: PermissionLevel = getToolPermission(toolName, args)
     const mode = approveModeGetter()
     // 强制弹窗工具（配置变更类，如 MCP 服务器增删改）：
     // full 模式的语义是信任 agent 的日常操作，但不包括改变 agent 自身能力边界的操作
