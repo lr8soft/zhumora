@@ -49,7 +49,7 @@ export const SIDEBAR_COLLAPSED_KEY = 'zhumora.sidebarCollapsed'
 export const INPUT_HEIGHT_KEY = 'zhumora.inputHeight'
 export const SIDEBAR_MIN_WIDTH = 180
 export const SIDEBAR_MAX_WIDTH = 480
-export const INPUT_MIN_HEIGHT = 136
+export const INPUT_MIN_HEIGHT = 192
 export const INPUT_MAX_HEIGHT = 480
 export const DEFAULT_INPUT_HEIGHT = 0 // 0 = 自适应内容高度
 
@@ -75,7 +75,9 @@ function getStoredSidebarCollapsed(): boolean {
 }
 
 function getStoredInputHeight(): number {
-  return getStoredNumber(INPUT_HEIGHT_KEY, DEFAULT_INPUT_HEIGHT, 0, INPUT_MAX_HEIGHT)
+  const v = getStoredNumber(INPUT_HEIGHT_KEY, DEFAULT_INPUT_HEIGHT, 0, INPUT_MAX_HEIGHT)
+  // 旧版本允许存下低于最小高度的值，加载时纠正
+  return v > 0 && v < INPUT_MIN_HEIGHT ? INPUT_MIN_HEIGHT : v
 }
 
 function getStoredReasoningEffort(): ReasoningEffort {
@@ -261,7 +263,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
   inputAreaHeight: getStoredInputHeight(),
   setInputAreaHeight: (px) => {
-    const h = Math.min(INPUT_MAX_HEIGHT, Math.max(0, Math.round(px)))
+    // px>0 时钳制在 [INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT]；0 = 自适应
+    const h = px > 0 ? Math.min(INPUT_MAX_HEIGHT, Math.max(INPUT_MIN_HEIGHT, Math.round(px))) : 0
     set({ inputAreaHeight: h })
     try { localStorage.setItem(INPUT_HEIGHT_KEY, String(h)) } catch { /* ignore */ }
   },

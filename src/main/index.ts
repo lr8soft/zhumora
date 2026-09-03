@@ -17,7 +17,7 @@ function createWindow(): BrowserWindow {
     width: 1280,
     height: 800,
     minWidth: 900,
-    minHeight: 600,
+    minHeight: 840,
     show: false,
     frame: false,
     autoHideMenuBar: true,
