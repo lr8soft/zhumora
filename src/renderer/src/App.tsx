@@ -7,15 +7,14 @@ import ChatView from './components/ChatView'
 import SettingsView from './components/SettingsView'
 import PermissionDialog from './components/PermissionDialog'
 import ConfirmDeleteDialog from './components/ConfirmDeleteDialog'
-
-/** 向某会话的消息缓存追加/更新消息（该会话缓存不存在时自动初始化） */
-function pushMessage(sessionId: string, fn: (msgs: import('@shared/types').UIMessage[]) => import('@shared/types').UIMessage[]) {
-  useAppStore.setState((s) => {
-    const msgs = s.messages[sessionId]
-    if (msgs === undefined) return s
-    return { messages: { ...s.messages, [sessionId]: fn(msgs) } }
-  })
-}
+import {
+  applyAssistantStart,
+  applyAssistantEnd,
+  applyToolCallEvent,
+  applyToolResultEvent,
+  applyTokenDeltas,
+  type TokenDelta
+} from './agentEvents'
 
 // ============================================================
 // 流式 token 批量缓冲（长会话卡顿的核心修复）
@@ -29,17 +28,12 @@ function pushMessage(sessionId: string, fn: (msgs: import('@shared/types').UIMes
 // 固定 32ms 节拍批量 flush 一次 → setState 频率从每 token 降到
 // ≤31 次/秒；结构事件（tool_call / assistant phase / complete）
 // 先强制 flush 再处理，保证顺序语义与旧实现一致。
+//
+// 消息归并逻辑本身在 agentEvents.ts（纯 reducer，node 可测）。
 // ============================================================
 
-interface TokenPending {
-  /** main 进程分配的权威消息 id */
-  msgId: string
-  content: string
-  reasoning: string
-}
-
 /** 缓冲键：sessionId\0messageId */
-let pendingTokens = new Map<string, TokenPending>()
+let pendingTokens = new Map<string, TokenDelta>()
 let flushTimer: ReturnType<typeof setInterval> | null = null
 /** 待 flush 的会话集合（避免 flush 时遍历全量缓冲键） */
 const pendingSessions = new Set<string>()
@@ -52,7 +46,7 @@ function keyOf(sessionId: string, msgId: string): string {
 
 /**
  * 缓冲一个流式增量。IPC 保证 assistant:start 先于 token，renderer
- * 只按 main 分配的 id 路由，不猜测“最后一条消息”。
+ * 只按 main 分配的 id 路由，不猜测"最后一条消息"。
  */
 function bufferToken(sessionId: string, targetId: string, kind: 'content' | 'reasoning', text: string) {
   const k = keyOf(sessionId, targetId)
@@ -85,7 +79,7 @@ function flushPending() {
   }
 
   // 按会话分组（缓冲条目本身不带 sessionId —— 从 key 解析）
-  const grouped = new Map<string, TokenPending[]>()
+  const grouped = new Map<string, TokenDelta[]>()
   for (const [k, p] of toFlush) {
     const sid = k.slice(0, k.indexOf('\0'))
     let g = grouped.get(sid)
@@ -98,25 +92,10 @@ function flushPending() {
     for (const sid of sessions) {
       const msgs = messages[sid]
       if (msgs === undefined) continue
-      const items = grouped.get(sid)
-      if (!items) continue
-      const next = [...msgs]
-      let changed = false
-      const append = (p: TokenPending, m: typeof next[number]): typeof next[number] => ({
-        ...m,
-        content: p.content ? m.content + p.content : m.content,
-        reasoning: p.reasoning ? (m.reasoning || '') + p.reasoning : m.reasoning,
-        // thinking 收到增量即转为 streaming；done/error 保持终态
-        status: m.status === 'thinking' || m.status === 'streaming' ? ('streaming' as const) : m.status
-      })
-      for (const p of items) {
-        if (!p.content && !p.reasoning) continue
-        const idx = next.findIndex(m => m.id === p.msgId)
-        if (idx < 0) continue
-        next[idx] = append(p, next[idx])
-        changed = true
-      }
-      if (changed) messages = { ...messages, [sid]: next }
+      const deltas = grouped.get(sid)
+      if (!deltas) continue
+      const next = applyTokenDeltas(msgs, deltas)
+      if (next !== msgs) messages = { ...messages, [sid]: next }
     }
     return { messages }
   })
@@ -124,7 +103,7 @@ function flushPending() {
 
 export default function App() {
   // 注意：必须用 selector 订阅（无选择器 useAppStore() 会订阅全 store，
-  // 每个流式 token 都触发 App 整树重渲染 → 长会话 UI 卡顿的根因之一）
+  // 每个流式 token 都触发 App 整树重渲染 → 长会话卡顿的根因之一）
   const view = useAppStore(s => s.view)
   const theme = useAppStore(s => s.theme)
   const fontSize = useAppStore(s => s.fontSize)
@@ -179,7 +158,26 @@ export default function App() {
   // 核心原则：所有 agent 事件都携带 sessionId 并按会话路由 ——
   // 事件落在对应会话的消息缓存里（后台会话照常累积），
   // 只有"当前显示会话"的状态变化才会引起界面刷新，从而会话之间互不串台。
+  // 归并规则全部在 agentEvents.ts（按 main 权威 ID 定位，可单测）。
   useEffect(() => {
+    /** 向某会话的消息缓存应用一个 reducer（该会话缓存不存在时忽略） */
+    const pushMessage = (sessionId: string, fn: (msgs: import('@shared/types').UIMessage[]) => import('@shared/types').UIMessage[]) => {
+      useAppStore.setState((s) => {
+        const msgs = s.messages[sessionId]
+        if (msgs === undefined) return s
+        return { messages: { ...s.messages, [sessionId]: fn(msgs) } }
+      })
+    }
+    /** 清除某会话的权限请求与重试状态（complete/error/abort 收尾共用） */
+    const clearSessionOverlays = (sessionId: string) => {
+      const st = useAppStore.getState()
+      st.markRunning(sessionId, false)
+      st.setRetryStatus(sessionId, null)
+      const reqs = { ...st.permissionRequests }
+      delete reqs[sessionId]
+      useAppStore.setState({ permissionRequests: reqs })
+    }
+
     // 结构事件处理器开头强制 flush：保证"token 先于结构事件落库"的
     // 顺序语义（与旧实现一致，防止 phase=start 替换消息时丢失未 flush 的 token）
     const unsubs = [
@@ -199,125 +197,36 @@ export default function App() {
 
       // assistant 消息事件（phase=start：本轮开始，替换 thinking 占位为流式消息；
       // phase=end：本轮结束，把流式消息收尾为 done）。
-      // 工具行不在此渲染（onToolCall 事件负责，避免重复）；
-      // 纯工具调用且无文本的轮次不创建空气泡。
       window.api.agent.onAssistantMessage(({ sessionId, messageId, content, toolCalls, phase, reasoning }) => {
         flushPending()
-        const msgs = useAppStore.getState().messages[sessionId]
-        if (msgs === undefined) return
-        pushMessage(sessionId, (m) => {
-          if (phase === 'start') {
-            // 把 thinking 占位替换为正式流式消息（无占位时直接追加）
-            const idx = m.findIndex(x => x.status === 'thinking')
-            if (idx >= 0) {
-              const next = [...m]
-              next[idx] = {
-                id: messageId,
-                sessionId,
-                role: 'assistant' as const,
-                content: '',
-                // 保留占位期间已累积的思考内容（防御事件乱序）
-                reasoning: m[idx].reasoning || undefined,
-                timestamp: Date.now(),
-                status: 'streaming' as const
-              }
-              return next
-            }
-            if (m.some(x => x.id === messageId)) return m
-            return [...m, {
-              id: messageId,
-              sessionId,
-              role: 'assistant' as const,
-              content: '',
-              timestamp: Date.now(),
-              status: 'streaming' as const
-            }]
-          }
-          // phase === 'end'
-          const existingIdx = m.findIndex(x => x.id === messageId)
-          if (existingIdx >= 0) {
-            const finalContent = content || m[existingIdx].content
-            // 纯工具轮（无任何文本、无思考内容）：start 时创建的空流式气泡直接移除，
-            // 工具行由 onToolCall 事件渲染，避免留下空气泡
-            if (!finalContent && !reasoning && !m[existingIdx].reasoning && toolCalls.length === 0) {
-              return m.filter((_, i) => i !== existingIdx)
-            }
-            // 流式消息收尾（reasoning 用 end 事件的权威值覆盖 UI 侧累积值）
-            const updated = [...m]
-            updated[existingIdx] = {
-              ...updated[existingIdx],
-              content: finalContent,
-              reasoning: reasoning || updated[existingIdx].reasoning,
-              toolCalls: toolCalls.length > 0 ? toolCalls : updated[existingIdx].toolCalls,
-              status: toolCalls.length > 0 ? ('pending' as const) : ('done' as const)
-            }
-            return updated
-          }
-          if (!content && !reasoning && toolCalls.length === 0) return m
-          return [...m, {
-            id: messageId,
-            sessionId,
-            role: 'assistant' as const,
-            content,
-            reasoning,
-            toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-            timestamp: Date.now(),
-            status: toolCalls.length > 0 ? ('pending' as const) : ('done' as const)
-          }]
-        })
+        const now = Date.now()
+        if (phase === 'start') {
+          pushMessage(sessionId, (m) => applyAssistantStart(sessionId, messageId, m, now))
+          return
+        }
+        pushMessage(sessionId, (m) => applyAssistantEnd(sessionId, messageId, content, toolCalls, reasoning, m, now))
       }),
 
-      // 工具调用 → 插入到对应会话（不再依赖 activeSessionId，后台会话同样累积）
+      // 工具调用 → 挂到对应 assistant 消息（不再依赖 activeSessionId，后台会话同样累积）
       window.api.agent.onToolCall(({ sessionId, messageId, toolCall }) => {
         flushPending()
-        pushMessage(sessionId, (m) => {
-          if (!messageId) return m
-          const next = m.filter(x => x.status !== 'thinking')
-          const idx = next.findIndex(x => x.id === messageId)
-          if (idx >= 0) {
-            const calls = next[idx].toolCalls || []
-            if (!calls.some(call => call.id === toolCall.id)) {
-              next[idx] = { ...next[idx], toolCalls: [...calls, toolCall], status: 'pending' }
-            }
-            return next
-          }
-          next.push({
-            id: messageId,
-            sessionId,
-            role: 'assistant' as const,
-            content: '',
-            toolCalls: [toolCall],
-            timestamp: Date.now(),
-            status: 'pending' as const
-          })
-          return next
-        })
+        if (!messageId) return
+        const now = Date.now()
+        pushMessage(sessionId, (m) => applyToolCallEvent(sessionId, messageId, toolCall, m, now))
       }),
 
-      // 工具结果 → 插入到对应会话
+      // 工具结果 → 以 main 持久化 id 追加
       window.api.agent.onToolResult(({ sessionId, messageId, toolCallId, toolName, result, isError }) => {
         flushPending()
-        pushMessage(sessionId, (m) => [...m, {
-          id: messageId,
-          sessionId,
-          role: 'tool' as const,
-          content: result,
-          toolCallId,
-          toolName,
-          timestamp: Date.now(),
-          status: isError ? ('error' as const) : ('done' as const)
-        }])
+        const now = Date.now()
+        pushMessage(sessionId, (m) => applyToolResultEvent(sessionId, messageId, toolCallId, toolName, result, isError, m, now))
       }),
 
       // 对话完成 → 该会话退出运行态；若正显示该会话则刷新完整数据库记录
       window.api.agent.onComplete(({ sessionId }) => {
         flushPending()
         const st = useAppStore.getState()
-        st.markRunning(sessionId, false)
-        st.setRetryStatus(sessionId, null)
-        const reqs = { ...st.permissionRequests }
-        delete reqs[sessionId]
-        useAppStore.setState({ permissionRequests: reqs })
+        clearSessionOverlays(sessionId)
         if (st.activeSessionId === sessionId) {
           void st.loadMessages(sessionId)
         }
@@ -328,11 +237,7 @@ export default function App() {
       window.api.agent.onError(({ sessionId }) => {
         flushPending()
         const st = useAppStore.getState()
-        st.markRunning(sessionId, false)
-        st.setRetryStatus(sessionId, null)
-        const reqs = { ...st.permissionRequests }
-        delete reqs[sessionId]
-        useAppStore.setState({ permissionRequests: reqs })
+        clearSessionOverlays(sessionId)
         if (st.activeSessionId === sessionId) {
           void st.loadMessages(sessionId)
         }
