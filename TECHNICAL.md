@@ -237,11 +237,14 @@ Internally it maps to the Office implementation's `create` action. The legacy
 generic `office` handler remains available to direct callers and tests but is not
 registered as a model-facing tool.
 
-PowerPoint creation also accepts a high-level theme (`modern_blue`, `dark_tech`,
-`warm_minimal`, `forest`, or `corporate`) plus an optional font family. Themes
-apply a wide-screen layout, semantic palette, accent treatment, styled content
-cards and tables, and slide numbering without requiring the model to generate
-low-level coordinates or color values.
+Word, PowerPoint, and PDF creation accept the same five high-level visual
+templates (`modern_blue`, `dark_tech`, `warm_minimal`, `forest`, or `corporate`)
+plus an optional font family. Word templates style headings, page accents,
+tables, margins, and footers. PowerPoint templates apply a wide-screen layout,
+semantic palette, content cards, tables, and slide numbering. PDF templates
+support styled Markdown-like headings, lists and tables, automatic wrapping and
+pagination, page accents, and footers. This keeps low-level coordinates and
+color values out of the model-facing schema.
 
 ## 7. Permission model
 

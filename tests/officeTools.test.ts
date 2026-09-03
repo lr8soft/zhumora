@@ -9,6 +9,7 @@ import { getToolPermission } from '../src/main/tools/registry.ts'
 import { registerTool } from '../src/main/tools/registry.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'zhumora-office-'))
+const OFFICE_THEMES = ['modern_blue', 'dark_tech', 'warm_minimal', 'forest', 'corporate']
 const R: [string, boolean, string][] = []
 async function check(name: string, fn: () => Promise<void>) {
   try { await fn(); R.push([name, true, '']) }
@@ -84,6 +85,15 @@ await check('word_document create_or_replace maps to create', async () => {
     () => handler.execute({ action: 'read', file_path: path.join(root, 'wrong.pdf') }, { workspacePath: root }),
     /only accepts \.docx/
   )
+})
+
+await check('docx five built-in visual templates', async () => {
+  const content = '# 模板报告\n\n## 概览\n\n这是主题正文。\n\n| 指标 | 数值 |\n| --- | --- |\n| 收入 | 120 |'
+  for (const theme of OFFICE_THEMES) {
+    const file = path.join(root, `word-${theme}.docx`)
+    await executeOffice({ action: 'create', file_path: file, content, theme }, root)
+    assert.match(await executeOffice({ action: 'read', file_path: file }, root), /模板报告/)
+  }
 })
 
 await check('docx nested dir + overwrite', async () => {
@@ -176,6 +186,14 @@ await check('pptx built-in theme + subtitle', async () => {
   const text = await executeOffice({ action: 'read', file_path: themed }, root)
   assert.match(text, /深色主题/)
   assert.match(text, /自动配色/)
+  const JSZip = (await import('jszip')).default
+  const zip = await JSZip.loadAsync(await fs.readFile(pptxPath))
+  const slideXml = (await Promise.all(
+    Object.keys(zip.files)
+      .filter(name => /^ppt\/slides\/slide\d+\.xml$/.test(name))
+      .map(name => zip.file(name)!.async('string'))
+  )).join('\n')
+  assert.doesNotMatch(slideXml, /anchor="mid"/, 'PowerPoint rejects table/text vertical alignment "mid"')
   await assert.rejects(
     () => executeOffice({ action: 'create', file_path: path.join(root, 'bad-theme.pptx'), content, theme: 'unknown' }, root),
     /Unknown pptx theme/
@@ -222,6 +240,17 @@ await check('pdf create with explicit font', async () => {
     await executeOffice({ action: 'create', file_path: f, content: 'spec font test' }, root)
   }
   assert.ok((await fs.stat(f)).size > 0)
+})
+
+await check('pdf five built-in visual templates', async () => {
+  const content = '# 模板报告\n\n## 概览\n\n这是主题正文。\n\n- 第一项\n- 第二项\n\n| 指标 | 数值 |\n| --- | --- |\n| 收入 | 120 |'
+  for (const theme of OFFICE_THEMES) {
+    const file = path.join(root, `pdf-${theme}.pdf`)
+    await executeOffice({ action: 'create', file_path: file, content, theme }, root)
+    const text = await executeOffice({ action: 'read', file_path: file }, root)
+    assert.match(text, /模板报告/)
+    assert.match(text, /收入/)
+  }
 })
 
 await check('pdf edit: fill form fields (latin) + draw text', async () => {

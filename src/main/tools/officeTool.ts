@@ -49,7 +49,7 @@ export const wordDocumentTool: ToolHandler = {
       description: [
         'Read or create/replace a Microsoft Word .docx artifact. Use this for Word-document work, not shell or code tools.',
         'read extracts document content as Markdown-like text.',
-        'create_or_replace writes content using a Markdown subset: headings, paragraphs, bullets, numbered lists, bold, italic, and tables.',
+        'create_or_replace writes content using a Markdown subset: headings, paragraphs, bullets, numbered lists, bold, italic, and tables. Choose a built-in theme for coordinated headings, accents, tables, header, and footer.',
         'Existing complex styling is not preserved when replacing a document. Inspect an existing file before replacing it.'
       ].join('\n'),
       parameters: {
@@ -64,6 +64,15 @@ export const wordDocumentTool: ToolHandler = {
           content: {
             type: 'string',
             description: 'Required for create_or_replace. Complete document in the supported Markdown subset.'
+          },
+          theme: {
+            type: 'string',
+            enum: ['modern_blue', 'dark_tech', 'warm_minimal', 'forest', 'corporate'],
+            description: 'Visual template for create_or_replace. Default: modern_blue.'
+          },
+          font: {
+            type: 'string',
+            description: 'Optional installed font family. Default: Microsoft YaHei.'
           }
         },
         required: ['action', 'file_path'],
@@ -184,7 +193,7 @@ export const pdfDocumentTool: ToolHandler = {
       name: 'pdf_document',
       description: [
         'Read, create/replace, or edit a PDF .pdf artifact. Use this for PDF work, not shell or code tools.',
-        'read extracts per-page text. create_or_replace creates an auto-paginated PDF from plain text.',
+        'read extracts per-page text. create_or_replace creates a styled, auto-paginated PDF from Markdown-like headings, paragraphs, lists, and tables. Choose a built-in visual theme.',
         'edit fills existing form fields or draws text at page coordinates. It does not reflow or redesign an existing PDF.'
       ].join('\n'),
       parameters: {
@@ -203,6 +212,11 @@ export const pdfDocumentTool: ToolHandler = {
           font: {
             type: 'string',
             description: 'Optional installed font family for CJK creation or drawn edit text, for example Microsoft YaHei.'
+          },
+          theme: {
+            type: 'string',
+            enum: ['modern_blue', 'dark_tech', 'warm_minimal', 'forest', 'corporate'],
+            description: 'Visual template for create_or_replace. Default: modern_blue.'
           },
           edit: {
             type: 'object',

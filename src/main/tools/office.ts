@@ -135,10 +135,10 @@ async function readPdf(filePath: string): Promise<string> {
 
 async function createOfficeFile(filePath: string, format: OfficeFormat, content: string, font?: string, theme?: string): Promise<string> {
   await fs.mkdir(path.dirname(filePath), { recursive: true })
-  if (format === 'docx') await writeDocxFromMarkdown(filePath, content)
+  if (format === 'docx') await writeDocxFromMarkdown(filePath, content, theme, font)
   else if (format === 'xlsx') await writeXlsxFromCsv(filePath, content)
   else if (format === 'pptx') await writePptxFromSlides(filePath, content, theme, font)
-  else await writePdfFromText(filePath, content, font)
+  else await writePdfFromText(filePath, content, font, theme)
   const stat = await fs.stat(filePath)
   return `Created ${format} file: ${filePath} (${stat.size} bytes)`
 }
@@ -219,9 +219,15 @@ function inlineRuns(docx: typeof import('docx'), text: string) {
   return runs.length ? runs : [new TextRun('')]
 }
 
-async function writeDocxFromMarkdown(filePath: string, md: string): Promise<void> {
+async function writeDocxFromMarkdown(filePath: string, md: string, themeName?: string, fontFace?: string): Promise<void> {
   const docx = await import('docx')
-  const { Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell, WidthType, HeadingLevel } = docx
+  const {
+    Document, Packer, Paragraph, TextRun, Table, TableRow, TableCell,
+    WidthType, HeadingLevel, Header, Footer, AlignmentType, PageNumber,
+    ShadingType, BorderStyle
+  } = docx
+  const theme = resolveOfficeTheme(themeName, 'docx')
+  const face = fontFace || 'Microsoft YaHei'
   const blocks = parseMarkdownBlocks(md)
   const children = []
   for (const block of blocks) {
@@ -229,18 +235,45 @@ async function writeDocxFromMarkdown(filePath: string, md: string): Promise<void
       const levels = [HeadingLevel.HEADING_1, HeadingLevel.HEADING_2, HeadingLevel.HEADING_3, HeadingLevel.HEADING_4]
       children.push(new Paragraph({ heading: levels[(block.level || 1) - 1], children: [new TextRun(block.text || '')] }))
     } else if (block.kind === 'paragraph') {
-      children.push(new Paragraph({ children: inlineRuns(docx, block.text || '') }))
+      children.push(new Paragraph({
+        spacing: { after: 180, line: 340 },
+        children: inlineRuns(docx, block.text || '')
+      }))
     } else if (block.kind === 'bullet') {
-      children.push(new Paragraph({ bullet: { level: 0 }, children: inlineRuns(docx, block.text || '') }))
+      children.push(new Paragraph({
+        bullet: { level: 0 }, spacing: { after: 100, line: 320 },
+        children: inlineRuns(docx, block.text || '')
+      }))
     } else if (block.kind === 'numbered') {
-      children.push(new Paragraph({ numbering: { reference: 'office-numbered', level: 0 }, children: inlineRuns(docx, block.text || '') }))
+      children.push(new Paragraph({
+        numbering: { reference: 'office-numbered', level: 0 }, spacing: { after: 100, line: 320 },
+        children: inlineRuns(docx, block.text || '')
+      }))
     } else if (block.kind === 'table') {
       const rows = block.rows || []
       children.push(new Table({
         width: { size: 100, type: WidthType.PERCENTAGE },
+        borders: {
+          top: { style: BorderStyle.SINGLE, color: theme.tableAlt, size: 4 },
+          bottom: { style: BorderStyle.SINGLE, color: theme.tableAlt, size: 4 },
+          left: { style: BorderStyle.SINGLE, color: theme.tableAlt, size: 4 },
+          right: { style: BorderStyle.SINGLE, color: theme.tableAlt, size: 4 },
+          insideHorizontal: { style: BorderStyle.SINGLE, color: theme.tableAlt, size: 3 },
+          insideVertical: { style: BorderStyle.SINGLE, color: theme.tableAlt, size: 3 }
+        },
         rows: rows.map((cells, index) => new TableRow({
           children: cells.map(cell => new TableCell({
-            children: [new Paragraph({ children: index === 0 ? [new TextRun({ text: cell, bold: true })] : inlineRuns(docx, cell) })]
+            shading: {
+              type: ShadingType.CLEAR,
+              fill: index === 0 ? theme.primary : index % 2 === 0 ? theme.tableAlt : theme.surface,
+              color: 'auto'
+            },
+            margins: { top: 100, right: 120, bottom: 100, left: 120 },
+            children: [new Paragraph({
+              children: index === 0
+                ? [new TextRun({ text: cell, bold: true, color: 'FFFFFF', font: face })]
+                : inlineRuns(docx, cell)
+            })]
           }))
         }))
       }))
@@ -248,6 +281,35 @@ async function writeDocxFromMarkdown(filePath: string, md: string): Promise<void
     }
   }
   const doc = new Document({
+    creator: 'Zhumora',
+    description: `Generated with the ${themeName || 'modern_blue'} Office theme`,
+    styles: {
+      default: {
+        document: {
+          run: { font: face, size: 22, color: theme.body },
+          paragraph: { spacing: { line: 320 } }
+        },
+        heading1: {
+          run: { font: face, size: 36, bold: true, color: theme.primary },
+          paragraph: {
+            spacing: { before: 280, after: 180 }, keepNext: true,
+            border: { bottom: { style: BorderStyle.SINGLE, color: theme.accent, size: 12, space: 6 } }
+          }
+        },
+        heading2: {
+          run: { font: face, size: 30, bold: true, color: theme.title },
+          paragraph: { spacing: { before: 240, after: 140 }, keepNext: true }
+        },
+        heading3: {
+          run: { font: face, size: 26, bold: true, color: theme.primary },
+          paragraph: { spacing: { before: 200, after: 100 }, keepNext: true }
+        },
+        heading4: {
+          run: { font: face, size: 23, bold: true, color: theme.title },
+          paragraph: { spacing: { before: 160, after: 80 }, keepNext: true }
+        }
+      }
+    },
     numbering: {
       config: [{
         reference: 'office-numbered',
@@ -260,7 +322,29 @@ async function writeDocxFromMarkdown(filePath: string, md: string): Promise<void
         }]
       }]
     },
-    sections: [{ children: children.length ? children : [new Paragraph('')] }]
+    sections: [{
+      properties: { page: { margin: { top: 1080, right: 1080, bottom: 1080, left: 1080 } } },
+      headers: {
+        default: new Header({
+          children: [new Paragraph({
+            border: { bottom: { style: BorderStyle.SINGLE, color: theme.accent, size: 8, space: 2 } },
+            children: [new TextRun({ text: ' ', size: 4 })]
+          })]
+        })
+      },
+      footers: {
+        default: new Footer({
+          children: [new Paragraph({
+            alignment: AlignmentType.RIGHT,
+            children: [
+              new TextRun({ text: 'Zhumora  ·  ', color: theme.muted, size: 18, font: face }),
+              new TextRun({ children: [PageNumber.CURRENT], color: theme.muted, size: 18, font: face })
+            ]
+          })]
+        })
+      },
+      children: children.length ? children : [new Paragraph('')]
+    }]
   })
   await fs.writeFile(filePath, await Packer.toBuffer(doc))
 }
@@ -353,7 +437,7 @@ interface PptxSlideSpec {
   notes?: string
 }
 
-interface PptxTheme {
+interface OfficeTheme {
   background: string
   surface: string
   primary: string
@@ -364,7 +448,7 @@ interface PptxTheme {
   tableAlt: string
 }
 
-const PPTX_THEMES: Record<string, PptxTheme> = {
+const OFFICE_THEMES: Record<string, OfficeTheme> = {
   modern_blue: {
     background: 'F7F9FC', surface: 'FFFFFF', primary: '2563EB', accent: '14B8A6',
     title: '172033', body: '344054', muted: '667085', tableAlt: 'EEF4FF'
@@ -387,10 +471,19 @@ const PPTX_THEMES: Record<string, PptxTheme> = {
   }
 }
 
-function resolvePptxTheme(name?: string): PptxTheme {
-  if (!name) return PPTX_THEMES.modern_blue
-  const theme = PPTX_THEMES[name]
-  if (!theme) throw new Error(`Unknown pptx theme "${name}" (expected: ${Object.keys(PPTX_THEMES).join(', ')})`)
+function resolveOfficeTheme(name?: string, format = 'office'): OfficeTheme {
+  if (!name) return OFFICE_THEMES.modern_blue
+  const theme = OFFICE_THEMES[name]
+  if (!theme) throw new Error(`Unknown ${format} theme "${name}" (expected: ${Object.keys(OFFICE_THEMES).join(', ')})`)
+  // Word pages remain white in the current generator, so use the light-paper
+  // variant of dark_tech while keeping its violet/cyan identity.
+  if (format === 'docx' && name === 'dark_tech') {
+    return {
+      ...theme,
+      background: 'FFFFFF', surface: 'FFFFFF', title: '1F2937', body: '344054',
+      muted: '667085', tableAlt: 'EDE9FE'
+    }
+  }
   return theme
 }
 
@@ -404,7 +497,7 @@ async function writePptxFromSlides(filePath: string, content: string, themeName?
   if (!Array.isArray(slides) || !slides.length) throw new Error('pptx content must be a non-empty JSON array of slides')
   const PptxGenJS = (await import('pptxgenjs')).default
   const pres = new PptxGenJS()
-  const theme = resolvePptxTheme(themeName)
+  const theme = resolveOfficeTheme(themeName, 'pptx')
   const face = fontFace || 'Microsoft YaHei'
   pres.layout = 'LAYOUT_WIDE'
   pres.author = 'Zhumora'
@@ -452,12 +545,12 @@ async function writePptxFromSlides(filePath: string, content: string, themeName?
       slide.addText(
         spec.bullets.map(b => ({
           text: String(b),
-          options: { bullet: { color: theme.accent }, breakLine: true, paraSpaceAfter: 11 }
+          options: { bullet: true, breakLine: true, paraSpaceAfter: 11 }
         })),
         {
           x: 0.92, y: cursorY + 0.08, w: 11.35, h: bulletHeight - 0.3,
           fontFace: face, fontSize: 17, color: theme.body,
-          margin: 0.08, breakLine: false, fit: 'shrink', valign: 'mid'
+          margin: 0.08, breakLine: false, fit: 'shrink', valign: 'middle'
         }
       )
       cursorY += bulletHeight + 0.22
@@ -484,7 +577,7 @@ async function writePptxFromSlides(filePath: string, content: string, themeName?
           fontFace: face, fontSize: 12, color: theme.body,
           border: { pt: 0.6, color: theme.tableAlt },
           margin: 0.08, rowH: 0.4, autoFit: false,
-          valign: 'mid', breakLine: false
+          valign: 'middle', breakLine: false
         })
       }
     }
@@ -501,9 +594,40 @@ async function writePptxFromSlides(filePath: string, content: string, themeName?
 
 const CJK_CHAR = /[\u2E80-\u9FFF\uF900-\uFAFF\u3040-\u30FF\uAC00-\uD7AF\uFF00-\uFFEF]/
 
-async function writePdfFromText(filePath: string, text: string, fontQuery?: string): Promise<void> {
+function hexToRgb(hex: string): [number, number, number] {
+  const value = hex.replace('#', '')
+  return [
+    parseInt(value.slice(0, 2), 16) / 255,
+    parseInt(value.slice(2, 4), 16) / 255,
+    parseInt(value.slice(4, 6), 16) / 255
+  ]
+}
+
+function wrapPdfText(font: { widthOfTextAtSize(text: string, size: number): number }, text: string, size: number, maxWidth: number): string[] {
+  const lines: string[] = []
+  let current = ''
+  for (const char of text || ' ') {
+    if (char === '\n') {
+      lines.push(current || ' ')
+      current = ''
+      continue
+    }
+    const candidate = current + char
+    if (current && font.widthOfTextAtSize(candidate, size) > maxWidth) {
+      lines.push(current.trimEnd())
+      current = char.trimStart()
+    } else {
+      current = candidate
+    }
+  }
+  if (current || !lines.length) lines.push(current || ' ')
+  return lines
+}
+
+async function writePdfFromText(filePath: string, text: string, fontQuery?: string, themeName?: string): Promise<void> {
   const { PDFDocument, StandardFonts, rgb } = await import('pdf-lib')
   const pdfDoc = await PDFDocument.create()
+  const theme = resolveOfficeTheme(themeName, 'pdf')
   let font
   if (CJK_CHAR.test(text) || fontQuery) {
     const fontkit = (await import('@pdf-lib/fontkit')).default
@@ -519,16 +643,95 @@ async function writePdfFromText(filePath: string, text: string, fontQuery?: stri
   const pageWidth = 595.28 // A4
   const pageHeight = 841.89
   const margin = 56
-  const lineHeight = 18
+  const contentWidth = pageWidth - margin * 2
+  const color = (hex: string) => rgb(...hexToRgb(hex))
   let page = pdfDoc.addPage([pageWidth, pageHeight])
-  let y = pageHeight - margin
-  for (const rawLine of text.replace(/\r\n/g, '\n').split('\n')) {
-    if (y < margin) {
-      page = pdfDoc.addPage([pageWidth, pageHeight])
-      y = pageHeight - margin
+  let y = pageHeight - 78
+
+  const decoratePage = () => {
+    page.drawRectangle({ x: 0, y: 0, width: pageWidth, height: pageHeight, color: color(theme.background) })
+    page.drawRectangle({ x: 0, y: pageHeight - 16, width: pageWidth, height: 16, color: color(theme.primary) })
+    page.drawRectangle({ x: margin, y: pageHeight - 42, width: 54, height: 4, color: color(theme.accent) })
+  }
+  decoratePage()
+
+  const nextPage = () => {
+    page = pdfDoc.addPage([pageWidth, pageHeight])
+    y = pageHeight - 78
+    decoratePage()
+  }
+  const ensureSpace = (height: number) => {
+    if (y - height < 62) nextPage()
+  }
+  const drawWrapped = (value: string, size: number, textColor: string, indent = 0, lineHeight = size * 1.55) => {
+    const lines = wrapPdfText(font, value, size, contentWidth - indent)
+    ensureSpace(lines.length * lineHeight + 6)
+    for (const line of lines) {
+      page.drawText(line || ' ', { x: margin + indent, y, size, font, color: color(textColor) })
+      y -= lineHeight
     }
-    page.drawText(rawLine || ' ', { x: margin, y, size: 11, font, color: rgb(0.13, 0.13, 0.13) })
-    y -= lineHeight
+    y -= 6
+  }
+
+  const blocks = parseMarkdownBlocks(text)
+  for (const block of blocks) {
+    if (block.kind === 'heading') {
+      const level = block.level || 1
+      const size = level === 1 ? 24 : level === 2 ? 18 : level === 3 ? 15 : 13
+      ensureSpace(size * 2.2)
+      drawWrapped(block.text || '', size, level === 1 ? theme.primary : theme.title, 0, size * 1.35)
+      if (level === 1) {
+        page.drawLine({
+          start: { x: margin, y: y + 2 }, end: { x: margin + contentWidth, y: y + 2 },
+          thickness: 1.4, color: color(theme.accent)
+        })
+        y -= 12
+      }
+    } else if (block.kind === 'paragraph') {
+      drawWrapped(block.text || '', 11, theme.body)
+    } else if (block.kind === 'bullet' || block.kind === 'numbered') {
+      drawWrapped(`${block.kind === 'bullet' ? '–' : '•'}  ${block.text || ''}`, 11, theme.body, 14)
+    } else if (block.kind === 'table') {
+      const rows = block.rows || []
+      if (!rows.length) continue
+      const columns = Math.max(...rows.map(row => row.length), 1)
+      const cellWidth = contentWidth / columns
+      const rowHeight = 28
+      for (let rowIndex = 0; rowIndex < rows.length; rowIndex++) {
+        ensureSpace(rowHeight)
+        const row = rows[rowIndex]
+        const fill = rowIndex === 0 ? theme.primary : rowIndex % 2 === 0 ? theme.tableAlt : theme.surface
+        page.drawRectangle({ x: margin, y: y - rowHeight + 7, width: contentWidth, height: rowHeight, color: color(fill) })
+        for (let columnIndex = 0; columnIndex < columns; columnIndex++) {
+          const raw = String(row[columnIndex] ?? '')
+          const line = wrapPdfText(font, raw, 9.5, cellWidth - 12)[0] || ''
+          page.drawText(line, {
+            x: margin + columnIndex * cellWidth + 6, y: y - 11,
+            size: 9.5, font, color: color(rowIndex === 0 ? 'FFFFFF' : theme.body)
+          })
+          page.drawLine({
+            start: { x: margin + columnIndex * cellWidth, y: y - rowHeight + 7 },
+            end: { x: margin + columnIndex * cellWidth, y: y + 7 },
+            thickness: 0.4, color: color(theme.tableAlt)
+          })
+        }
+        y -= rowHeight
+      }
+      y -= 10
+    }
+  }
+
+  const pages = pdfDoc.getPages()
+  pages.forEach((currentPage, index) => {
+    const footer = `${index + 1} / ${pages.length}`
+    currentPage.drawText('Zhumora', { x: margin, y: 30, size: 8.5, font, color: color(theme.muted) })
+    currentPage.drawText(footer, {
+      x: pageWidth - margin - font.widthOfTextAtSize(footer, 8.5), y: 30,
+      size: 8.5, font, color: color(theme.muted)
+    })
+  })
+  if (!blocks.length) {
+    page.drawText(' ', { x: margin, y, size: 11, font, color: color(theme.body) })
   }
   await fs.writeFile(filePath, await pdfDoc.save())
 }

@@ -3,6 +3,8 @@ import { detectOfficeRoute, selectToolsForOfficeRoute } from '../src/main/agent/
 import { officeTools } from '../src/main/tools/officeTool.ts'
 import type { ToolDefinition } from '../src/shared/types.ts'
 
+const OFFICE_THEMES = ['modern_blue', 'dark_tech', 'warm_minimal', 'forest', 'corporate']
+
 function tool(name: string): ToolDefinition {
   return {
     type: 'function',
@@ -74,5 +76,10 @@ const pdf = officeTools.find(entry => entry.name === 'pdf_document')!
 const pdfSchema = pdf.handler.definition.function.parameters as any
 assert.deepEqual(pdfSchema.properties.edit.properties.texts.items.required, ['text'])
 assert.deepEqual(pdfSchema.properties.edit.properties.fields.items.required, ['name', 'value'])
+assert.deepEqual(pdfSchema.properties.theme.enum, OFFICE_THEMES)
+
+const word = officeTools.find(entry => entry.name === 'word_document')!
+const wordSchema = word.handler.definition.function.parameters as any
+assert.deepEqual(wordSchema.properties.theme.enum, OFFICE_THEMES)
 
 console.log('\noffice routing\n  ✓ artifact routing, code opt-out, tool filtering, and schemas\n\n1 passed, 0 failed')
