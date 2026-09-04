@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import { equivalentConfigList } from '../src/main/ipc/settingsChange.ts'
 import { equivalentTelegramBotConfig, normalizeTelegramBotConfig, parseTelegramUserIds } from '../src/shared/telegram.ts'
+import { equivalentQQBotConfig, normalizeQQBotConfig, parseQQUserIds } from '../src/shared/qq.ts'
 
 const first = [
   { id: 'b', name: 'B', enabled: true, env: { Z: '2', A: '1' } },
@@ -28,4 +29,22 @@ assert.equal(equivalentTelegramBotConfig(
   { enabled: true, token: 'token', allowedUserIds: [], approveMode: 'manual' },
   { enabled: true, token: 'token', allowedUserIds: [], approveMode: 'full' }
 ), false)
+assert.deepEqual(parseQQUserIds('openid-a\nopenid_b, openid-a'), ['openid-a', 'openid_b'])
+assert.deepEqual(normalizeQQBotConfig({
+  enabled: true,
+  appId: ' 123 ',
+  appSecret: ' secret ',
+  allowedUserIds: ['openid-a', 123, 'openid-a'],
+  approveMode: 'auto'
+}), {
+  enabled: true,
+  appId: '123',
+  appSecret: 'secret',
+  allowedUserIds: ['openid-a'],
+  approveMode: 'auto'
+})
+assert.equal(equivalentQQBotConfig(
+  { enabled: true, appId: '1', appSecret: 's', allowedUserIds: ['a', 'b'], approveMode: 'full' },
+  { enabled: true, appId: '1', appSecret: 's', allowedUserIds: ['b', 'a'], approveMode: 'full' }
+), true)
 console.log('settings semantic comparison tests passed')

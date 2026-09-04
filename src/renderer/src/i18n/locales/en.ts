@@ -88,7 +88,7 @@ export default {
     tabs: {
       providers: 'LLM Providers',
       mcp: 'MCP Servers',
-      telegram: 'Telegram',
+      bots: 'Chat Bots',
       skills: 'Skills',
       memory: 'Memory',
       usage: 'Usage',
@@ -165,6 +165,22 @@ export default {
       testing: 'Testing…',
       connected: 'Connected: {{identity}}',
       failed: 'Connection failed'
+    },
+    qq: {
+      hint: 'Chat with your local Agent through QQ. C2C replies stream in real time.',
+      enabled: 'Enable QQ Bot',
+      credentials: 'Credentials and access',
+      credentialsHint: 'Get AppID and AppSecret from QQ Open Platform. Only allowlisted OpenIDs can run the Agent.',
+      createBot: 'Create a Bot on QQ Open Platform',
+      appId: 'AppID',
+      appSecret: 'AppSecret',
+      allowedUsers: 'Allowed QQ user OpenIDs',
+      allowedUsersHint: 'One OpenID per line. With an empty list, only /id works. New Bots also require sandbox members and an IP allowlist on QQ Open Platform.',
+      approveMode: 'Tool permission mode',
+      test: 'Test credentials',
+      testing: 'Testing…',
+      connected: 'Credentials valid: {{identity}}',
+      failed: 'Credential validation failed'
     },
     skills: {
       hint: 'Load Skill definitions (SKILL.md files) to inject specialized prompts into the agent.',

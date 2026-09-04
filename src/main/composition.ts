@@ -15,6 +15,9 @@ import { BotAgentBridge } from './bot/agentBridge'
 import { BotPlatformManager, defineBotPlatform } from './bot/platformManager'
 import { TelegramBotService } from './telegram/service'
 import { equivalentTelegramBotConfig, normalizeTelegramBotConfig } from '../shared/telegram'
+import { equivalentQQBotConfig, normalizeQQBotConfig } from '../shared/qq'
+import { QQBotService } from './qq/service'
+import { getFetch } from './net/fetch'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -45,6 +48,7 @@ export function createApplicationServices(): ApplicationServices {
     getMcpStatus: getMcpConnectionStatus
   })
   const telegram = new TelegramBotService(botAgent, permissions)
+  const qq = new QQBotService(botAgent, permissions, { getFetch })
   const bots = new BotPlatformManager([
     defineBotPlatform({
       service: telegram,
@@ -52,6 +56,13 @@ export function createApplicationServices(): ApplicationServices {
       normalizeConfig: normalizeTelegramBotConfig,
       equivalentConfig: equivalentTelegramBotConfig,
       test: config => telegram.test(config)
+    }),
+    defineBotPlatform({
+      service: qq,
+      selectConfig: settings => settings.qqBot,
+      normalizeConfig: normalizeQQBotConfig,
+      equivalentConfig: equivalentQQBotConfig,
+      test: config => qq.test(config)
     })
   ])
   return { tools: toolRegistry, permissions, bots }

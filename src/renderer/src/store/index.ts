@@ -593,6 +593,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     providers: [],
     mcpServers: [],
     telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
+    qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],
     activeProviderId: null,
     workspacePath: ''
@@ -601,6 +602,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     providers: [],
     mcpServers: [],
     telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
+    qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],
     activeProviderId: null,
     workspacePath: '',

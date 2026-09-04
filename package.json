@@ -12,7 +12,7 @@
   "scripts": {
     "dev": "electron-vite dev",
     "build": "electron-vite build",
-    "test": "node --no-warnings tests/toolPresentation.test.ts && node --no-warnings tests/toolExecutor.test.ts && node --no-warnings tests/permission.test.ts && node --no-warnings tests/persistedCallbacks.test.ts && node --no-warnings tests/botInfrastructure.test.ts && node --no-warnings tests/mcpConfig.test.ts && node --no-warnings tests/telegram.test.ts && node --no-warnings tests/sessionTitle.test.ts && node --no-warnings tests/migrations.test.ts && node --no-warnings tests/settingsChange.test.ts && node --no-warnings tests/recoveryPolicy.test.ts && node --no-warnings tests/turnDecision.test.ts && node --no-warnings tests/agentEvents.test.ts && node --no-warnings tests/builtinTools.test.ts && node --no-warnings tests/desktop.test.ts && node --no-warnings tests/history.test.ts && node --no-warnings tests/loopDetector.test.ts && node --no-warnings tests/multimodal.test.ts && node --no-warnings tests/truncation.test.ts && node --no-warnings tests/systemFonts.test.ts && node --no-warnings tests/officeTools.test.ts && node --no-warnings tests/officeRouting.test.ts",
+    "test": "node --no-warnings tests/toolPresentation.test.ts && node --no-warnings tests/toolExecutor.test.ts && node --no-warnings tests/permission.test.ts && node --no-warnings tests/persistedCallbacks.test.ts && node --no-warnings tests/botInfrastructure.test.ts && node --no-warnings tests/mcpConfig.test.ts && node --no-warnings tests/telegram.test.ts && node --no-warnings tests/qq.test.ts && node --no-warnings tests/sessionTitle.test.ts && node --no-warnings tests/migrations.test.ts && node --no-warnings tests/settingsChange.test.ts && node --no-warnings tests/recoveryPolicy.test.ts && node --no-warnings tests/turnDecision.test.ts && node --no-warnings tests/agentEvents.test.ts && node --no-warnings tests/builtinTools.test.ts && node --no-warnings tests/desktop.test.ts && node --no-warnings tests/history.test.ts && node --no-warnings tests/loopDetector.test.ts && node --no-warnings tests/multimodal.test.ts && node --no-warnings tests/truncation.test.ts && node --no-warnings tests/systemFonts.test.ts && node --no-warnings tests/officeTools.test.ts && node --no-warnings tests/officeRouting.test.ts",
     "preview": "electron-vite preview",
     "build:win": "electron-vite build && electron-builder --win --x64",
     "postinstall": "npx --yes cross-env ELECTRON_MIRROR=https://npmmirror.com/mirrors/electron/ node node_modules/electron/install.js && npx --yes cross-env PLAYWRIGHT_BROWSERS_PATH=node_modules/playwright-core/.local-browsers npx playwright install chromium"
@@ -24,6 +24,7 @@
     "@mediar-ai/terminator": "0.24.32",
     "@modelcontextprotocol/sdk": "^1.30.0",
     "@pdf-lib/fontkit": "^1.1.1",
+    "@tencent-connect/qqbot-nodejs": "^1.0.4",
     "@vscode/ripgrep": "1.18.0",
     "better-sqlite3": "^13.0.3",
     "docx": "^9.7.1",
@@ -69,6 +70,8 @@
       "node_modules/playwright-core/**/*",
       "node_modules/@mediar-ai/**/*",
       "node_modules/@modelcontextprotocol/**/*",
+      "node_modules/@tencent-connect/**/*",
+      "node_modules/ws/**/*",
       "node_modules/@vscode/**/*",
       "node_modules/@pdf-lib/**/*",
       "node_modules/gray-matter/**/*",

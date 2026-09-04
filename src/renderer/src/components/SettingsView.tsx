@@ -9,13 +9,14 @@ import { MemorySettings } from './settings/MemorySettings'
 import { UsageSettings } from './settings/UsageSettings'
 import { GeneralSettings } from './settings/GeneralSettings'
 import { TelegramSettings } from './settings/TelegramSettings'
+import { QQSettings } from './settings/QQSettings'
 
-type Tab = 'providers' | 'mcp' | 'telegram' | 'skills' | 'memory' | 'usage' | 'general'
+type Tab = 'providers' | 'mcp' | 'bots' | 'skills' | 'memory' | 'usage' | 'general'
 
 const TAB_ICONS: Record<Tab, typeof Server> = {
   providers: Server,
   mcp: Cable,
-  telegram: Send,
+  bots: Send,
   skills: Sparkles,
   memory: Brain,
   usage: BarChart3,
@@ -33,7 +34,7 @@ export default function SettingsView() {
     openSettings()
   }, [openSettings])
 
-  const tabs: Tab[] = ['providers', 'mcp', 'telegram', 'skills', 'memory', 'usage', 'general']
+  const tabs: Tab[] = ['providers', 'mcp', 'bots', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -80,10 +81,16 @@ export default function SettingsView() {
           servers={settingsDraft.mcpServers}
           onChange={(mcpServers) => useAppStore.getState().updateSettingsDraft({ mcpServers })}
         />}
-        {tab === 'telegram' && <TelegramSettings
-          config={settingsDraft.telegramBot}
-          onChange={(telegramBot) => useAppStore.getState().updateSettingsDraft({ telegramBot })}
-        />}
+        {tab === 'bots' && <div style={{ display: 'grid', gap: 18 }}>
+          <TelegramSettings
+            config={settingsDraft.telegramBot}
+            onChange={(telegramBot) => useAppStore.getState().updateSettingsDraft({ telegramBot })}
+          />
+          <QQSettings
+            config={settingsDraft.qqBot}
+            onChange={(qqBot) => useAppStore.getState().updateSettingsDraft({ qqBot })}
+          />
+        </div>}
         {tab === 'skills' && <SkillSettings
           skills={settingsDraft.skills}
           onChange={(skills) => useAppStore.getState().updateSettingsDraft({ skills })}

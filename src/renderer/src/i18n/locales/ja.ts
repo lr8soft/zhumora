@@ -88,7 +88,7 @@ export default {
     tabs: {
       providers: 'LLM プロバイダー',
       mcp: 'MCP サーバー',
-      telegram: 'Telegram',
+      bots: 'チャット Bot',
       skills: 'スキル',
       memory: 'メモリ',
       usage: '使用量',
@@ -165,6 +165,22 @@ export default {
       testing: 'テスト中…',
       connected: '接続済み：{{identity}}',
       failed: '接続に失敗しました'
+    },
+    qq: {
+      hint: 'QQ からローカル Agent と会話できます。C2C の回答はリアルタイム表示されます。',
+      enabled: 'QQ Bot を有効化',
+      credentials: '認証情報とアクセス制御',
+      credentialsHint: 'QQ Open Platform の AppID と AppSecret を使用します。許可された OpenID のみ Agent を実行できます。',
+      createBot: 'QQ Open Platform で Bot を作成',
+      appId: 'AppID',
+      appSecret: 'AppSecret',
+      allowedUsers: '許可する QQ ユーザー OpenID',
+      allowedUsersHint: '1 行に 1 つの OpenID。空の場合は /id のみ応答します。新規 Bot では sandbox メンバーと IP 許可リストも必要です。',
+      approveMode: 'ツール権限モード',
+      test: '認証情報をテスト',
+      testing: 'テスト中…',
+      connected: '認証情報は有効です：{{identity}}',
+      failed: '認証情報が無効です'
     },
     skills: {
       hint: 'SKILL.md ファイルをロードしてエージェントに専門プロンプトを注入。',

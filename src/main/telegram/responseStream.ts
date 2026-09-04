@@ -1,11 +1,11 @@
 import type { ToolCall } from '../../shared/types'
 import type { AgentEventSink } from '../agent/persistedCallbacks'
 import { log } from '../llm/logger.ts'
+import { formatBotToolCall } from '../bot/progress.ts'
 import type { TelegramHttpClient, TelegramMessage } from './client'
 
 const DRAFT_INTERVAL_MS = 700
 const DRAFT_TEXT_LIMIT = 4000
-const TOOL_ARG_PREVIEW = 70
 
 interface DraftState {
   draftId: number
@@ -82,7 +82,7 @@ export class TelegramResponseStream {
    */
   private onToolCall(toolCall: ToolCall): void {
     if (!toolCall?.id) return
-    const label = formatToolCall(toolCall)
+    const label = formatBotToolCall(toolCall)
     this.enqueue(async () => {
       try {
         const sent = await this.client.sendSingle(
@@ -171,42 +171,6 @@ export class TelegramResponseStream {
 }
 
 const REASONING_PREFIX = '💭 '
-
-/** Compact one-line "name: arg-preview" for a tool call status message. */
-export function formatToolCall(toolCall: ToolCall): string {
-  const name = toolCall.function?.name || 'tool'
-  const args = parseArgs(toolCall.function?.arguments)
-  const hint = pickArgHint(args)
-  return hint ? `${name}: ${hint}` : name
-}
-
-function parseArgs(raw: string | undefined): Record<string, unknown> {
-  if (!raw) return {}
-  try {
-    const parsed = JSON.parse(raw)
-    return parsed && typeof parsed === 'object' ? parsed as Record<string, unknown> : {}
-  } catch {
-    return {}
-  }
-}
-
-// Most useful scalar field to show first; keeps the status line human-readable.
-const ARG_HINT_KEYS = ['command', 'file_path', 'url', 'query', 'pattern', 'text', 'title', 'name']
-function pickArgHint(args: Record<string, unknown>): string {
-  for (const key of ARG_HINT_KEYS) {
-    const value = args[key]
-    if (typeof value === 'string' && value.trim()) return preview(value)
-  }
-  return ''
-}
-
-function preview(value: string): string {
-  const single = value.replace(/\s+/g, ' ').trim()
-  const characters = Array.from(single)
-  return characters.length <= TOOL_ARG_PREVIEW
-    ? single
-    : characters.slice(0, TOOL_ARG_PREVIEW).join('') + '…'
-}
 
 function formatDuration(ms: number): string {
   return ms < 1000 ? `${ms}ms` : `${(ms / 1000).toFixed(1)}s`

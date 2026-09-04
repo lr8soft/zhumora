@@ -165,6 +165,19 @@ export interface TelegramBotConfig {
   approveMode: AutoApproveMode
 }
 
+/** QQ 开放平台 Bot（WebSocket Gateway + OpenAPI）配置。 */
+export interface QQBotConfig {
+  enabled: boolean
+  /** QQ 开放平台签发的应用 ID。 */
+  appId: string
+  /** QQ 开放平台签发的应用密钥；仅在 main 进程交给官方 SDK。 */
+  appSecret: string
+  /** 允许触发 Agent 的用户 OpenID；空列表时仅响应 /id。 */
+  allowedUserIds: string[]
+  /** QQ 会话默认使用的三档工具批准模式。 */
+  approveMode: AutoApproveMode
+}
+
 /** Skill 配置 */
 export interface SkillConfig {
   id: string
@@ -208,6 +221,7 @@ export interface AppSettings {
   providers: ProviderConfig[]
   mcpServers: McpServerConfig[]
   telegramBot: TelegramBotConfig
+  qqBot: QQBotConfig
   skills: SkillConfig[]
   activeProviderId: string | null
   workspacePath: string

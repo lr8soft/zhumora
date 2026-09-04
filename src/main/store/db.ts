@@ -5,6 +5,7 @@ import Database from 'better-sqlite3'
 import * as path from 'node:path'
 import { app } from 'electron'
 import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory } from '../../shared/types'
+import { normalizeQQBotConfig } from '../../shared/qq'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
 import { normalizeTelegramBotConfig } from '../../shared/telegram'
@@ -182,7 +183,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 3
+export const SETTINGS_SCHEMA_VERSION = 4
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -220,6 +221,7 @@ function defaultSettings(): AppSettings {
     ],
     mcpServers: [],
     telegramBot: normalizeTelegramBotConfig(undefined),
+    qqBot: normalizeQQBotConfig(undefined),
     skills: [],
     activeProviderId: 'zhuminet-default',
     workspacePath,
@@ -252,6 +254,7 @@ export function normalizeSettings(input: unknown): AppSettings {
     providers: Array.isArray(raw.providers) ? raw.providers : defaults.providers,
     mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
     telegramBot: normalizeTelegramBotConfig(raw.telegramBot),
+    qqBot: normalizeQQBotConfig(raw.qqBot),
     skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId

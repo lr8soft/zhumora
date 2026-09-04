@@ -98,7 +98,7 @@ export default {
     tabs: {
       providers: 'LLM 提供商',
       mcp: 'MCP 服务器',
-      telegram: 'Telegram',
+      bots: '聊天机器人',
       skills: 'Skills',
       memory: '记忆',
       usage: '用量',
@@ -175,6 +175,22 @@ export default {
       testing: '测试中…',
       connected: '已连接：{{identity}}',
       failed: '连接失败'
+    },
+    qq: {
+      hint: '通过 QQ 与本地 Agent 对话。私聊回答会实时流式显示。',
+      enabled: '启用 QQ Bot',
+      credentials: '凭据与访问控制',
+      credentialsHint: 'AppID 与 AppSecret 来自 QQ 开放平台。只有白名单 OpenID 能触发 Agent。',
+      createBot: '前往 QQ 开放平台创建 Bot',
+      appId: 'AppID',
+      appSecret: 'AppSecret',
+      allowedUsers: '允许的 QQ 用户 OpenID',
+      allowedUsersHint: '每行一个 OpenID。空列表时 Bot 仅响应 /id；先向 Bot 发送 /id 获取自己的 OpenID。新 Bot 还需在开放平台配置沙箱成员和 IP 白名单。',
+      approveMode: '工具权限模式',
+      test: '测试凭据',
+      testing: '测试中…',
+      connected: '凭据有效：{{identity}}',
+      failed: '凭据验证失败'
     },
     skills: {
       hint: '加载 Skill 定义文件 (SKILL.md) 以注入专用提示词到 Agent。',
