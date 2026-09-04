@@ -57,8 +57,7 @@ const TASK_GUIDELINES = `## Guidelines
 - If you are unsure about something, ask the user for clarification instead of guessing.
 - When the task is complete, provide a brief summary of what you did.
 - NEVER commit, push, or create PRs unless the user explicitly asks.
-- NEVER use destructive commands like \`git reset --hard\` or \`git checkout --\` unless the user explicitly requests them.
-- Call set_title early in a new conversation when useful, but never let title-setting delay the task's required tool call.`
+- NEVER use destructive commands like \`git reset --hard\` or \`git checkout --\` unless the user explicitly requests them.`
 
 const MEMORY_GUIDE = `## Long-term Memory
 You have access to a persistent memory system. You can proactively use these tools:
@@ -229,7 +228,8 @@ export function buildSystemPrompt(
   skillsPrompt: string,
   memoryPrompt: string,
   runtime: PromptRuntimeSnapshot,
-  extra?: string
+  extra?: string,
+  topExtra?: string
 ): string {
   const builtinSection = buildBuiltinToolSection(runtime.tools)
   const mcpSection = buildMcpSection(runtime)
@@ -243,7 +243,7 @@ export function buildSystemPrompt(
 - Working directory: ${workspacePath}
 - Date: ${date}
 - You also have access to MCP tools and Skills for extended capabilities.${mcpSection}
-
+${topExtra ? '\n' + topExtra + '\n' : ''}
 ${TONE_AND_STYLE}
 
 ${AUTONOMY}

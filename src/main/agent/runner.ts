@@ -253,12 +253,15 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
   const promptRuntime: PromptRuntimeSnapshot = opts.promptRuntime || {
     tools: toolsForPrompt, builtinTools: [], mcpTools: [], mcpServers: []
   }
-  // 会话仍是默认标题 → 注入命名提醒（否则 LLM 不主动调 set_title 时标题永远不更新）
+  // 会话仍是默认标题 → 注入命名提醒（否则 LLM 不主动调 set_title 时标题永远不更新）。
+  // 放提示词顶部（topExtra）而不是末尾：末尾的指令在长上下文里最容易模型"看不见"。
   const extraParts = [opts.systemPromptExtra]
-  if (opts.sessionNeedsTitle) extraParts.push(SESSION_TITLE_REMINDER)
+  const topParts: string[] = []
+  if (opts.sessionNeedsTitle) topParts.push(SESSION_TITLE_REMINDER)
   const systemPrompt = buildSystemPrompt(
     opts.workspacePath, skillsPrompt, memoryPrompt, promptRuntime,
-    extraParts.filter(Boolean).join('\n\n')
+    extraParts.filter(Boolean).join('\n\n'),
+    topParts.filter(Boolean).join('\n\n')
   )
 
   const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)
