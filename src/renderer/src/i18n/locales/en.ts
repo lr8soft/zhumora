@@ -152,11 +152,11 @@ export default {
       remove: 'Remove'
     },
     telegram: {
-      hint: 'Receive messages through the Telegram HTTPS Bot API and run the local Agent. Long polling requires no public callback URL.',
+      hint: 'Chat with your local Agent through Telegram.',
       enabled: 'Enable Telegram Bot',
-      enabledHint: 'Starts HTTPS long polling in the main process after saving.',
       credentials: 'Credentials and access',
       credentialsHint: 'Get the token from BotFather. Only allowlisted users can run the Agent.',
+      createBot: 'Create a Bot with BotFather',
       token: 'Bot Token',
       allowedUsers: 'Allowed Telegram User IDs',
       allowedUsersHint: 'One numeric ID per line. With an empty list, only /id works; send /id to the Bot to discover your ID.',

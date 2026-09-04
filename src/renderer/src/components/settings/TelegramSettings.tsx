@@ -1,5 +1,5 @@
 import { useEffect, useState } from 'react'
-import { Bot, Loader2, ShieldCheck } from 'lucide-react'
+import { Bot, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { TelegramBotConfig } from '@shared/types'
 import { formatTelegramUserIds, parseTelegramUserIds } from '@shared/telegram'
@@ -8,6 +8,8 @@ interface Props {
   config: TelegramBotConfig
   onChange: (config: TelegramBotConfig) => void
 }
+
+const BOTFATHER_URL = 'https://t.me/BotFather'
 
 export function TelegramSettings({ config, onChange }: Props) {
   const { t } = useTranslation()
@@ -43,10 +45,7 @@ export function TelegramSettings({ config, onChange }: Props) {
         <div className="switch-row">
           <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
             <Bot size={16} style={{ color: 'var(--app-color-primary-strong)', flex: '0 0 auto' }} />
-            <div>
-              <strong>{t('settings.telegram.enabled')}</strong>
-              <small>{t('settings.telegram.enabledHint')}</small>
-            </div>
+            <strong>{t('settings.telegram.enabled')}</strong>
           </div>
           <input
             type="checkbox"
@@ -65,6 +64,16 @@ export function TelegramSettings({ config, onChange }: Props) {
             <p>{t('settings.telegram.credentialsHint')}</p>
           </div>
         </div>
+
+        <button
+          className="btn-ghost"
+          type="button"
+          onClick={() => window.api.settings.openExternal(BOTFATHER_URL)}
+          style={{ marginBottom: 14 }}
+        >
+          <ExternalLink size={13} />
+          {t('settings.telegram.createBot')}
+        </button>
 
         <div className="form-field">
           <label className="form-label">{t('settings.telegram.token')}</label>

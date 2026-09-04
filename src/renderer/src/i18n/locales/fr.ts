@@ -152,11 +152,11 @@ export default {
       remove: 'Supprimer'
     },
     telegram: {
-      hint: 'Recevez les messages via l’API HTTPS Telegram Bot et exécutez l’Agent local.',
+      hint: 'Discutez avec l’Agent local depuis Telegram.',
       enabled: 'Activer Telegram Bot',
-      enabledHint: 'Démarre le long polling HTTPS après enregistrement.',
       credentials: 'Identifiants et accès',
       credentialsHint: 'Token fourni par BotFather. Seuls les utilisateurs autorisés peuvent lancer l’Agent.',
+      createBot: 'Créer un Bot avec BotFather',
       token: 'Bot Token',
       allowedUsers: 'Telegram User IDs autorisés',
       allowedUsersHint: 'Un ID numérique par ligne. Si la liste est vide, seule la commande /id fonctionne.',

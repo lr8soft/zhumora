@@ -152,11 +152,11 @@ export default {
       remove: '削除'
     },
     telegram: {
-      hint: 'Telegram HTTPS Bot API でメッセージを受信し、ローカル Agent を実行します。',
+      hint: 'Telegram からローカル Agent と会話できます。',
       enabled: 'Telegram Bot を有効化',
-      enabledHint: '保存後に HTTPS ロングポーリングを開始します。',
       credentials: '認証情報とアクセス制御',
       credentialsHint: 'BotFather の Token を使用します。許可ユーザーのみ Agent を実行できます。',
+      createBot: 'BotFather で Bot を作成',
       token: 'Bot Token',
       allowedUsers: '許可する Telegram User ID',
       allowedUsersHint: '1 行に 1 つの数字 ID。空の場合は /id のみ応答します。',

@@ -162,11 +162,11 @@ export default {
       remove: '移除'
     },
     telegram: {
-      hint: '通过 Telegram HTTPS Bot API 接收消息并调用本地 Agent。使用长轮询，无需公网回调地址。',
+      hint: '通过 Telegram 与本地 Agent 对话。',
       enabled: '启用 Telegram Bot',
-      enabledHint: '保存后在主进程启动 HTTPS 长轮询。',
       credentials: '凭据与访问控制',
       credentialsHint: 'Token 来自 BotFather。只有白名单用户能触发 Agent。',
+      createBot: '前往 BotFather 创建 Bot',
       token: 'Bot Token',
       allowedUsers: '允许的 Telegram User ID',
       allowedUsersHint: '每行一个数字 ID。空列表时 Bot 仅响应 /id；先向 Bot 发送 /id 获取自己的 ID。',
