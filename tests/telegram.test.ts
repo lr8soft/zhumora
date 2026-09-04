@@ -135,4 +135,37 @@ await assert.rejects(
     && error.retryAfterSeconds === 5
 )
 
+// getFile + 文件下载（图片消息多模态管线依赖）
+const fileRequests: string[] = []
+const fetchFile = (async (input: string | URL | Request) => {
+  const url = String(input)
+  fileRequests.push(url)
+  if (url.includes('/getFile')) {
+    return new Response(JSON.stringify({
+      ok: true,
+      result: { file_id: 'f1', file_unique_id: 'u1', file_size: 3, file_path: 'photos/file_1.jpg' }
+    }), { status: 200, headers: { 'Content-Type': 'application/json' } })
+  }
+  return new Response(new Uint8Array([0xff, 0xd8, 0xff]), { status: 200, headers: { 'Content-Type': 'image/jpeg' } })
+}) as typeof fetch
+const fileClient = new TelegramHttpClient('123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abc-123', fetchFile)
+const file = await fileClient.getFile('f1')
+assert.equal(file.file_path, 'photos/file_1.jpg')
+const base64 = await fileClient.downloadFileAsBase64(file.file_path!)
+assert.equal(base64, '/9j/')
+assert.ok(fileRequests.some(request => request.includes('/file/bot123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abc-123/photos/file_1.jpg')))
+
+// 带图消息（photo + caption，无 text 字段）能被解析
+const photoUpdate: { update_id: number; message: import('../src/main/telegram/client.ts').TelegramMessage } = {
+  update_id: 11,
+  message: {
+    message_id: 5,
+    chat: { id: 9, type: 'private' },
+    caption: '看看这张图',
+    photo: [{ file_id: 'small', file_unique_id: 'a', width: 90, height: 90 }]
+  }
+}
+assert.equal(photoUpdate.message.caption, '看看这张图')
+assert.equal(photoUpdate.message.photo?.at(-1)?.file_id, 'small')
+
 console.log('Telegram HTTP API tests passed')

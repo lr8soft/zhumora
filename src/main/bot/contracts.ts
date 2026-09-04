@@ -10,6 +10,8 @@ export interface BotAgentMessage {
   senderId: string
   senderName: string
   text: string
+  /** 用户消息附带的图片（base64 data URL），进入 LLM 多模态上下文 */
+  images?: string[]
   approveMode: AutoApproveMode
   signal: AbortSignal
   events: AgentEventSink

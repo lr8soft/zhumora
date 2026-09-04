@@ -40,6 +40,7 @@ export class BotAgentBridge {
 
     const userMessage = {
       id: generateId(), sessionId: session.id, role: 'user' as const, content: message.text,
+      images: message.images && message.images.length > 0 ? message.images : undefined,
       timestamp: Date.now(), status: 'done' as const
     }
     this.deps.store.addMessage(userMessage)

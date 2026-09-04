@@ -1,4 +1,4 @@
-# Zhumora
+# Zhumora 智能体
 
 开源 Windows 桌面 AI 智能体。
 

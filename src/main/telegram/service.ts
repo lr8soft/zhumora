@@ -13,6 +13,7 @@ import {
   TelegramHttpClient,
   type TelegramCallbackQuery,
   type TelegramMessage,
+  type TelegramPhotoSize,
   type TelegramUser
 } from './client'
 import {
@@ -146,11 +147,13 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
   }
 
   private dispatchMessage(message: TelegramMessage): void {
-    const text = message.text?.trim()
     const sender = message.from
-    if (!text || !sender || sender.is_bot || !this.client || !this.bot) return
+    const text = (message.text || message.caption || '').trim()
+    const photos = message.photo || []
+    if (!text && photos.length === 0) return
+    if (!sender || sender.is_bot || !this.client || !this.bot) return
 
-    if (/^\/id(?:@\w+)?(?:\s|$)/i.test(text)) {
+    if (/^\/id(?:@\w+)?(?:\s|$)/i.test(commandText(message))) {
       void this.client.sendText(
         message.chat.id,
         `Your Telegram User ID: ${sender.id}\nChat ID: ${message.chat.id}`,
@@ -165,8 +168,9 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
       return
     }
 
-    const conversationId = `${message.chat.id}:${message.message_thread_id || 0}`
-    if (/^\/stop(?:@\w+)?(?:\s|$)/i.test(text)) {
+    // 会话按发送者隔离：群聊里不同用户不共享上下文；私聊 sender 与 chat 一致，行为不变
+    const conversationId = `${message.chat.id}:${message.message_thread_id || 0}:${sender.id}`
+    if (/^\/stop(?:@\w+)?(?:\s|$)/i.test(commandText(message))) {
       const run = this.activeRuns.get(conversationId)
       run?.abort()
       if (run) {
@@ -181,7 +185,7 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
 
     const previous = this.queues.get(conversationId) || Promise.resolve()
     const generation = this.generation
-    const queued = previous.catch(() => {}).then(() => this.processMessage(conversationId, message, text, generation))
+    const queued = previous.catch(() => {}).then(() => this.processMessage(conversationId, message, text, photos, generation))
     this.queues.set(conversationId, queued)
     void queued.finally(() => {
       if (this.queues.get(conversationId) === queued) this.queues.delete(conversationId)
@@ -210,7 +214,13 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     ).catch(error => log('warn', `Telegram callback reply failed: ${safeError(error)}`))
   }
 
-  private async processMessage(conversationId: string, message: TelegramMessage, text: string, generation: number): Promise<void> {
+  private async processMessage(
+    conversationId: string,
+    message: TelegramMessage,
+    text: string,
+    photos: TelegramPhotoSize[],
+    generation: number
+  ): Promise<void> {
     if (generation !== this.generation || !this.client || !this.bot || this.controller?.signal.aborted) return
     const runController = new AbortController()
     const response = new TelegramResponseStream(this.client, message, this.controller?.signal)
@@ -225,14 +235,19 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     this.activeRuns.set(conversationId, runController)
     let sessionId: string | undefined
     try {
+      // 会话按发送者隔离，群聊历史里用名字标注发言人，模型才能区分是谁说的
+      const senderName = displayName(message.from!)
+      const conversationLabel = message.chat.type === 'private' ? undefined : `${senderName}:`
+      const images = await this.downloadPhotos(photos, runController.signal)
       const result = await this.agent.handle({
         channel: this.channel,
         accountId: String(this.bot.id),
         conversationId,
         conversationTitle: telegramConversationTitle(message),
         senderId: String(message.from!.id),
-        senderName: displayName(message.from!),
-        text,
+        senderName,
+        text: conversationLabel ? `${conversationLabel} ${text}`.trim() : text,
+        images: images.length > 0 ? images : undefined,
         approveMode: this.config.approveMode,
         signal: runController.signal,
         events: combineAgentEventSinks(this.agentEvents, response.events),
@@ -266,6 +281,42 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
       if (sessionId && this.activeSessionRuns.get(sessionId) === runController) this.activeSessionRuns.delete(sessionId)
     }
   }
+
+  /**
+   * 下载消息里的图片并转成 base64 data URL（对接 UIMessage.images 多模态管线）。
+   * 单条消息最多取前 MAX_PHOTOS 张；任一张失败只记日志，不影响其余图片和文本。
+   */
+  private async downloadPhotos(photos: TelegramPhotoSize[], signal: AbortSignal): Promise<string[]> {
+    if (!this.client || photos.length === 0) return []
+    const images: string[] = []
+    for (const photo of photos.slice(0, MAX_PHOTOS)) {
+      try {
+        const file = await this.client.getFile(photo.file_id, signal)
+        if (!file.file_path) continue
+        const base64 = await this.client.downloadFileAsBase64(file.file_path, MAX_PHOTO_BYTES, signal)
+        images.push(`data:image/${inferPhotoMime(file.file_path)};base64,${base64}`)
+      } catch (error) {
+        if (isAbort(error)) break
+        log('warn', `Telegram photo download failed: ${safeError(error)}`)
+      }
+    }
+    return images
+  }
+}
+
+const MAX_PHOTOS = 4
+const MAX_PHOTO_BYTES = 20 * 1024 * 1024
+
+/** 纯文本命令检测：图片配文（caption）不参与 /id /stop 匹配 */
+function commandText(message: TelegramMessage): string {
+  return message.text?.trim() || ''
+}
+
+/** Telegram 图片下载后统一按 JPEG 处理（Bot API 的 photo 均为 JPEG）；有扩展名时尽量尊重 */
+function inferPhotoMime(filePath: string): string {
+  const ext = /\.(\w+)$/.exec(filePath)?.[1]?.toLowerCase()
+  if (ext === 'png' || ext === 'webp' || ext === 'gif') return ext
+  return 'jpeg'
 }
 
 function replyOptions(message: TelegramMessage): { messageThreadId?: number; replyToMessageId?: number } {

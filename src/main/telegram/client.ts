@@ -15,12 +15,33 @@ export interface TelegramChat {
   last_name?: string
 }
 
+export interface TelegramPhotoSize {
+  file_id: string
+  file_unique_id: string
+  width: number
+  height: number
+  file_size?: number
+}
+
+export interface TelegramDocument {
+  file_id: string
+  file_unique_id: string
+  mime_type?: string
+  file_name?: string
+  file_size?: number
+}
+
 export interface TelegramMessage {
   message_id: number
   message_thread_id?: number
   from?: TelegramUser
   chat: TelegramChat
   text?: string
+  /** 图片/文档的说明文字。用户发带图消息时，配文在这里而不是 text 字段 */
+  caption?: string
+  /** 图片消息：同一张图的多个尺寸，最后一张分辨率最高 */
+  photo?: TelegramPhotoSize[]
+  document?: TelegramDocument
 }
 
 export interface TelegramUpdate {
@@ -43,6 +64,13 @@ export interface TelegramInlineKeyboardButton {
 
 export interface TelegramInlineKeyboardMarkup {
   inline_keyboard: TelegramInlineKeyboardButton[][]
+}
+
+export interface TelegramFile {
+  file_id: string
+  file_unique_id: string
+  file_size?: number
+  file_path?: string
 }
 
 interface TelegramApiResponse<T> {
@@ -217,6 +245,27 @@ export class TelegramHttpClient {
       message_id: messageId,
       reply_markup: keyboard
     }, signal)
+  }
+
+  /** 获取文件元信息（含可用于下载的 file_path）。file_path 有效期约 1 小时 */
+  getFile(fileId: string, signal?: AbortSignal): Promise<TelegramFile> {
+    return this.call<TelegramFile>('getFile', { file_id: fileId }, signal)
+  }
+
+  /**
+   * 下载 Bot API 文件，返回 base64（不含 data: 前缀）。
+   * Telegram 官方下载上限 20MB，超过直接抛错避免拉爆内存。
+   */
+  async downloadFileAsBase64(filePath: string, maxBytes = 20 * 1024 * 1024, signal?: AbortSignal): Promise<string> {
+    const response = await this.fetchImpl(`${this.apiBase}/file/bot${this.token}/${encodeURI(filePath)}`, { signal })
+    if (!response.ok) {
+      throw new TelegramApiError(`Telegram file download failed with HTTP ${response.status}`, response.status)
+    }
+    const declared = Number(response.headers.get('content-length') || 0)
+    if (declared > maxBytes) throw new Error(`Telegram file is too large (${declared} bytes).`)
+    const bytes = new Uint8Array(await response.arrayBuffer())
+    if (bytes.byteLength > maxBytes) throw new Error(`Telegram file is too large (${bytes.byteLength} bytes).`)
+    return Buffer.from(bytes).toString('base64')
   }
 
   private async call<T>(method: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {

@@ -1,4 +1,4 @@
-# Zhumora
+# Zhumora Agent
 
 An open-source desktop AI agent for Windows.
 
