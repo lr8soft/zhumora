@@ -9,14 +9,12 @@ import { BotRunCoordinator, type BotRunContext } from '../bot/runCoordinator.ts'
 import { log } from '../llm/logger.ts'
 import {
   createQQClient,
-  type QQButtonEvent,
   type QQClient,
   type QQClientFactory,
   type QQMessage
 } from './client.ts'
 import {
-  isQQPermissionCallbackAuthorized,
-  parseQQPermissionCallback,
+  parseQQPermissionReply,
   QQPermissionPresenter,
   type QQPermissionRoute
 } from './permissionPresenter.ts'
@@ -96,7 +94,6 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
 
     const ready = createReadySignal(client)
     client.onMessage(message => this.dispatchMessage(message))
-    client.onInteraction(event => this.dispatchInteraction(event))
     client.onError(error => log('warn', `QQ Bot gateway error: ${safeError(error)}`))
 
     const running = client.start(controller.signal)
@@ -163,6 +160,22 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     }
 
     const conversationId = qqConversationId(message)
+
+    // 权限确认必须在入队之前拦截：Agent 正挂起等待批准时，同会话消息会被
+    // BotRunCoordinator 排在后面，走正常流程就永远读不到这条 y / n。
+    const reply = parseQQPermissionReply(text)
+    if (reply) {
+      const route = this.findPermissionRoute(conversationId, message.senderId)
+      if (route) {
+        const accepted = this.permissions.respond(route, reply === 'approve')
+        void client.sendText(
+          message.replyTarget,
+          accepted ? (reply === 'approve' ? '✅ 已允许，继续执行。' : '❌ 已拒绝。') : '该请求已过期。'
+        ).catch(error => log('warn', `QQ permission reply failed: ${safeError(error)}`))
+        return
+      }
+    }
+
     if (/^\/stop(?:\s|$)/i.test(text)) {
       const stopped = this.runs.abortConversation(conversationId)
       void client.sendText(message.replyTarget, stopped ? 'Stopped.' : 'Nothing is running.')
@@ -177,16 +190,11 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     ).catch(() => {})
   }
 
-  private dispatchInteraction(event: QQButtonEvent): void {
-    const client = this.client
-    if (!client) return
-    const parsed = parseQQPermissionCallback(event.data.resolved.button_data)
-    if (!parsed) return
-    const route = this.permissionRoutes.get(parsed.permissionId)
-    const authorized = isQQPermissionCallbackAuthorized(route, event, this.config.allowedUserIds)
-    const accepted = authorized && this.permissions.respond(parsed.permissionId, parsed.allowed)
-    void client.acknowledgeInteraction(event.id, accepted ? 0 : 4)
-      .catch(error => log('warn', `QQ interaction ACK failed: ${safeError(error)}`))
+  private findPermissionRoute(conversationId: string, senderId: string): string | null {
+    for (const [permissionId, route] of this.permissionRoutes) {
+      if (route.conversationId === conversationId && route.senderId === senderId) return permissionId
+    }
+    return null
   }
 
   private async processMessage(
@@ -203,6 +211,7 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
       client,
       message.replyTarget,
       message.senderId,
+      qqConversationId(message),
       route => this.permissionRoutes.set(route.permissionId, route),
       permissionId => this.permissionRoutes.delete(permissionId)
     )

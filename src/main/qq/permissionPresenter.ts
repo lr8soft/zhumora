@@ -1,26 +1,33 @@
-import type { InlineKeyboard } from '@tencent-connect/qqbot-nodejs'
 import type {
   PermissionPresenter,
   PermissionRequest,
   PermissionResolution
 } from '../agent/permissionBroker'
 import { formatBotPermissionPrompt } from '../bot/permissionPrompt.ts'
-import type { QQButtonEvent, QQClient, QQMessageTarget } from './client'
+import { log } from '../llm/logger.ts'
+import type { QQClient, QQMessageTarget } from './client'
 
-const CALLBACK_PREFIX = 'zhp'
+const PROMPT_ARGUMENT_LIMIT = 1200
+
+const APPROVE_REPLIES = new Set(['y', 'yes', '允许', '同意', '确认', '批准'])
+const DENY_REPLIES = new Set(['n', 'no', 'deny', '拒绝', '不同意', '取消'])
 
 export interface QQPermissionRoute {
   permissionId: string
   senderId: string
-  scope: QQMessageTarget['scope']
-  targetId: string
+  conversationId: string
 }
 
+/**
+ * QQ 没有 Telegram 的 callback_query 独立通道，按钮消息又依赖平台额外开通的
+ * 键盘模板权限，因此确认走纯文本：Agent 挂起时用户在 QQ 里回复 y / n。
+ */
 export class QQPermissionPresenter implements PermissionPresenter {
   private readonly pending = new Set<string>()
   private readonly client: QQClient
   private readonly target: QQMessageTarget
   private readonly senderId: string
+  private readonly conversationId: string
   private readonly register: (route: QQPermissionRoute) => void
   private readonly unregister: (permissionId: string) => void
 
@@ -28,12 +35,14 @@ export class QQPermissionPresenter implements PermissionPresenter {
     client: QQClient,
     target: QQMessageTarget,
     senderId: string,
+    conversationId: string,
     register: (route: QQPermissionRoute) => void,
     unregister: (permissionId: string) => void
   ) {
     this.client = client
     this.target = target
     this.senderId = senderId
+    this.conversationId = conversationId
     this.register = register
     this.unregister = unregister
   }
@@ -43,16 +52,14 @@ export class QQPermissionPresenter implements PermissionPresenter {
     this.register({
       permissionId: request.id,
       senderId: this.senderId,
-      scope: this.target.scope,
-      targetId: this.target.targetId
+      conversationId: this.conversationId
     })
     try {
-      await this.client.sendTextWithKeyboard(
-        this.target,
-        formatBotPermissionPrompt(request, 1200),
-        permissionKeyboard(request.id)
-      )
+      await this.client.sendText(this.target, formatQQPermissionPrompt(request))
     } catch (error) {
+      // Surface it: a silently dropped prompt leaves the Agent hanging with no
+      // way for the user to answer.
+      log('error', `QQ permission prompt failed to send (${request.toolName}): ${safeError(error)}`)
       this.unregister(request.id)
       this.pending.delete(request.id)
       throw error
@@ -65,54 +72,22 @@ export class QQPermissionPresenter implements PermissionPresenter {
   }
 }
 
-export function qqPermissionCallbackData(permissionId: string, allowed: boolean): string {
-  return `${CALLBACK_PREFIX}:${permissionId}:${allowed ? '1' : '0'}`
+export function formatQQPermissionPrompt(request: PermissionRequest): string {
+  return [
+    formatBotPermissionPrompt(request, PROMPT_ARGUMENT_LIMIT),
+    '',
+    '回复 y 允许执行，回复 n 拒绝。'
+  ].join('\n')
 }
 
-export function parseQQPermissionCallback(data: string | undefined): { permissionId: string; allowed: boolean } | null {
-  if (!data) return null
-  const match = /^zhp:([A-Za-z0-9_-]+):([01])$/.exec(data)
-  return match ? { permissionId: match[1], allowed: match[2] === '1' } : null
+/** 只接受整条消息就是一个确认词，避免把正常发言误判成批准。 */
+export function parseQQPermissionReply(text: string): 'approve' | 'deny' | null {
+  const normalized = text.trim().toLowerCase().replace(/[。！!？?~～\s]+$/g, '')
+  if (APPROVE_REPLIES.has(normalized)) return 'approve'
+  if (DENY_REPLIES.has(normalized)) return 'deny'
+  return null
 }
 
-export function isQQPermissionCallbackAuthorized(
-  route: QQPermissionRoute | undefined,
-  event: QQButtonEvent,
-  allowedUserIds: string[]
-): boolean {
-  if (!route) return false
-  const senderId = event.user_openid || event.group_member_openid || event.data.resolved.user_id
-  const targetId = route.scope === 'c2c'
-    ? (event.user_openid || event.data.resolved.user_id)
-    : event.group_openid
-  return senderId === route.senderId
-    && targetId === route.targetId
-    && allowedUserIds.includes(route.senderId)
-}
-
-function permissionKeyboard(permissionId: string): InlineKeyboard {
-  return {
-    content: {
-      rows: [{
-        buttons: [
-          permissionButton(permissionId, true),
-          permissionButton(permissionId, false)
-        ]
-      }]
-    }
-  }
-}
-
-function permissionButton(permissionId: string, allowed: boolean) {
-  const label = allowed ? '允许' : '拒绝'
-  return {
-    id: `zh-${allowed ? 'allow' : 'deny'}-${permissionId}`,
-    render_data: { label, visited_label: allowed ? '已允许' : '已拒绝', style: allowed ? 1 : 0 },
-    action: {
-      type: 2,
-      permission: { type: 2 },
-      data: qqPermissionCallbackData(permissionId, allowed),
-      click_limit: 1
-    }
-  }
+function safeError(error: unknown): string {
+  return error instanceof Error ? error.message.slice(0, 500) : String(error).slice(0, 500)
 }

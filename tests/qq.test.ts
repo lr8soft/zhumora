@@ -1,19 +1,15 @@
 import assert from 'node:assert/strict'
-import type { InlineKeyboard } from '@tencent-connect/qqbot-nodejs'
 import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
 import type { BotAgentMessage, BotAgentResult } from '../src/main/bot/contracts.ts'
 import {
   splitQQText,
-  type QQButtonEvent,
   type QQClient,
   type QQMessage,
   type QQMessageTarget,
   type QQTextStream
 } from '../src/main/qq/client.ts'
 import {
-  isQQPermissionCallbackAuthorized,
-  parseQQPermissionCallback,
-  qqPermissionCallbackData,
+  parseQQPermissionReply,
   QQPermissionPresenter,
   type QQPermissionRoute
 } from '../src/main/qq/permissionPresenter.ts'
@@ -36,37 +32,32 @@ class FakeStream implements QQTextStream {
 class FakeQQClient implements QQClient {
   readonly appId: string
   texts: Array<{ target: QQMessageTarget; text: string }> = []
-  keyboards: InlineKeyboard[] = []
   streams: FakeStream[] = []
-  acks: Array<{ id: string; code?: number }> = []
   failStreams = false
+  failSend = false
   verified = 0
   stopped = 0
   private ready?: () => void
   private message?: (message: QQMessage) => void | Promise<void>
-  private interaction?: (event: QQButtonEvent) => void | Promise<void>
 
   constructor(appId = 'app-1') { this.appId = appId }
   onReady(handler: () => void): void { this.ready = handler }
   onError(_handler: (error: Error) => void): void {}
   onMessage(handler: (message: QQMessage) => void | Promise<void>): void { this.message = handler }
-  onInteraction(handler: (event: QQButtonEvent) => void | Promise<void>): void { this.interaction = handler }
   async verifyCredentials(): Promise<void> { this.verified++ }
   start(signal: AbortSignal): Promise<void> {
     queueMicrotask(() => this.ready?.())
     return new Promise(resolve => signal.addEventListener('abort', () => resolve(), { once: true }))
   }
   stop(): void { this.stopped++ }
-  async sendText(target: QQMessageTarget, text: string): Promise<void> { this.texts.push({ target, text }) }
-  async sendTextWithKeyboard(target: QQMessageTarget, text: string, keyboard: InlineKeyboard): Promise<void> {
-    this.texts.push({ target, text }); this.keyboards.push(keyboard)
+  async sendText(target: QQMessageTarget, text: string): Promise<void> {
+    if (this.failSend) throw new Error('send failed')
+    this.texts.push({ target, text })
   }
-  async acknowledgeInteraction(id: string, code?: number): Promise<void> { this.acks.push({ id, code }) }
   openStream(_target: QQMessageTarget): QQTextStream {
     const stream = new FakeStream(); stream.failUpdates = this.failStreams; this.streams.push(stream); return stream
   }
   emitMessage(message: QQMessage): void { void this.message?.(message) }
-  emitInteraction(event: QQButtonEvent): void { void this.interaction?.(event) }
 }
 
 const c2cTarget: QQMessageTarget = { scope: 'c2c', targetId: 'user-a', msgId: 'msg-1' }
@@ -108,29 +99,44 @@ await groupResponse.flush()
 assert.equal(groupClient.texts.filter(item => item.text === '💭 思考中…').length, 1)
 assert.ok(groupClient.texts.some(item => item.text === 'group answer'))
 
-const callbackData = qqPermissionCallbackData('perm-1', true)
-assert.equal(callbackData, 'zhp:perm-1:1')
-assert.deepEqual(parseQQPermissionCallback(callbackData), { permissionId: 'perm-1', allowed: true })
-assert.equal(parseQQPermissionCallback('bad'), null)
-const route: QQPermissionRoute = { permissionId: 'perm-1', senderId: 'user-a', scope: 'c2c', targetId: 'user-a' }
-const interaction = qqInteraction('interaction-1', callbackData)
-assert.equal(isQQPermissionCallbackAuthorized(route, interaction, ['user-a']), true)
-assert.equal(isQQPermissionCallbackAuthorized({ ...route, senderId: 'other' }, interaction, ['user-a']), false)
+assert.equal(parseQQPermissionReply('y'), 'approve')
+assert.equal(parseQQPermissionReply('  YES '), 'approve')
+assert.equal(parseQQPermissionReply('允许'), 'approve')
+assert.equal(parseQQPermissionReply('n'), 'deny')
+assert.equal(parseQQPermissionReply('拒绝。'), 'deny')
+assert.equal(parseQQPermissionReply('yes and deploy it'), null)
+assert.equal(parseQQPermissionReply(''), null)
+const route: QQPermissionRoute = { permissionId: 'perm-1', senderId: 'user-a', conversationId: 'c2c:user-a' }
+assert.equal(route.permissionId, 'perm-1')
 
 let registered: QQPermissionRoute | undefined
 const presenter = new QQPermissionPresenter(
   responseClient,
   c2cTarget,
   'user-a',
+  'c2c:user-a',
   value => { registered = value },
   () => { registered = undefined }
 )
 const permissionRequest = { id: 'perm-2', sessionId: 's1', toolName: 'write', level: 'normal' as const, args: { path: 'a.txt', token: 'secret' } }
 await presenter.present(permissionRequest)
 assert.equal(registered?.permissionId, 'perm-2')
-assert.equal(responseClient.keyboards.length, 1)
-assert.doesNotMatch(responseClient.texts.at(-1)?.text || '', /secret/)
+const prompt = responseClient.texts.at(-1)?.text || ''
+assert.ok(prompt.includes('Tool: write'))
+assert.ok(prompt.includes('y'))
+assert.doesNotMatch(prompt, /secret/)
 presenter.resolve(permissionRequest, 'approved')
+assert.equal(registered, undefined)
+
+// 发送失败必须可观测且不留悬挂路由
+const brokenClient = new FakeQQClient()
+brokenClient.failSend = true
+const brokenPresenter = new QQPermissionPresenter(
+  brokenClient, c2cTarget, 'user-a', 'c2c:user-a',
+  value => { registered = value },
+  () => { registered = undefined }
+)
+await assert.rejects(() => brokenPresenter.present({ ...permissionRequest, id: 'perm-3' }), /send failed/)
 assert.equal(registered, undefined)
 
 const serviceClient = new FakeQQClient()
@@ -174,13 +180,31 @@ assert.equal(handled[0].accountId, 'app-1')
 await eventually(() => serviceClient.streams[0]?.completes === 1)
 
 serviceClient.emitMessage(qqMessage('needs permission', 'user-a'))
-await eventually(() => serviceClient.keyboards.length === 1)
-const permissionData = serviceClient.keyboards[0].content.rows[0].buttons[0].action.data
-serviceClient.emitInteraction(qqInteraction('interaction-service', permissionData))
+await eventually(() => serviceClient.texts.some(item => item.text.includes('回复 y 允许执行')))
+// y 必须在当前 run 挂起时被直接处理，而不是排进会话队列
+serviceClient.emitMessage(qqMessage('y', 'user-a'))
 await eventually(() => permissionDecision === true)
-assert.deepEqual(serviceClient.acks.at(-1), { id: 'interaction-service', code: 0 })
+assert.ok(serviceClient.texts.some(item => item.text.includes('已允许')))
 await service.stop()
 assert.ok(serviceClient.stopped > 0)
+
+// 拒绝路径
+const denyClient = new FakeQQClient()
+const denyService = new QQBotService(fakeAgent as any, permissions, { clientFactory: () => denyClient })
+await denyService.configure({
+  enabled: true,
+  appId: 'app-1',
+  appSecret: 'secret',
+  allowedUserIds: ['user-a'],
+  approveMode: 'auto'
+})
+permissionDecision = undefined
+denyClient.emitMessage(qqMessage('needs permission', 'user-a'))
+await eventually(() => denyClient.texts.some(item => item.text.includes('回复 y 允许执行')))
+denyClient.emitMessage(qqMessage('拒绝', 'user-a'))
+await eventually(() => permissionDecision === false)
+assert.ok(denyClient.texts.some(item => item.text.includes('已拒绝')))
+await denyService.stop()
 
 const testClient = new FakeQQClient('tested-app')
 const testService = new QQBotService(fakeAgent as any, permissions, { clientFactory: () => testClient })
@@ -205,16 +229,6 @@ function qqMessage(content: string, senderId: string): QQMessage {
     timestamp: new Date().toISOString(),
     replyTarget: { scope: 'c2c', targetId: senderId, msgId: `msg-${content}` },
     raw: { id: `msg-${content}`, content, timestamp: new Date().toISOString(), author: { user_openid: senderId } }
-  }
-}
-
-function qqInteraction(id: string, buttonData: string): QQButtonEvent {
-  return {
-    id,
-    type: 11,
-    version: 1,
-    user_openid: 'user-a',
-    data: { type: 1, resolved: { button_data: buttonData } }
   }
 }
 

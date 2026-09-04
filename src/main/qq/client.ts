@@ -2,8 +2,6 @@ import {
   QQBot,
   contentSanitizer,
   messageFilter,
-  type InlineKeyboard,
-  type InteractionEvent,
   type Logger,
   type QQBotInboundMessage,
   type ReplyTarget
@@ -12,7 +10,6 @@ import { log } from '../llm/logger.ts'
 
 export type QQMessage = QQBotInboundMessage
 export type QQMessageTarget = ReplyTarget
-export type QQButtonEvent = InteractionEvent
 
 export interface QQTextStream {
   update(fullText: string): Promise<void>
@@ -25,13 +22,10 @@ export interface QQClient {
   onReady(handler: () => void): void
   onError(handler: (error: Error) => void): void
   onMessage(handler: (message: QQMessage) => void | Promise<void>): void
-  onInteraction(handler: (event: QQButtonEvent) => void | Promise<void>): void
   verifyCredentials(): Promise<void>
   start(signal: AbortSignal): Promise<void>
   stop(): void
   sendText(target: QQMessageTarget, text: string): Promise<void>
-  sendTextWithKeyboard(target: QQMessageTarget, text: string, keyboard: InlineKeyboard): Promise<void>
-  acknowledgeInteraction(interactionId: string, code?: number): Promise<void>
   openStream(target: QQMessageTarget): QQTextStream
 }
 
@@ -79,10 +73,6 @@ export class TencentQQClient implements QQClient {
     this.bot.on('message', (_context, message) => handler(message))
   }
 
-  onInteraction(handler: (event: QQButtonEvent) => void | Promise<void>): void {
-    this.bot.on('interaction', (_context, event) => handler(event))
-  }
-
   async verifyCredentials(): Promise<void> {
     await this.bot.api.getToken()
   }
@@ -97,15 +87,6 @@ export class TencentQQClient implements QQClient {
 
   async sendText(target: QQMessageTarget, text: string): Promise<void> {
     for (const chunk of splitQQText(text)) await this.bot.sendText(target, chunk)
-  }
-
-  async sendTextWithKeyboard(target: QQMessageTarget, text: string, keyboard: InlineKeyboard): Promise<void> {
-    const clipped = Array.from(text).slice(0, QQ_TEXT_LIMIT).join('')
-    await this.bot.sendTextWithKeyboard(target, clipped, keyboard)
-  }
-
-  async acknowledgeInteraction(interactionId: string, code = 0): Promise<void> {
-    await this.bot.acknowledgeInteraction(interactionId, code)
   }
 
   openStream(target: QQMessageTarget): QQTextStream {
