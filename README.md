@@ -21,8 +21,17 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Extend tools through MCP servers
 - Load reusable skills from Markdown files
 - Local session history, long-term memory, and token usage records
+- Chat with the same agent from your phone through a Telegram bot, with live progress updates
 - Permission prompts for potentially dangerous actions
 - Light / dark themes and multilingual UI
+
+## Chat from Telegram
+
+Connect a Telegram bot in **Settings** and talk to the same local agent from your phone — no need to sit at the desktop.
+
+- **See it working** — thinking streams live (`💭 …`) and every tool call shows up as it happens (`🔧 bash: npm test`), turning into `✅ 1.2s` when it finishes, so a long task never looks frozen
+- **Approve from anywhere** — risky actions send inline Allow / Deny buttons straight to the chat
+- **Stay in control** — the bot only answers users you whitelist (send it `/id` to get your ID), and `/stop` cancels the current run at any moment
 
 ## Desktop control
 
