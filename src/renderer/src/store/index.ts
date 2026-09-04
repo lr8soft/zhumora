@@ -184,7 +184,7 @@ interface AppState {
 
   // 消息 — 按会话缓存（sessionId → 消息数组），未打开过的会话没有缓存
   messages: Record<string, UIMessage[]>
-  loadMessages: (sessionId: string) => Promise<void>
+  loadMessages: (sessionId: string, force?: boolean) => Promise<void>
   // 压缩标记 — 按会话缓存（sessionId → 边界）；null/无条目 = 该会话未压缩
   compactionMarkers: Record<string, CompactionMarker | null>
   loadCompaction: (sessionId: string) => Promise<void>
@@ -348,9 +348,12 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ---- 消息（按会话缓存） ----
   messages: {},
   compactionMarkers: {},
-  loadMessages: (sessionId) => {
+  loadMessages: async (sessionId, force = false) => {
     const inflight = loadingMessages.get(sessionId)
-    if (inflight) return inflight
+    if (inflight) {
+      await inflight
+      if (!force) return
+    }
     const p = (async () => {
       try {
         const msgs = await api.session.messages(sessionId)
@@ -360,7 +363,7 @@ export const useAppStore = create<AppState>((set, get) => ({
       }
     })()
     loadingMessages.set(sessionId, p)
-    return p
+    await p
   },
   loadCompaction: async (sessionId) => {
     try {
@@ -589,7 +592,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: {
     providers: [],
     mcpServers: [],
-    telegramBot: { enabled: false, token: '', allowedUserIds: [] },
+    telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],
     activeProviderId: null,
     workspacePath: ''
@@ -597,7 +600,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsDraft: {
     providers: [],
     mcpServers: [],
-    telegramBot: { enabled: false, token: '', allowedUserIds: [] },
+    telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],
     activeProviderId: null,
     workspacePath: '',

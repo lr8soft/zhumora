@@ -28,6 +28,7 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
   ipcMain.handle('session:list', () => db.getSessions())
   ipcMain.handle('session:get', (_event, id: string) => db.getSession(id))
   ipcMain.handle('session:delete', (_event, id: string) => {
+    services.permissions.cancelSession(id)
     db.deleteSession(id)
     runtime.deleteSession(id)
     return true

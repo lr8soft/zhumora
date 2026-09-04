@@ -50,7 +50,7 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
       }
 
       if (!isError && permissionCheck && !(await permissionCheck(name, parsedArgs))) {
-        resultText = 'Permission denied by user'
+        resultText = 'Permission denied'
         isError = true
       }
 

@@ -19,6 +19,15 @@ export interface TokenDelta {
   reasoning: string
 }
 
+/** A main-persisted message (including external bot user input) is authoritative by ID. */
+export function applyPersistedMessage(message: UIMessage, messages: UIMessage[]): UIMessage[] {
+  const index = messages.findIndex(item => item.id === message.id)
+  if (index < 0) return [...messages, message]
+  const next = [...messages]
+  next[index] = message
+  return next
+}
+
 /**
  * phase=start：把 thinking 占位替换为正式流式消息（main 已在首个 token 前
  * 发出 start，占位可能已携带思考增量，替换时保留——防御事件乱序）。
@@ -123,7 +132,7 @@ export function applyToolCallEvent(sessionId: string, messageId: string, toolCal
 
 /** tool_result 事件：以 main 的持久化 id 追加一条 tool 消息 */
 export function applyToolResultEvent(sessionId: string, messageId: string, toolCallId: string, toolName: string, result: string, isError: boolean, messages: UIMessage[], now: number): UIMessage[] {
-  return [...messages, {
+  return applyPersistedMessage({
     id: messageId,
     sessionId,
     role: 'tool',
@@ -132,7 +141,7 @@ export function applyToolResultEvent(sessionId: string, messageId: string, toolC
     toolName,
     timestamp: now,
     status: isError ? 'error' : 'done'
-  }]
+  }, messages)
 }
 
 /**

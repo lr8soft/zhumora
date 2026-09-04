@@ -7,9 +7,10 @@ import type { ToolDefinition, ToolExecutionResult, ToolHandlerOutput } from '../
  * 工具权限等级（与三档批准模式 AutoApproveMode 配合使用）
  * - safe:      任何模式下都自动放行（只读、无副作用操作）
  * - normal:    manual 模式弹窗确认；auto / full 模式自动放行
- * - dangerous: manual / auto 模式都弹窗确认；仅 full 模式自动放行
+ * - dangerous: manual / auto 模式都弹窗确认；full 模式通常自动放行
  *
- * 批准模式：manual（safe 放行，其余弹窗）/ auto（safe+normal 放行，dangerous 弹窗）/ full（全部放行）
+ * 批准模式：manual（safe 放行，其余确认）/ auto（safe+normal 放行，dangerous 确认）/
+ * full（日常工具放行，但 alwaysConfirm 能力边界变更仍需确认）
  */
 export type PermissionLevel = 'safe' | 'normal' | 'dangerous'
 

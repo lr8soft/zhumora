@@ -143,7 +143,7 @@ export function addMessage(msg: UIMessage): void {
 }
 
 export function getMessages(sessionId: string): UIMessage[] {
-  const rows = db!.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC').all(sessionId) as any[]
+  const rows = db!.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC, rowid ASC').all(sessionId) as any[]
   return rows.map(r => ({
     id: r.id,
     sessionId: r.session_id,
@@ -171,7 +171,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 2
+export const SETTINGS_SCHEMA_VERSION = 3
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()

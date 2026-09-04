@@ -26,6 +26,23 @@ export interface TelegramMessage {
 export interface TelegramUpdate {
   update_id: number
   message?: TelegramMessage
+  callback_query?: TelegramCallbackQuery
+}
+
+export interface TelegramCallbackQuery {
+  id: string
+  from: TelegramUser
+  message?: TelegramMessage
+  data?: string
+}
+
+export interface TelegramInlineKeyboardButton {
+  text: string
+  callback_data: string
+}
+
+export interface TelegramInlineKeyboardMarkup {
+  inline_keyboard: TelegramInlineKeyboardButton[][]
 }
 
 interface TelegramApiResponse<T> {
@@ -89,7 +106,7 @@ export class TelegramHttpClient {
     return this.call<TelegramUpdate[]>('getUpdates', {
       offset,
       timeout: 25,
-      allowed_updates: ['message']
+      allowed_updates: ['message', 'callback_query']
     }, signal)
   }
 
@@ -110,6 +127,62 @@ export class TelegramHttpClient {
           : undefined
       }, signal)
     }
+  }
+
+  sendDraft(
+    chatId: number,
+    draftId: number,
+    text: string,
+    messageThreadId?: number,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    return this.call<boolean>('sendMessageDraft', {
+      chat_id: chatId,
+      message_thread_id: messageThreadId,
+      draft_id: draftId,
+      text
+    }, signal)
+  }
+
+  sendPermissionPrompt(
+    chatId: number,
+    text: string,
+    keyboard: TelegramInlineKeyboardMarkup,
+    messageThreadId?: number,
+    signal?: AbortSignal
+  ): Promise<TelegramMessage> {
+    return this.call<TelegramMessage>('sendMessage', {
+      chat_id: chatId,
+      text,
+      message_thread_id: messageThreadId,
+      reply_markup: keyboard
+    }, signal)
+  }
+
+  answerCallbackQuery(
+    callbackQueryId: string,
+    text: string,
+    showAlert = false,
+    signal?: AbortSignal
+  ): Promise<boolean> {
+    return this.call<boolean>('answerCallbackQuery', {
+      callback_query_id: callbackQueryId,
+      text,
+      show_alert: showAlert
+    }, signal)
+  }
+
+  editMessageReplyMarkup(
+    chatId: number,
+    messageId: number,
+    keyboard: TelegramInlineKeyboardMarkup,
+    signal?: AbortSignal
+  ): Promise<TelegramMessage | boolean> {
+    return this.call<TelegramMessage | boolean>('editMessageReplyMarkup', {
+      chat_id: chatId,
+      message_id: messageId,
+      reply_markup: keyboard
+    }, signal)
   }
 
   private async call<T>(method: string, body: Record<string, unknown>, signal?: AbortSignal): Promise<T> {

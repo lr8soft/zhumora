@@ -161,6 +161,8 @@ export interface TelegramBotConfig {
   token: string
   /** 允许触发 Agent 的 Telegram User ID；空列表时仅响应 /id。 */
   allowedUserIds: string[]
+  /** Telegram 会话默认使用的三档工具批准模式。 */
+  approveMode: AutoApproveMode
 }
 
 /** Skill 配置 */
@@ -195,7 +197,7 @@ export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
 /** 工具调用批准模式（三档）
  * - manual: 手动批准 — safe 放行，normal + dangerous 都弹窗
  * - auto:   自动批准 — safe + normal 放行，dangerous 弹窗
- * - full:   全自动批准 — 全部放行，不弹窗
+ * - full:   全自动批准 — 日常工具放行；alwaysConfirm 能力边界变更仍需确认
  */
 export type AutoApproveMode = 'manual' | 'auto' | 'full'
 

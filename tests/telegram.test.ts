@@ -5,6 +5,13 @@ import {
   TelegramApiError,
   TelegramHttpClient
 } from '../src/main/telegram/client.ts'
+import {
+  formatPermissionPrompt,
+  isPermissionCallbackAuthorized,
+  parsePermissionCallback,
+  permissionCallbackData
+} from '../src/main/telegram/permissionPresenter.ts'
+import { TelegramResponseStream } from '../src/main/telegram/responseStream.ts'
 
 assert.equal(isValidTelegramBotToken('123456789:ABCDEFGHIJKLMNOPQRSTUVWXYZ_abc-123'), true)
 assert.equal(isValidTelegramBotToken('not-a-token'), false)
@@ -19,7 +26,9 @@ const fetchOk = (async (input: string | URL | Request, init?: RequestInit) => {
     ? { id: 42, is_bot: true, first_name: 'Zhumora', username: 'zhumora_bot' }
     : url.endsWith('/getUpdates')
       ? [{ update_id: 7, message: { message_id: 3, chat: { id: 9, type: 'private' }, text: 'hello' } }]
-      : { message_id: 4 }
+      : url.endsWith('/sendMessageDraft') || url.endsWith('/answerCallbackQuery')
+        ? true
+        : { message_id: 4, chat: { id: 9, type: 'private' } }
   return new Response(JSON.stringify({ ok: true, result }), {
     status: 200,
     headers: { 'Content-Type': 'application/json' }
@@ -33,12 +42,56 @@ const updates = await client.getUpdates(7)
 assert.equal(updates[0].update_id, 7)
 await client.sendText(9, 'hello', { replyToMessageId: 3 })
 assert.match(requests[0].url, /\/getMe$/)
-assert.deepEqual(requests[1].body, { offset: 7, timeout: 25, allowed_updates: ['message'] })
+assert.deepEqual(requests[1].body, { offset: 7, timeout: 25, allowed_updates: ['message', 'callback_query'] })
 assert.deepEqual(requests[2].body, {
   chat_id: 9,
   text: 'hello',
   reply_parameters: { message_id: 3 }
 })
+
+await client.sendDraft(9, 12, 'partial')
+assert.deepEqual(requests[3].body, { chat_id: 9, draft_id: 12, text: 'partial' })
+const permissionMessage = await client.sendPermissionPrompt(9, 'Approve?', {
+  inline_keyboard: [[{ text: 'Allow', callback_data: 'p:1' }]]
+})
+assert.equal(permissionMessage.message_id, 4)
+await client.answerCallbackQuery('callback-1', 'Approved.')
+assert.deepEqual(requests[5].body, {
+  callback_query_id: 'callback-1', text: 'Approved.', show_alert: false
+})
+
+const callbackData = permissionCallbackData('perm123', true)
+assert.equal(callbackData, 'zhp:perm123:1')
+assert.deepEqual(parsePermissionCallback(callbackData), { permissionId: 'perm123', allowed: true })
+assert.equal(parsePermissionCallback('bad'), null)
+const callbackQuery = {
+  id: 'q1',
+  from: { id: 7, is_bot: false, first_name: 'User' },
+  message: { message_id: 4, chat: { id: 9, type: 'private' as const } },
+  data: callbackData
+}
+assert.equal(isPermissionCallbackAuthorized({ permissionId: 'perm123', senderId: 7, chatId: 9 }, callbackQuery, ['7']), true)
+assert.equal(isPermissionCallbackAuthorized({ permissionId: 'perm123', senderId: 8, chatId: 9 }, callbackQuery, ['7']), false)
+assert.equal(isPermissionCallbackAuthorized({ permissionId: 'perm123', senderId: 7, chatId: 10 }, callbackQuery, ['7']), false)
+const prompt = formatPermissionPrompt({
+  id: 'p1', sessionId: 's1', toolName: 'write', level: 'normal',
+  args: { path: 'a.txt', apiToken: 'secret' }
+})
+assert.match(prompt, /a\.txt/)
+assert.doesNotMatch(prompt, /secret/)
+
+const stream = new TelegramResponseStream(client, {
+  message_id: 8,
+  from: { id: 1, is_bot: false, first_name: 'User' },
+  chat: { id: 9, type: 'private' },
+  text: 'question'
+})
+stream.events.token?.('s1', 'm1', 'draft text')
+await new Promise(resolve => setTimeout(resolve, 750))
+stream.events.assistantEnd?.('s1', 'm1', 'round one', [])
+await stream.flush()
+assert.ok(requests.some(request => request.url.endsWith('/sendMessageDraft') && request.body.text === 'draft text'))
+assert.ok(requests.some(request => request.url.endsWith('/sendMessage') && request.body.text === 'round one'))
 
 const fetchLimited = (async () => new Response(JSON.stringify({
   ok: false,

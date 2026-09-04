@@ -1,22 +1,30 @@
 import type { TelegramBotConfig } from '../../shared/types'
+import { AgentAbortedError } from '../../shared/types'
 import { normalizeTelegramBotConfig } from '../../shared/telegram'
+import type { PermissionBroker } from '../agent/permissionBroker'
+import { combineAgentEventSinks, type AgentEventSink } from '../agent/persistedCallbacks'
+import type { BotActivity, BotPlatformService } from '../bot/contracts'
+import type { BotAgentBridge } from '../bot/agentBridge'
 import { log } from '../llm/logger'
 import { getFetch } from '../net/fetch'
 import {
   isValidTelegramBotToken,
   TelegramApiError,
   TelegramHttpClient,
+  type TelegramCallbackQuery,
   type TelegramMessage,
   type TelegramUser
 } from './client'
-import { isTelegramAgentAbort, TelegramAgentBridge } from './agentBridge'
+import {
+  TelegramPermissionPresenter,
+  isPermissionCallbackAuthorized,
+  parsePermissionCallback,
+  type TelegramPermissionRoute
+} from './permissionPresenter'
+import { TelegramResponseStream } from './responseStream'
 
-export interface TelegramActivity {
-  sessionId: string
-  state: 'running' | 'complete' | 'error' | 'aborted'
-}
-
-export class TelegramBotService {
+export class TelegramBotService implements BotPlatformService<TelegramBotConfig> {
+  readonly channel = 'telegram'
   private controller: AbortController | null = null
   private polling: Promise<void> | null = null
   private client: TelegramHttpClient | null = null
@@ -26,20 +34,29 @@ export class TelegramBotService {
   private readonly activeRuns = new Map<string, AbortController>()
   private readonly activeSessionRuns = new Map<string, AbortController>()
   private generation = 0
-  private onActivity?: (activity: TelegramActivity) => boolean | void
-  private readonly agent: TelegramAgentBridge
+  private onActivity?: (activity: BotActivity) => boolean | void
+  private agentEvents: AgentEventSink = {}
+  private readonly permissionRoutes = new Map<string, TelegramPermissionRoute>()
+  private readonly agent: BotAgentBridge
+  private readonly permissions: PermissionBroker
 
-  constructor(agent: TelegramAgentBridge) {
+  constructor(agent: BotAgentBridge, permissions: PermissionBroker) {
     this.agent = agent
+    this.permissions = permissions
   }
 
-  setActivityListener(listener: (activity: TelegramActivity) => boolean | void): void {
+  setActivityListener(listener: (activity: BotActivity) => boolean | void): void {
     this.onActivity = listener
+  }
+
+  setAgentEventSink(sink: AgentEventSink): void {
+    this.agentEvents = sink
   }
 
   abortSession(sessionId: string): boolean {
     const run = this.activeSessionRuns.get(sessionId)
     run?.abort()
+    if (run) this.permissions.cancelSession(sessionId)
     return !!run
   }
 
@@ -89,9 +106,11 @@ export class TelegramBotService {
     this.generation++
     this.controller?.abort()
     this.controller = null
+    for (const sessionId of this.activeSessionRuns.keys()) this.permissions.cancelSession(sessionId)
     for (const run of this.activeRuns.values()) run.abort()
     this.activeRuns.clear()
     this.activeSessionRuns.clear()
+    this.permissionRoutes.clear()
     const polling = this.polling
     this.polling = null
     if (polling) await polling.catch(() => {})
@@ -108,7 +127,8 @@ export class TelegramBotService {
         failedAttempts = 0
         for (const update of updates) {
           offset = Math.max(offset || 0, update.update_id + 1)
-          if (update.message) this.dispatch(update.message)
+          if (update.callback_query) this.dispatchCallback(update.callback_query)
+          if (update.message) this.dispatchMessage(update.message)
         }
       } catch (error) {
         if (signal.aborted || isAbort(error)) return
@@ -125,7 +145,7 @@ export class TelegramBotService {
     }
   }
 
-  private dispatch(message: TelegramMessage): void {
+  private dispatchMessage(message: TelegramMessage): void {
     const text = message.text?.trim()
     const sender = message.from
     if (!text || !sender || sender.is_bot || !this.client || !this.bot) return
@@ -149,6 +169,11 @@ export class TelegramBotService {
     if (/^\/stop(?:@\w+)?(?:\s|$)/i.test(text)) {
       const run = this.activeRuns.get(conversationId)
       run?.abort()
+      if (run) {
+        for (const [sessionId, controller] of this.activeSessionRuns) {
+          if (controller === run) this.permissions.cancelSession(sessionId)
+        }
+      }
       void this.client.sendText(message.chat.id, run ? 'Stopped.' : 'Nothing is running.', replyOptions(message), this.controller?.signal)
         .catch(error => log('warn', `Telegram /stop reply failed: ${safeError(error)}`))
       return
@@ -163,19 +188,56 @@ export class TelegramBotService {
     })
   }
 
+  private dispatchCallback(query: TelegramCallbackQuery): void {
+    if (!this.client) return
+    const parsed = parsePermissionCallback(query.data)
+    if (!parsed) return
+    const route = this.permissionRoutes.get(parsed.permissionId)
+    const authorized = isPermissionCallbackAuthorized(route, query, this.config.allowedUserIds)
+
+    if (!authorized) {
+      void this.client.answerCallbackQuery(query.id, 'This permission request is invalid or expired.', true, this.controller?.signal)
+        .catch(error => log('warn', `Telegram callback reply failed: ${safeError(error)}`))
+      return
+    }
+
+    const accepted = this.permissions.respond(parsed.permissionId, parsed.allowed)
+    void this.client.answerCallbackQuery(
+      query.id,
+      accepted ? (parsed.allowed ? 'Approved.' : 'Denied.') : 'This permission request has expired.',
+      !accepted,
+      this.controller?.signal
+    ).catch(error => log('warn', `Telegram callback reply failed: ${safeError(error)}`))
+  }
+
   private async processMessage(conversationId: string, message: TelegramMessage, text: string, generation: number): Promise<void> {
     if (generation !== this.generation || !this.client || !this.bot || this.controller?.signal.aborted) return
     const runController = new AbortController()
+    const response = new TelegramResponseStream(this.client, message, this.controller?.signal)
+    const permissionPresenter = new TelegramPermissionPresenter(
+      this.client,
+      message,
+      message.from!.id,
+      route => this.permissionRoutes.set(route.permissionId, route),
+      permissionId => this.permissionRoutes.delete(permissionId),
+      this.controller?.signal
+    )
     this.activeRuns.set(conversationId, runController)
     let sessionId: string | undefined
     try {
       const result = await this.agent.handle({
+        channel: this.channel,
         accountId: String(this.bot.id),
         conversationId,
         conversationTitle: telegramConversationTitle(message),
+        senderId: String(message.from!.id),
         senderName: displayName(message.from!),
         text,
+        approveMode: this.config.approveMode,
         signal: runController.signal,
+        events: combineAgentEventSinks(this.agentEvents, response.events),
+        permissionPresenters: [permissionPresenter],
+        permissionTimeoutMs: 10 * 60 * 1000,
         onSessionReady: id => {
           const accepted = this.onActivity?.({ sessionId: id, state: 'running' }) !== false
           if (accepted) {
@@ -186,10 +248,11 @@ export class TelegramBotService {
         }
       })
       sessionId = result.sessionId
-      await this.client.sendText(message.chat.id, result.text, replyOptions(message), this.controller?.signal)
+      await response.flush()
       this.onActivity?.({ sessionId, state: 'complete' })
     } catch (error) {
-      if (isTelegramAgentAbort(error)) {
+      await response.flush()
+      if (error instanceof AgentAbortedError) {
         if (sessionId) this.onActivity?.({ sessionId, state: 'aborted' })
         return
       }
@@ -198,6 +261,7 @@ export class TelegramBotService {
         .catch(sendError => log('warn', `Telegram error reply failed: ${safeError(sendError)}`))
       if (sessionId) this.onActivity?.({ sessionId, state: 'error' })
     } finally {
+      if (sessionId) this.permissions.cancelSession(sessionId)
       if (this.activeRuns.get(conversationId) === runController) this.activeRuns.delete(conversationId)
       if (sessionId && this.activeSessionRuns.get(sessionId) === runController) this.activeSessionRuns.delete(sessionId)
     }

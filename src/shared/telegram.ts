@@ -3,7 +3,8 @@ import type { TelegramBotConfig } from './types'
 export const DEFAULT_TELEGRAM_BOT_CONFIG: TelegramBotConfig = {
   enabled: false,
   token: '',
-  allowedUserIds: []
+  allowedUserIds: [],
+  approveMode: 'manual'
 }
 
 export function parseTelegramUserIds(value: string): string[] {
@@ -22,7 +23,8 @@ export function normalizeTelegramBotConfig(input: unknown): TelegramBotConfig {
     token: typeof raw.token === 'string' ? raw.token.trim() : '',
     allowedUserIds: Array.isArray(raw.allowedUserIds)
       ? [...new Set(raw.allowedUserIds.filter((id): id is string => typeof id === 'string' && /^\d+$/.test(id)))]
-      : []
+      : [],
+    approveMode: raw.approveMode === 'auto' || raw.approveMode === 'full' ? raw.approveMode : 'manual'
   }
 }
 
@@ -32,4 +34,5 @@ export function equivalentTelegramBotConfig(left: TelegramBotConfig, right: Tele
   return normalizedLeft.enabled === normalizedRight.enabled
     && normalizedLeft.token === normalizedRight.token
     && [...normalizedLeft.allowedUserIds].sort().join('\n') === [...normalizedRight.allowedUserIds].sort().join('\n')
+    && normalizedLeft.approveMode === normalizedRight.approveMode
 }

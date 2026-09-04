@@ -13,7 +13,7 @@ import { sanitizeHistoryWithIds } from '../agent/history'
 import { log } from '../llm/logger'
 import { getMcpConnectionStatus } from '../mcp/client'
 import { getSkillsSystemPrompt } from '../skill/manager'
-import { buildAgentCallbacks, buildPermissionCheck } from './agentCallbacks'
+import { buildAgentCallbacks, createIpcAgentEventSink, createIpcPermissionPresenter } from './agentCallbacks'
 import { generateId } from '../id'
 import type { ApplicationServices } from '../composition'
 import { AgentIpcRuntime } from './runtime'
@@ -24,21 +24,24 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   const runtime = new AgentIpcRuntime((channel, payload) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
   })
-  services.telegram.setActivityListener(({ sessionId, state }) => {
-    if (state === 'running') {
-      if (runtime.runningSessions.has(sessionId)) return false
-      runtime.setRunning(sessionId, true)
-    } else if (state === 'complete') {
-      runtime.setRunning(sessionId, false)
-      if (!win.isDestroyed()) win.webContents.send('agent:complete', { sessionId, messageId: '', content: '' })
-    } else if (state === 'aborted') {
-      runtime.setRunning(sessionId, false)
-      if (!win.isDestroyed()) win.webContents.send('agent:aborted', { sessionId })
-    } else {
-      runtime.setRunning(sessionId, false)
-      if (!win.isDestroyed()) win.webContents.send('agent:error', { sessionId, error: 'Telegram Agent run failed.' })
-    }
-  })
+  services.permissions.addPresenter(createIpcPermissionPresenter(win.webContents))
+  const botEventSink = createIpcAgentEventSink(win.webContents)
+  for (const bot of services.bots) {
+    bot.setAgentEventSink(botEventSink)
+    bot.setActivityListener(({ sessionId, state }) => {
+      if (state === 'running') {
+        if (runtime.runningSessions.has(sessionId)) return false
+        runtime.setRunning(sessionId, true)
+      } else if (state === 'complete') {
+        runtime.setRunning(sessionId, false)
+      } else if (state === 'aborted') {
+        runtime.setRunning(sessionId, false)
+        if (!win.isDestroyed()) win.webContents.send('agent:aborted', { sessionId })
+      } else {
+        runtime.setRunning(sessionId, false)
+      }
+    })
+  }
   registerGeneralIpc(win, runtime, services)
 
   // ============================================================
@@ -90,12 +93,11 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     const { callbacks } = buildAgentCallbacks(sessionId, e.sender)
 
     // 构建权限检查闭包 — 使用动态 getter，运行中切换模式即时生效
-    const permissionCheck = buildPermissionCheck(
+    const permissionCheck = services.permissions.createCheck({
       sessionId,
-      () => runtime.getApproveMode(sessionId),
-      e.sender,
-      runtime.pendingPermissions
-    )
+      mode: () => runtime.getApproveMode(sessionId),
+      registry: services.tools
+    })
 
     const abortController = new AbortController()
     runtime.abortControllers.set(sessionId, abortController)
@@ -148,7 +150,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
       runtime.abortControllers.delete(sessionId)
       runtime.setRunning(sessionId, false)
       // 清理该会话的悬挂权限请求（以 false resolve，避免内存泄漏）
-      runtime.rejectPendingPermissions(sessionId)
+      services.permissions.cancelSession(sessionId)
       // 注意：不删除 approveModeMap —— 会话的批准模式需跨运行保留，
       // 运行中切换的模式在下次运行时直接生效
     })
@@ -169,11 +171,13 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
       // 立即通知前端该会话已停止（runAgent 的 finally 也会清理一次，幂等）
       win.webContents.send('agent:aborted', { sessionId })
     } else {
-      services.telegram.abortSession(sessionId)
+      for (const bot of services.bots) {
+        if (bot.abortSession(sessionId)) break
+      }
     }
     // 只清理该会话的悬挂权限请求（以 false resolve，避免内存泄漏；
     // 其他并行会话的权限弹窗不受影响）
-    runtime.rejectPendingPermissions(sessionId)
+    services.permissions.cancelSession(sessionId)
     return true
   })
 
@@ -245,12 +249,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
 
   // 权限响应
   ipcMain.handle('agent:permission_response', (_e, permId: string, allowed: boolean) => {
-    const pending = runtime.pendingPermissions.get(permId)
-    if (pending) {
-      pending.resolve(allowed)
-      runtime.pendingPermissions.delete(permId)
-    }
-    return true
+    return services.permissions.respond(permId, allowed)
   })
 
 }

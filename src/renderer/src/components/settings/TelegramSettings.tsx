@@ -1,7 +1,7 @@
 import { useEffect, useState } from 'react'
 import { Bot, ExternalLink, Loader2, ShieldCheck } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
-import type { TelegramBotConfig } from '@shared/types'
+import type { AutoApproveMode, TelegramBotConfig } from '@shared/types'
 import { formatTelegramUserIds, parseTelegramUserIds } from '@shared/telegram'
 
 interface Props {
@@ -36,6 +36,12 @@ export function TelegramSettings({ config, onChange }: Props) {
       setTestState({ loading: false, message: result.error || t('settings.telegram.failed'), error: true })
     }
   }
+
+  const approvalHintKey = ({
+    manual: 'chat.approveManualHint',
+    auto: 'chat.approveAutoHint',
+    full: 'chat.approveFullHint'
+  } as const)[config.approveMode]
 
   return (
     <div>
@@ -109,6 +115,20 @@ export function TelegramSettings({ config, onChange }: Props) {
             placeholder={'123456789\n987654321'}
           />
           <p className="form-hint">{t('settings.telegram.allowedUsersHint')}</p>
+        </div>
+
+        <div className="form-field" style={{ marginTop: 12 }}>
+          <label className="form-label">{t('settings.telegram.approveMode')}</label>
+          <select
+            className="input-field"
+            value={config.approveMode}
+            onChange={(event) => onChange({ ...config, approveMode: event.target.value as AutoApproveMode })}
+          >
+            <option value="manual">{t('chat.approveManual')}</option>
+            <option value="auto">{t('chat.approveAuto')}</option>
+            <option value="full">{t('chat.approveFull')}</option>
+          </select>
+          <p className="form-hint">{t(approvalHintKey)}</p>
         </div>
       </section>
     </div>

@@ -7,7 +7,12 @@ import { desktopTools } from './tools/desktop'
 import { officeTools } from './tools/officeTool'
 import { mcpManagerTools } from './mcp/managerTools'
 import { toolRegistry, type ToolHandler, type ToolRegistry } from './tools/registry'
-import { TelegramAgentBridge } from './telegram/agentBridge'
+import * as db from './store/db'
+import { getMcpConnectionStatus } from './mcp/client'
+import { getSkillsSystemPrompt } from './skill/manager'
+import { PermissionBroker } from './agent/permissionBroker'
+import { BotAgentBridge } from './bot/agentBridge'
+import type { BotPlatformRuntime } from './bot/contracts'
 import { TelegramBotService } from './telegram/service'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
@@ -21,6 +26,8 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
 
 export interface ApplicationServices {
   tools: ToolRegistry
+  permissions: PermissionBroker
+  bots: readonly BotPlatformRuntime[]
   telegram: TelegramBotService
 }
 
@@ -29,6 +36,14 @@ export function createApplicationServices(): ApplicationServices {
   for (const group of builtinGroups) {
     for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
   }
-  const telegram = new TelegramBotService(new TelegramAgentBridge(toolRegistry))
-  return { tools: toolRegistry, telegram }
+  const permissions = new PermissionBroker()
+  const botAgent = new BotAgentBridge({
+    tools: toolRegistry,
+    permissions,
+    store: db,
+    getSkillsPrompt: getSkillsSystemPrompt,
+    getMcpStatus: getMcpConnectionStatus
+  })
+  const telegram = new TelegramBotService(botAgent, permissions)
+  return { tools: toolRegistry, permissions, bots: [telegram], telegram }
 }

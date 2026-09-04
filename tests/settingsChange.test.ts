@@ -17,10 +17,15 @@ assert.deepEqual(parseTelegramUserIds('123\n456, 123 invalid -1'), ['123', '456'
 assert.deepEqual(normalizeTelegramBotConfig({ enabled: 1, token: ' token ', allowedUserIds: ['123', 456, '123'] }), {
   enabled: false,
   token: 'token',
-  allowedUserIds: ['123']
+  allowedUserIds: ['123'],
+  approveMode: 'manual'
 })
 assert.equal(equivalentTelegramBotConfig(
-  { enabled: true, token: 'token', allowedUserIds: ['123', '456'] },
-  { enabled: true, token: 'token', allowedUserIds: ['456', '123'] }
+  { enabled: true, token: 'token', allowedUserIds: ['123', '456'], approveMode: 'auto' },
+  { enabled: true, token: 'token', allowedUserIds: ['456', '123'], approveMode: 'auto' }
 ), true)
+assert.equal(equivalentTelegramBotConfig(
+  { enabled: true, token: 'token', allowedUserIds: [], approveMode: 'manual' },
+  { enabled: true, token: 'token', allowedUserIds: [], approveMode: 'full' }
+), false)
 console.log('settings semantic comparison tests passed')

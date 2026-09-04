@@ -110,7 +110,8 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  void applicationServices?.telegram.stop()
+  for (const bot of applicationServices?.bots || []) void bot.stop()
+  applicationServices?.permissions.dispose()
   void disposeDesktopAdapter().catch(error => {
     log('warn', `Failed to stop desktop automation process: ${String(error)}`)
   })

@@ -83,6 +83,11 @@ const api = {
       ipcRenderer.on('agent:reasoning', handler)
       return () => ipcRenderer.removeListener('agent:reasoning', handler)
     },
+    onUserMessage: (cb: (data: { sessionId: string; message: UIMessage }) => void) => {
+      const handler = (_e: any, data: any) => cb(data)
+      ipcRenderer.on('agent:user_message', handler)
+      return () => ipcRenderer.removeListener('agent:user_message', handler)
+    },
     /**
      * assistant 消息事件（流式 token 会携带此 messageId，用于精确路由到对应消息）
      * phase='start'：本轮 LLM 开始输出（UI 把 thinking 占位替换为流式消息）
@@ -140,6 +145,11 @@ const api = {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:permission_request', handler)
       return () => ipcRenderer.removeListener('agent:permission_request', handler)
+    },
+    onPermissionResolved: (cb: (data: { sessionId: string; permId: string; resolution: 'approved' | 'denied' | 'cancelled' | 'timeout' }) => void) => {
+      const handler = (_e: any, data: any) => cb(data)
+      ipcRenderer.on('agent:permission_resolved', handler)
+      return () => ipcRenderer.removeListener('agent:permission_resolved', handler)
     },
     /** source=auto：运行中自动压缩（消息表不变）；source=manual：手动压缩。
      *  两者都不删除消息 —— boundaryMessageId 之前的历史在 LLM 上下文中被摘要折叠，

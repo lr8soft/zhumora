@@ -12,6 +12,7 @@ import type { UIMessage, ToolCall } from '../src/shared/types'
 import {
   applyAssistantStart,
   applyAssistantEnd,
+  applyPersistedMessage,
   applyToolCallEvent,
   applyToolResultEvent,
   applyTokenDeltas
@@ -24,6 +25,16 @@ const msg = (over: Partial<UIMessage> & { id: string }): UIMessage => ({
 const toolCall = (id: string, name = 'read'): ToolCall => ({
   id, type: 'function', function: { name, arguments: '{}' }
 })
+
+// ---- applyPersistedMessage ----
+{
+  const user = msg({ id: 'u1', role: 'user', content: 'from Telegram', status: 'done' })
+  const appended = applyPersistedMessage(user, [])
+  assert.equal(appended[0].content, 'from Telegram')
+  const replaced = applyPersistedMessage({ ...user, content: 'authoritative' }, appended)
+  assert.equal(replaced.length, 1)
+  assert.equal(replaced[0].content, 'authoritative')
+}
 
 // ---- applyAssistantStart ----
 {
@@ -94,6 +105,7 @@ const toolCall = (id: string, name = 'read'): ToolCall => ({
   assert.equal(out[0].status, 'done')
   const err = applyToolResultEvent('s1', 'tr2', 'c2', 'bash', 'boom', true, [], NOW)
   assert.equal(err[0].status, 'error')
+  assert.equal(applyToolResultEvent('s1', 'tr1', 'c1', 'read', 'file contents', false, out, NOW).length, 1)
 }
 
 // ---- applyTokenDeltas ----

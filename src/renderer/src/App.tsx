@@ -10,6 +10,7 @@ import ConfirmDeleteDialog from './components/ConfirmDeleteDialog'
 import {
   applyAssistantStart,
   applyAssistantEnd,
+  applyPersistedMessage,
   applyToolCallEvent,
   applyToolResultEvent,
   applyTokenDeltas,
@@ -181,6 +182,12 @@ export default function App() {
     // 结构事件处理器开头强制 flush：保证"token 先于结构事件落库"的
     // 顺序语义（与旧实现一致，防止 phase=start 替换消息时丢失未 flush 的 token）
     const unsubs = [
+      // 外部 Bot 输入已由 main 落库；缓存存在时立即追加，未打开过的会话按需从 DB 加载。
+      window.api.agent.onUserMessage(({ sessionId, message }) => {
+        flushPending()
+        pushMessage(sessionId, current => applyPersistedMessage(message, current))
+      }),
+
       // 流式思考内容 → 写缓冲（不直接 setState；32ms 节拍批量落 store）
       window.api.agent.onReasoning(({ sessionId, messageId, token }) => {
         const msgs = useAppStore.getState().messages[sessionId]
@@ -222,14 +229,12 @@ export default function App() {
         pushMessage(sessionId, (m) => applyToolResultEvent(sessionId, messageId, toolCallId, toolName, result, isError, m, now))
       }),
 
-      // 对话完成 → 该会话退出运行态；若正显示该会话则刷新完整数据库记录
+      // 对话完成 → 强制从 DB 校准；后台会话也刷新，避免缓存命中后长期停留在旧历史。
       window.api.agent.onComplete(({ sessionId }) => {
         flushPending()
         const st = useAppStore.getState()
         clearSessionOverlays(sessionId)
-        if (st.activeSessionId === sessionId) {
-          void st.loadMessages(sessionId)
-        }
+        void st.loadMessages(sessionId, true)
         void st.loadSessions()
       }),
 
@@ -238,9 +243,7 @@ export default function App() {
         flushPending()
         const st = useAppStore.getState()
         clearSessionOverlays(sessionId)
-        if (st.activeSessionId === sessionId) {
-          void st.loadMessages(sessionId)
-        }
+        void st.loadMessages(sessionId, true)
         void st.loadSessions()
       }),
 
@@ -250,17 +253,17 @@ export default function App() {
         const st = useAppStore.getState()
         st.markRunning(sessionId, false)
         st.setRetryStatus(sessionId, null)
-        if (st.activeSessionId === sessionId) {
-          // 移除可能残留的思考占位，刷新 DB 记录
-          pushMessage(sessionId, (m) => m.filter(x => x.status !== 'thinking'))
-          void st.loadMessages(sessionId)
-        }
+        // 移除可能残留的思考占位，并强制刷新 DB 记录。
+        pushMessage(sessionId, (m) => m.filter(x => x.status !== 'thinking'))
+        void st.loadMessages(sessionId, true)
         void st.loadSessions()
       }),
 
       // 运行状态变化（main 进程权威：开始/结束运行）
       window.api.agent.onRunningChange(({ sessionId, running }) => {
-        useAppStore.getState().markRunning(sessionId, running)
+        const st = useAppStore.getState()
+        st.markRunning(sessionId, running)
+        if (running) void st.loadSessions()
       }),
 
       // 网络重试状态（按会话）
@@ -287,6 +290,16 @@ export default function App() {
         useAppStore.setState((s) => ({
           permissionRequests: { ...s.permissionRequests, [sessionId]: { permId, sessionId, toolName, args, level } }
         }))
+      }),
+
+      // Telegram 或客户端任一端先完成确认后，另一端同步关闭同一权限请求。
+      window.api.agent.onPermissionResolved(({ sessionId, permId }) => {
+        useAppStore.setState((s) => {
+          if (s.permissionRequests[sessionId]?.permId !== permId) return s
+          const rest = { ...s.permissionRequests }
+          delete rest[sessionId]
+          return { permissionRequests: rest }
+        })
       }),
 
       // 上下文压缩通知（按会话；仅当当前显示该会话时展示提示）
