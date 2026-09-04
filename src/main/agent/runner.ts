@@ -28,6 +28,7 @@ import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
 import { decideTurnOutcome } from './turnDecision'
 import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
+import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
 
 export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
@@ -68,6 +69,8 @@ export interface AgentRunOptions {
   loopConfig?: LoopDetectionConfig
   /** 会话标题更新回调（由 IPC 层注入） */
   onSessionTitleUpdate?: (sessionId: string, title: string) => void
+  /** 会话仍是默认标题 → 系统提示词注入命名提醒（每轮运行都注入，直到标题被设置） */
+  sessionNeedsTitle?: boolean
   /**
    * 运行中触发 auto compact 且成功生成摘要时回传新压缩状态（由 IPC 层持久化）。
    * 只折叠 effective 上下文，不触碰数据库中的完整历史。
@@ -250,7 +253,13 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
   const promptRuntime: PromptRuntimeSnapshot = opts.promptRuntime || {
     tools: toolsForPrompt, builtinTools: [], mcpTools: [], mcpServers: []
   }
-  const systemPrompt = buildSystemPrompt(opts.workspacePath, skillsPrompt, memoryPrompt, promptRuntime, opts.systemPromptExtra)
+  // 会话仍是默认标题 → 注入命名提醒（否则 LLM 不主动调 set_title 时标题永远不更新）
+  const extraParts = [opts.systemPromptExtra]
+  if (opts.sessionNeedsTitle) extraParts.push(SESSION_TITLE_REMINDER)
+  const systemPrompt = buildSystemPrompt(
+    opts.workspacePath, skillsPrompt, memoryPrompt, promptRuntime,
+    extraParts.filter(Boolean).join('\n\n')
+  )
 
   const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)
   if (sanitized.length !== messages.length) {

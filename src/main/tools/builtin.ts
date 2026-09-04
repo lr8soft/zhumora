@@ -242,7 +242,7 @@ export const setTitleTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'set_title',
-      description: 'Set a short title (max 6 words) for the current conversation. Call this early in a new conversation.',
+      description: 'Set a short title (max 6 words) for the current conversation. Call this early in a new conversation; if the conversation still has its default title, call it on your next response even if other work is needed.',
       parameters: {
         type: 'object',
         properties: { title: { type: 'string', description: 'Concise conversation title, no more than 6 words' } },

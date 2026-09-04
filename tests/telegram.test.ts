@@ -93,6 +93,34 @@ await stream.flush()
 assert.ok(requests.some(request => request.url.endsWith('/sendMessageDraft') && request.body.text === 'draft text'))
 assert.ok(requests.some(request => request.url.endsWith('/sendMessage') && request.body.text === 'round one'))
 
+// 思考草稿 + 工具进度实时显示（用户不会以为 bot 卡死）
+const progressStream = new TelegramResponseStream(client, {
+  message_id: 20,
+  from: { id: 1, is_bot: false, first_name: 'User' },
+  chat: { id: 9, type: 'private' },
+  text: 'do stuff'
+})
+progressStream.events.reasoning?.('s1', 'm2', 'thinking hard')
+await new Promise(resolve => setTimeout(resolve, 750))
+assert.ok(requests.some(request =>
+  request.url.endsWith('/sendMessageDraft') && request.body.text === '💭 thinking hard'
+))
+progressStream.events.toolCall?.('s1', 'm2', {
+  id: 'tc1', type: 'function', function: { name: 'bash', arguments: '{"command":"npm test"}' }
+})
+await new Promise(resolve => setTimeout(resolve, 10))
+assert.ok(requests.some(request =>
+  request.url.endsWith('/sendMessage') && request.body.text === '🔧 bash: npm test'
+))
+progressStream.events.toolResult?.(
+  { id: 'tm1', sessionId: 's1', role: 'tool', content: 'ok', toolCallId: 'tc1', toolName: 'bash', timestamp: 1 },
+  'tc1', 'bash', 'ok', false, 1234
+)
+await progressStream.flush()
+assert.ok(requests.some(request =>
+  request.url.endsWith('/editMessageText') && request.body.text === '🔧 bash: npm test\n✅ 1.2s'
+))
+
 const fetchLimited = (async () => new Response(JSON.stringify({
   ok: false,
   error_code: 429,

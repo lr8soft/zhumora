@@ -73,6 +73,17 @@ export function updateSessionTitle(id: string, title: string): void {
     .run(title, Date.now(), id)
 }
 
+/**
+ * 仅当标题仍是默认值时写入（自动命名兜底用，条件更新原子完成）。
+ * set_title / 用户手动改名会先改变标题，使该更新自然失效，不会被覆盖。
+ */
+export function tryUpdateSessionTitleIfDefault(id: string, title: string): boolean {
+  const result = db!.prepare(
+    "UPDATE sessions SET title = ?, updated_at = ? WHERE id = ? AND (title = 'New Session' OR title = '')"
+  ).run(title, Date.now(), id)
+  return result.changes > 0
+}
+
 export function updateSessionWorkspace(id: string, workspacePath: string): void {
   db!.prepare('UPDATE sessions SET workspace_path = ? WHERE id = ?')
     .run(workspacePath, id)

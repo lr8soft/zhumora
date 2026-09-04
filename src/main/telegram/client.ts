@@ -129,6 +129,40 @@ export class TelegramHttpClient {
     }
   }
 
+  /** 发送单条消息并返回它（进度消息需要记住 message_id 以便编辑）。超长文本截断而不是分条 */
+  sendSingle(
+    chatId: number,
+    text: string,
+    options: { messageThreadId?: number; replyToMessageId?: number } = {},
+    signal?: AbortSignal
+  ): Promise<TelegramMessage> {
+    const characters = Array.from(text)
+    const body = characters.length <= 4000 ? text : characters.slice(characters.length - 4000).join('')
+    return this.call<TelegramMessage>('sendMessage', {
+      chat_id: chatId,
+      text: body,
+      message_thread_id: options.messageThreadId,
+      reply_parameters: options.replyToMessageId
+        ? { message_id: options.replyToMessageId }
+        : undefined
+    }, signal)
+  }
+
+  editMessageText(
+    chatId: number,
+    messageId: number,
+    text: string,
+    signal?: AbortSignal
+  ): Promise<TelegramMessage | boolean> {
+    const characters = Array.from(text)
+    const body = characters.length <= 4000 ? text : characters.slice(characters.length - 4000).join('')
+    return this.call<TelegramMessage | boolean>('editMessageText', {
+      chat_id: chatId,
+      message_id: messageId,
+      text: body
+    }, signal)
+  }
+
   sendDraft(
     chatId: number,
     draftId: number,

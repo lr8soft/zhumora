@@ -19,6 +19,9 @@ import type { ApplicationServices } from '../composition'
 import { AgentIpcRuntime } from './runtime'
 import { mapPersistedHistory } from '../agent/messageMapper'
 import { registerGeneralIpc } from './registerGeneralIpc'
+import { ensureSessionTitle, collectUserTexts } from '../agent/titleService'
+import { sessionNeedsTitle as isDefaultTitle } from '../../shared/sessionTitle'
+import { complete } from '../llm/provider'
 
 export function setupIpc(win: BrowserWindow, services: ApplicationServices): void {
   const runtime = new AgentIpcRuntime((channel, payload) => {
@@ -88,6 +91,8 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     // 获取 session 的工作目录（优先用 session 的，没有再用 settings 的默认值）
     const session = db.getSession(sessionId)
     const workspacePath = session?.workspacePath || settings.workspacePath
+    // 仍是默认标题 → 提醒 LLM 调 set_title；运行结束后还有兜底生成
+    const needsTitle = isDefaultTitle(session?.title)
 
     // 构建回调（流式 token / 工具调用 / DB 持久化）
     const { callbacks } = buildAgentCallbacks(sessionId, e.sender)
@@ -128,6 +133,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
           mcpServers: getMcpConnectionStatus()
         },
         toolRegistry: services.tools,
+        sessionNeedsTitle: needsTitle,
         onSessionTitleUpdate: (sid, title) => {
           win.webContents.send('session:title_updated', { sessionId: sid, title })
         },
@@ -153,6 +159,24 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
       services.permissions.cancelSession(sessionId)
       // 注意：不删除 approveModeMap —— 会话的批准模式需跨运行保留，
       // 运行中切换的模式在下次运行时直接生效
+      // 标题兜底：LLM 没调 set_title 时根据用户消息自动生成（幂等，失败静默）
+      if (needsTitle) {
+        void ensureSessionTitle({
+          provider,
+          sessionId,
+          modelOverride: options?.modelOverride,
+          completeFn: complete,
+          userTexts: collectUserTexts(chatMessages),
+          store: {
+            getSessionTitle: sid => db.getSession(sid)?.title ?? null,
+            applyGeneratedTitle: (sid, title) => {
+              if (db.tryUpdateSessionTitleIfDefault(sid, title)) {
+                if (!win.isDestroyed()) win.webContents.send('session:title_updated', { sessionId: sid, title })
+              }
+            }
+          }
+        })
+      }
     })
 
     return { ok: true, userMessage: persistedUserMessage }
