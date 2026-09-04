@@ -88,6 +88,7 @@ export default {
     tabs: {
       providers: 'LLM Providers',
       mcp: 'MCP Servers',
+      telegram: 'Telegram',
       skills: 'Skills',
       memory: 'Memory',
       usage: 'Usage',
@@ -149,6 +150,20 @@ export default {
       customHeaders: 'Custom Headers (one per line, Key: Value)',
       addServer: '+ Add MCP Server',
       remove: 'Remove'
+    },
+    telegram: {
+      hint: 'Receive messages through the Telegram HTTPS Bot API and run the local Agent. Long polling requires no public callback URL.',
+      enabled: 'Enable Telegram Bot',
+      enabledHint: 'Starts HTTPS long polling in the main process after saving.',
+      credentials: 'Credentials and access',
+      credentialsHint: 'Get the token from BotFather. Only allowlisted users can run the Agent.',
+      token: 'Bot Token',
+      allowedUsers: 'Allowed Telegram User IDs',
+      allowedUsersHint: 'One numeric ID per line. With an empty list, only /id works; send /id to the Bot to discover your ID.',
+      test: 'Test connection',
+      testing: 'Testing…',
+      connected: 'Connected: {{identity}}',
+      failed: 'Connection failed'
     },
     skills: {
       hint: 'Load Skill definitions (SKILL.md files) to inject specialized prompts into the agent.',

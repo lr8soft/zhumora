@@ -103,6 +103,23 @@ const migrations: Migration[] = [
         database.exec('ALTER TABLE messages ADD COLUMN reasoning TEXT')
       }
     }
+  },
+  {
+    version: 3,
+    up(database) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS bot_sessions (
+          channel TEXT NOT NULL,
+          account_id TEXT NOT NULL,
+          conversation_id TEXT NOT NULL,
+          session_id TEXT NOT NULL,
+          PRIMARY KEY (channel, account_id, conversation_id),
+          UNIQUE (session_id),
+          FOREIGN KEY (session_id) REFERENCES sessions(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_bot_sessions_session ON bot_sessions(session_id);
+      `)
+    }
   }
 ]
 

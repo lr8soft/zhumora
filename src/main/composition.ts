@@ -7,6 +7,8 @@ import { desktopTools } from './tools/desktop'
 import { officeTools } from './tools/officeTool'
 import { mcpManagerTools } from './mcp/managerTools'
 import { toolRegistry, type ToolHandler, type ToolRegistry } from './tools/registry'
+import { TelegramAgentBridge } from './telegram/agentBridge'
+import { TelegramBotService } from './telegram/service'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -19,6 +21,7 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
 
 export interface ApplicationServices {
   tools: ToolRegistry
+  telegram: TelegramBotService
 }
 
 export function createApplicationServices(): ApplicationServices {
@@ -26,5 +29,6 @@ export function createApplicationServices(): ApplicationServices {
   for (const group of builtinGroups) {
     for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
   }
-  return { tools: toolRegistry }
+  const telegram = new TelegramBotService(new TelegramAgentBridge(toolRegistry))
+  return { tools: toolRegistry, telegram }
 }

@@ -8,6 +8,7 @@ import { StdioClientTransport } from '@modelcontextprotocol/sdk/client/stdio.js'
 import { SSEClientTransport } from '@modelcontextprotocol/sdk/client/sse.js'
 import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/streamableHttp.js'
 import type { McpServerConfig, ToolDefinition, ToolImageAttachment } from '../../shared/types'
+import { buildMcpRequestHeaders } from '../../shared/mcpConfig'
 import { registerTool, unregisterToolsBySource, type ToolHandler, type ToolContext } from '../tools/registry'
 import { log } from '../llm/logger'
 import { getMaxRetries, withRetry } from '../net/retry'
@@ -43,42 +44,6 @@ export function getMcpConnectionStatus(): { id: string; name: string; connected:
     name: s.name,
     connected: s.state === 'connected'
   }))
-}
-
-/**
- * 根据 config 构建 SSE 请求 headers
- * 合并自定义 headers + 认证 headers（认证优先级更高）
- */
-function buildSseHeaders(config: McpServerConfig): Record<string, string> {
-  const headers: Record<string, string> = {}
-
-  // 1. 先合并用户自定义 headers
-  if (config.headers) {
-    Object.assign(headers, config.headers)
-  }
-
-  // 2. 根据认证类型添加认证 header（覆盖同名自定义 header）
-  switch (config.authType) {
-    case 'bearer':
-      if (config.authToken) {
-        headers['Authorization'] = `Bearer ${config.authToken}`
-      }
-      break
-    case 'apikey':
-      if (config.apiKey) {
-        const headerName = config.authHeader || 'X-API-Key'
-        headers[headerName] = config.apiKey
-      }
-      break
-    case 'custom':
-      // 用户通过 headers 字段自行配置，不做额外处理
-      break
-    case 'none':
-    default:
-      break
-  }
-
-  return headers
 }
 
 /**
@@ -130,14 +95,14 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
           : config.type === 'streamable-http'
           ? new StreamableHTTPClientTransport(new URL(config.url!), {
               requestInit: {
-                headers: buildSseHeaders(config)
+                headers: buildMcpRequestHeaders(config)
               },
               // 统一出口：开关开启时走 Electron net.fetch（系统证书库），兼容自签证书
               fetch: getMcpFetch()
             })
           : new SSEClientTransport(new URL(config.url!), {
               requestInit: {
-                headers: buildSseHeaders(config)
+                headers: buildMcpRequestHeaders(config)
               },
               // 同上；SSE 的 EventSource 内部 fetch 也以此为准
               fetch: getMcpFetch()

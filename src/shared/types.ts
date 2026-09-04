@@ -154,6 +154,15 @@ export interface McpServerConfig {
   enabled: boolean
 }
 
+/** Telegram Bot API（HTTPS long polling）配置。 */
+export interface TelegramBotConfig {
+  enabled: boolean
+  /** BotFather 签发的 token；仅在 main 进程用于请求 Telegram。 */
+  token: string
+  /** 允许触发 Agent 的 Telegram User ID；空列表时仅响应 /id。 */
+  allowedUserIds: string[]
+}
+
 /** Skill 配置 */
 export interface SkillConfig {
   id: string
@@ -196,6 +205,7 @@ export interface AppSettings {
   schemaVersion?: number
   providers: ProviderConfig[]
   mcpServers: McpServerConfig[]
+  telegramBot: TelegramBotConfig
   skills: SkillConfig[]
   activeProviderId: string | null
   workspacePath: string

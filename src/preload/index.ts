@@ -3,7 +3,7 @@
 // 通过 contextBridge 暴露最小化 API surface
 // ============================================================
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningEffort } from '../shared/types'
+import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningEffort, TelegramBotConfig } from '../shared/types'
 
 const api = {
   // ============================================================
@@ -171,6 +171,11 @@ const api = {
       ipcRenderer.on('settings:changed', handler)
       return () => ipcRenderer.removeListener('settings:changed', handler)
     }
+  },
+
+  telegram: {
+    test: (config: TelegramBotConfig): Promise<{ ok?: boolean; bot?: { name: string; username?: string }; error?: string }> =>
+      ipcRenderer.invoke('telegram:test', config)
   },
 
   // ============================================================

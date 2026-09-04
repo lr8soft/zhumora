@@ -98,6 +98,7 @@ export default {
     tabs: {
       providers: 'LLM 提供商',
       mcp: 'MCP 服务器',
+      telegram: 'Telegram',
       skills: 'Skills',
       memory: '记忆',
       usage: '用量',
@@ -159,6 +160,20 @@ export default {
       customHeaders: '自定义 Headers（每行一个，Key: Value）',
       addServer: '+ 添加 MCP 服务器',
       remove: '移除'
+    },
+    telegram: {
+      hint: '通过 Telegram HTTPS Bot API 接收消息并调用本地 Agent。使用长轮询，无需公网回调地址。',
+      enabled: '启用 Telegram Bot',
+      enabledHint: '保存后在主进程启动 HTTPS 长轮询。',
+      credentials: '凭据与访问控制',
+      credentialsHint: 'Token 来自 BotFather。只有白名单用户能触发 Agent。',
+      token: 'Bot Token',
+      allowedUsers: '允许的 Telegram User ID',
+      allowedUsersHint: '每行一个数字 ID。空列表时 Bot 仅响应 /id；先向 Bot 发送 /id 获取自己的 ID。',
+      test: '测试连接',
+      testing: '测试中…',
+      connected: '已连接：{{identity}}',
+      failed: '连接失败'
     },
     skills: {
       hint: '加载 Skill 定义文件 (SKILL.md) 以注入专用提示词到 Agent。',

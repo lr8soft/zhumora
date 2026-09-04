@@ -7,6 +7,7 @@ import { app } from 'electron'
 import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory } from '../../shared/types'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
+import { normalizeTelegramBotConfig } from '../../shared/telegram'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -88,6 +89,40 @@ export function touchSession(id: string): void {
   db!.prepare('UPDATE sessions SET updated_at = ? WHERE id = ?').run(Date.now(), id)
 }
 
+/** 获取外部 Bot 对话绑定的本地 session；不存在时原子创建并绑定。 */
+export function getOrCreateBotSession(
+  channel: string,
+  accountId: string,
+  conversationId: string,
+  title: string
+): Session {
+  const existing = db!.prepare(`
+    SELECT s.* FROM bot_sessions b
+    JOIN sessions s ON s.id = b.session_id
+    WHERE b.channel = ? AND b.account_id = ? AND b.conversation_id = ?
+  `).get(channel, accountId, conversationId) as any
+  if (existing) {
+    const msgCount = (db!.prepare('SELECT COUNT(*) as c FROM messages WHERE session_id = ?').get(existing.id) as any).c
+    return {
+      id: existing.id,
+      title: existing.title,
+      createdAt: existing.created_at,
+      updatedAt: existing.updated_at,
+      messageCount: msgCount,
+      workspacePath: existing.workspace_path || undefined
+    }
+  }
+
+  return db!.transaction(() => {
+    const session = createSession(title)
+    db!.prepare(`
+      INSERT INTO bot_sessions (channel, account_id, conversation_id, session_id)
+      VALUES (?, ?, ?, ?)
+    `).run(channel, accountId, conversationId, session.id)
+    return session
+  })()
+}
+
 // ============================================================
 // Message 操作
 // ============================================================
@@ -136,7 +171,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 1
+export const SETTINGS_SCHEMA_VERSION = 2
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -173,6 +208,7 @@ function defaultSettings(): AppSettings {
       }
     ],
     mcpServers: [],
+    telegramBot: normalizeTelegramBotConfig(undefined),
     skills: [],
     activeProviderId: 'zhuminet-default',
     workspacePath,
@@ -204,6 +240,7 @@ export function normalizeSettings(input: unknown): AppSettings {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     providers: Array.isArray(raw.providers) ? raw.providers : defaults.providers,
     mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
+    telegramBot: normalizeTelegramBotConfig(raw.telegramBot),
     skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId

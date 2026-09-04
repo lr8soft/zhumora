@@ -10,9 +10,11 @@ import { reconnectAllMcpServers } from './mcp/client'
 import { log, onLog } from './llm/logger'
 import { disposeDesktopAdapter } from './desktop/adapter'
 import { createApplicationServices } from './composition'
+import type { ApplicationServices } from './composition'
 import { reloadSkills } from './skill/manager'
 
 export let mainWindow: BrowserWindow | null = null
+let applicationServices: ApplicationServices | null = null
 
 function createWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
@@ -72,6 +74,7 @@ app.whenReady().then(async () => {
 
   // 组合根：集中构造并注册进程级服务，避免 IPC 层承担初始化副作用。
   const services = createApplicationServices()
+  applicationServices = services
 
   // 创建窗口
   const win = createWindow()
@@ -93,6 +96,9 @@ app.whenReady().then(async () => {
       log('error', `Failed to connect MCP servers on startup: ${err}`)
     })
   }
+  void services.telegram.configure(settings.telegramBot).catch(err => {
+    log('error', `Failed to start Telegram bot: ${err instanceof Error ? err.message : String(err)}`)
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -104,6 +110,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
+  void applicationServices?.telegram.stop()
   void disposeDesktopAdapter().catch(error => {
     log('warn', `Failed to stop desktop automation process: ${String(error)}`)
   })

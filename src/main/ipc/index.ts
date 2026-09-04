@@ -24,7 +24,22 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   const runtime = new AgentIpcRuntime((channel, payload) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
   })
-  registerGeneralIpc(win, runtime)
+  services.telegram.setActivityListener(({ sessionId, state }) => {
+    if (state === 'running') {
+      if (runtime.runningSessions.has(sessionId)) return false
+      runtime.setRunning(sessionId, true)
+    } else if (state === 'complete') {
+      runtime.setRunning(sessionId, false)
+      if (!win.isDestroyed()) win.webContents.send('agent:complete', { sessionId, messageId: '', content: '' })
+    } else if (state === 'aborted') {
+      runtime.setRunning(sessionId, false)
+      if (!win.isDestroyed()) win.webContents.send('agent:aborted', { sessionId })
+    } else {
+      runtime.setRunning(sessionId, false)
+      if (!win.isDestroyed()) win.webContents.send('agent:error', { sessionId, error: 'Telegram Agent run failed.' })
+    }
+  })
+  registerGeneralIpc(win, runtime, services)
 
   // ============================================================
   // Agent 对话
@@ -153,6 +168,8 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
       runtime.abort(sessionId)
       // 立即通知前端该会话已停止（runAgent 的 finally 也会清理一次，幂等）
       win.webContents.send('agent:aborted', { sessionId })
+    } else {
+      services.telegram.abortSession(sessionId)
     }
     // 只清理该会话的悬挂权限请求（以 false resolve，避免内存泄漏；
     // 其他并行会话的权限弹窗不受影响）

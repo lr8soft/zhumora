@@ -1,5 +1,6 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron'
 import type { AppSettings } from '../../shared/types'
+import type { TelegramBotConfig } from '../../shared/types'
 import * as db from '../store/db'
 import { fetchContextWindow } from '../agent/context'
 import { listProviderModels } from '../llm/models'
@@ -7,9 +8,11 @@ import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '.
 import { reloadSkills } from '../skill/manager'
 import { logCertModeChanged } from '../net/fetch'
 import { equivalentConfigList } from './settingsChange'
+import type { ApplicationServices } from '../composition'
+import { equivalentTelegramBotConfig } from '../../shared/telegram'
 import type { AgentIpcRuntime } from './runtime'
 
-export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime): void {
+export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime, services: ApplicationServices): void {
   ipcMain.handle('window:minimize', () => win.minimize())
   ipcMain.handle('window:toggle-maximize', () => {
     if (win.isMaximized()) win.unmaximize()
@@ -48,6 +51,7 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime)
     const mcpChanged = !equivalentConfigList(settings.mcpServers, previous.mcpServers)
     const skillsChanged = !equivalentConfigList(settings.skills, previous.skills)
     const certModeChanged = (settings.useSystemCerts === true) !== (previous.useSystemCerts === true)
+    const telegramChanged = !equivalentTelegramBotConfig(settings.telegramBot, previous.telegramBot)
 
     if (skillsChanged) {
       try {
@@ -63,6 +67,11 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime)
       } catch (error) {
         console.error('MCP reconnect error:', error)
       }
+    }
+    if (telegramChanged || certModeChanged) {
+      void services.telegram.configure(settings.telegramBot).catch(error => {
+        console.error('Telegram reconnect error:', error)
+      })
     }
     return true
   })
@@ -84,6 +93,13 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime)
 
   ipcMain.handle('token:summary', () => db.getTokenUsageSummary())
   ipcMain.handle('token:buckets', (_event, days?: number) => db.getTokenUsageBuckets(days || 7))
+  ipcMain.handle('telegram:test', async (_event, config: TelegramBotConfig) => {
+    try {
+      return { ok: true, bot: await services.telegram.test(config) }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
+    }
+  })
   ipcMain.handle('provider:context-window', async (_event, provider: AppSettings['providers'][0], modelOverride?: string) => {
     try {
       return { detected: await fetchContextWindow(provider, modelOverride) }

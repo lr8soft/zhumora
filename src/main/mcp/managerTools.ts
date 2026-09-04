@@ -12,6 +12,7 @@
 //    LLM 自行修正或移除。
 // ============================================================
 import type { McpServerConfig } from '../../shared/types'
+import { isValidHttpHeaderName, isValidHttpHeaderValue } from '../../shared/mcpConfig'
 import * as db from '../store/db'
 import type { ToolHandler } from '../tools/registry'
 import { connectMcpServer, disconnectMcpServer, getMcpConnectionStatus } from './client'
@@ -130,6 +131,9 @@ function validateMcpConfig(input: Record<string, unknown>): { config?: McpServer
         if (typeof k !== 'string' || k.length > 64 || typeof v !== 'string' || v.length > 1024) {
           return { error: `Invalid header "${k}": name <=64 chars, value must be a string <=1024 chars.` }
         }
+        if (!isValidHttpHeaderName(k) || !isValidHttpHeaderValue(v)) {
+          return { error: `Invalid header "${k}": use a valid HTTP header name and a value without CR/LF/NUL.` }
+        }
       }
       config.headers = headers as Record<string, string>
     }
@@ -149,6 +153,9 @@ function validateMcpConfig(input: Record<string, unknown>): { config?: McpServer
       }
       config[key] = input[key] as string
     }
+  }
+  if (config.authHeader && !isValidHttpHeaderName(config.authHeader.trim())) {
+    return { error: 'Invalid authHeader: use a valid HTTP header name.' }
   }
 
   return { config }

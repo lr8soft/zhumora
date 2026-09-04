@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Brain, Cable, Server, Settings2, Sparkles } from 'lucide-react'
+import { BarChart3, Brain, Cable, Send, Server, Settings2, Sparkles } from 'lucide-react'
 import { useAppStore } from '../store'
 import { ProviderSettings } from './settings/ProviderSettings'
 import { McpSettings } from './settings/McpSettings'
@@ -8,12 +8,14 @@ import { SkillSettings } from './settings/SkillSettings'
 import { MemorySettings } from './settings/MemorySettings'
 import { UsageSettings } from './settings/UsageSettings'
 import { GeneralSettings } from './settings/GeneralSettings'
+import { TelegramSettings } from './settings/TelegramSettings'
 
-type Tab = 'providers' | 'mcp' | 'skills' | 'memory' | 'usage' | 'general'
+type Tab = 'providers' | 'mcp' | 'telegram' | 'skills' | 'memory' | 'usage' | 'general'
 
 const TAB_ICONS: Record<Tab, typeof Server> = {
   providers: Server,
   mcp: Cable,
+  telegram: Send,
   skills: Sparkles,
   memory: Brain,
   usage: BarChart3,
@@ -31,7 +33,7 @@ export default function SettingsView() {
     openSettings()
   }, [openSettings])
 
-  const tabs: Tab[] = ['providers', 'mcp', 'skills', 'memory', 'usage', 'general']
+  const tabs: Tab[] = ['providers', 'mcp', 'telegram', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -77,6 +79,10 @@ export default function SettingsView() {
         {tab === 'mcp' && <McpSettings
           servers={settingsDraft.mcpServers}
           onChange={(mcpServers) => useAppStore.getState().updateSettingsDraft({ mcpServers })}
+        />}
+        {tab === 'telegram' && <TelegramSettings
+          config={settingsDraft.telegramBot}
+          onChange={(telegramBot) => useAppStore.getState().updateSettingsDraft({ telegramBot })}
         />}
         {tab === 'skills' && <SkillSettings
           skills={settingsDraft.skills}

@@ -1,10 +1,48 @@
+import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Plus, Trash2 } from 'lucide-react'
 import type { McpServerConfig } from '@shared/types'
+import { formatMcpHeaders, parseMcpHeaders } from '@shared/mcpConfig'
 
 interface Props {
   servers: McpServerConfig[]
   onChange: (servers: McpServerConfig[]) => void
+}
+
+interface CustomHeadersFieldProps {
+  headers?: Record<string, string>
+  label: string
+  onChange: (headers: Record<string, string>) => void
+}
+
+function CustomHeadersField({ headers, label, onChange }: CustomHeadersFieldProps) {
+  // Parsing on every keystroke would erase an incomplete line before the user
+  // has a chance to type its colon and value, so keep the raw draft locally.
+  const [draft, setDraft] = useState(() => formatMcpHeaders(headers))
+
+  useEffect(() => {
+    setDraft(formatMcpHeaders(headers))
+  }, [headers])
+
+  const commit = () => {
+    const parsed = parseMcpHeaders(draft)
+    setDraft(formatMcpHeaders(parsed))
+    onChange(parsed)
+  }
+
+  return (
+    <div className="form-field span-2">
+      <label className="form-label">{label}</label>
+      <textarea
+        className="input-field mono"
+        rows={3}
+        value={draft}
+        onChange={(event) => setDraft(event.target.value)}
+        onBlur={commit}
+        placeholder={'Authorization: Bearer xxx\nX-Custom-Header: value'}
+      />
+    </div>
+  )
 }
 
 export function McpSettings({ servers, onChange }: Props) {
@@ -168,23 +206,11 @@ export function McpSettings({ servers, onChange }: Props) {
                 )}
                 {/* 自定义 Headers */}
                 {s.authType === 'custom' && (
-                  <div className="form-field span-2">
-                    <label className="form-label">{t('settings.mcp.customHeaders')}</label>
-                    <textarea
-                      className="input-field mono"
-                      rows={3}
-                      value={Object.entries(s.headers || {}).map(([k, v]) => `${k}: ${v}`).join('\n')}
-                      onChange={(e) => {
-                        const headers: Record<string, string> = {}
-                        for (const line of e.target.value.split('\n')) {
-                          const colon = line.indexOf(':')
-                          if (colon > 0) headers[line.slice(0, colon).trim()] = line.slice(colon + 1).trim()
-                        }
-                        updateServer(i, { headers })
-                      }}
-                      placeholder={'Authorization: Bearer xxx\nX-Custom-Header: value'}
-                    />
-                  </div>
+                  <CustomHeadersField
+                    headers={s.headers}
+                    label={t('settings.mcp.customHeaders')}
+                    onChange={(headers) => updateServer(i, { headers })}
+                  />
                 )}
               </>
             )}
