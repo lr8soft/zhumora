@@ -12,8 +12,9 @@ import { getMcpConnectionStatus } from './mcp/client'
 import { getSkillsSystemPrompt } from './skill/manager'
 import { PermissionBroker } from './agent/permissionBroker'
 import { BotAgentBridge } from './bot/agentBridge'
-import type { BotPlatformRuntime } from './bot/contracts'
+import { BotPlatformManager, defineBotPlatform } from './bot/platformManager'
 import { TelegramBotService } from './telegram/service'
+import { equivalentTelegramBotConfig, normalizeTelegramBotConfig } from '../shared/telegram'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -27,8 +28,7 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
 export interface ApplicationServices {
   tools: ToolRegistry
   permissions: PermissionBroker
-  bots: readonly BotPlatformRuntime[]
-  telegram: TelegramBotService
+  bots: BotPlatformManager
 }
 
 export function createApplicationServices(): ApplicationServices {
@@ -45,5 +45,14 @@ export function createApplicationServices(): ApplicationServices {
     getMcpStatus: getMcpConnectionStatus
   })
   const telegram = new TelegramBotService(botAgent, permissions)
-  return { tools: toolRegistry, permissions, bots: [telegram], telegram }
+  const bots = new BotPlatformManager([
+    defineBotPlatform({
+      service: telegram,
+      selectConfig: settings => settings.telegramBot,
+      normalizeConfig: normalizeTelegramBotConfig,
+      equivalentConfig: equivalentTelegramBotConfig,
+      test: config => telegram.test(config)
+    })
+  ])
+  return { tools: toolRegistry, permissions, bots }
 }

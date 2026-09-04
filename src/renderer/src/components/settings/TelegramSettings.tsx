@@ -28,7 +28,7 @@ export function TelegramSettings({ config, onChange }: Props) {
 
   const testConnection = async () => {
     setTestState({ loading: true })
-    const result = await window.api.telegram.test(config)
+    const result = await window.api.bot.test('telegram', config)
     if (result.ok && result.bot) {
       const identity = result.bot.username ? `@${result.bot.username}` : result.bot.name
       setTestState({ loading: false, message: t('settings.telegram.connected', { identity }) })

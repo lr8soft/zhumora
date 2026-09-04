@@ -96,8 +96,8 @@ app.whenReady().then(async () => {
       log('error', `Failed to connect MCP servers on startup: ${err}`)
     })
   }
-  void services.telegram.configure(settings.telegramBot).catch(err => {
-    log('error', `Failed to start Telegram bot: ${err instanceof Error ? err.message : String(err)}`)
+  void services.bots.configureAll(settings).catch(err => {
+    log('error', `Failed to start Bot platform(s): ${err instanceof Error ? err.message : String(err)}`)
   })
 
   app.on('activate', () => {
@@ -110,7 +110,7 @@ app.on('window-all-closed', () => {
 })
 
 app.on('before-quit', () => {
-  for (const bot of applicationServices?.bots || []) void bot.stop()
+  void applicationServices?.bots.stopAll()
   applicationServices?.permissions.dispose()
   void disposeDesktopAdapter().catch(error => {
     log('warn', `Failed to stop desktop automation process: ${String(error)}`)

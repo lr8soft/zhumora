@@ -5,6 +5,7 @@ import type { PermissionBroker } from '../agent/permissionBroker'
 import { combineAgentEventSinks, type AgentEventSink } from '../agent/persistedCallbacks'
 import type { BotActivity, BotPlatformService } from '../bot/contracts'
 import type { BotAgentBridge } from '../bot/agentBridge'
+import { BotRunCoordinator, type BotRunContext } from '../bot/runCoordinator'
 import { log } from '../llm/logger'
 import { getFetch } from '../net/fetch'
 import {
@@ -31,23 +32,21 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
   private client: TelegramHttpClient | null = null
   private bot: TelegramUser | null = null
   private config = normalizeTelegramBotConfig(undefined)
-  private readonly queues = new Map<string, Promise<void>>()
-  private readonly activeRuns = new Map<string, AbortController>()
-  private readonly activeSessionRuns = new Map<string, AbortController>()
   private generation = 0
-  private onActivity?: (activity: BotActivity) => boolean | void
   private agentEvents: AgentEventSink = {}
   private readonly permissionRoutes = new Map<string, TelegramPermissionRoute>()
   private readonly agent: BotAgentBridge
   private readonly permissions: PermissionBroker
+  private readonly runs: BotRunCoordinator
 
   constructor(agent: BotAgentBridge, permissions: PermissionBroker) {
     this.agent = agent
     this.permissions = permissions
+    this.runs = new BotRunCoordinator(permissions)
   }
 
   setActivityListener(listener: (activity: BotActivity) => boolean | void): void {
-    this.onActivity = listener
+    this.runs.setActivityListener(listener)
   }
 
   setAgentEventSink(sink: AgentEventSink): void {
@@ -55,10 +54,7 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
   }
 
   abortSession(sessionId: string): boolean {
-    const run = this.activeSessionRuns.get(sessionId)
-    run?.abort()
-    if (run) this.permissions.cancelSession(sessionId)
-    return !!run
+    return this.runs.abortSession(sessionId)
   }
 
   async test(input: TelegramBotConfig): Promise<{ name: string; username?: string }> {
@@ -107,10 +103,7 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     this.generation++
     this.controller?.abort()
     this.controller = null
-    for (const sessionId of this.activeSessionRuns.keys()) this.permissions.cancelSession(sessionId)
-    for (const run of this.activeRuns.values()) run.abort()
-    this.activeRuns.clear()
-    this.activeSessionRuns.clear()
+    await this.runs.stop()
     this.permissionRoutes.clear()
     const polling = this.polling
     this.polling = null
@@ -174,25 +167,17 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     // 会话按发送者隔离：群聊里不同用户不共享上下文；私聊 sender 与 chat 一致，行为不变
     const conversationId = `${message.chat.id}:${message.message_thread_id || 0}:${sender.id}`
     if (/^\/stop(?:@\w+)?(?:\s|$)/i.test(commandText(message))) {
-      const run = this.activeRuns.get(conversationId)
-      run?.abort()
-      if (run) {
-        for (const [sessionId, controller] of this.activeSessionRuns) {
-          if (controller === run) this.permissions.cancelSession(sessionId)
-        }
-      }
-      void this.client.sendText(message.chat.id, run ? 'Stopped.' : 'Nothing is running.', replyOptions(message), this.controller?.signal)
+      const stopped = this.runs.abortConversation(conversationId)
+      void this.client.sendText(message.chat.id, stopped ? 'Stopped.' : 'Nothing is running.', replyOptions(message), this.controller?.signal)
         .catch(error => log('warn', `Telegram /stop reply failed: ${safeError(error)}`))
       return
     }
 
-    const previous = this.queues.get(conversationId) || Promise.resolve()
     const generation = this.generation
-    const queued = previous.catch(() => {}).then(() => this.processMessage(conversationId, message, text, photos, generation))
-    this.queues.set(conversationId, queued)
-    void queued.finally(() => {
-      if (this.queues.get(conversationId) === queued) this.queues.delete(conversationId)
-    })
+    void this.runs.enqueue(
+      conversationId,
+      context => this.processMessage(conversationId, message, text, photos, generation, context)
+    ).catch(() => {})
   }
 
   private dispatchCallback(query: TelegramCallbackQuery): void {
@@ -222,10 +207,10 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     message: TelegramMessage,
     text: string,
     photos: TelegramPhotoSize[],
-    generation: number
+    generation: number,
+    run: BotRunContext
   ): Promise<void> {
     if (generation !== this.generation || !this.client || !this.bot || this.controller?.signal.aborted) return
-    const runController = new AbortController()
     const response = new TelegramResponseStream(this.client, message, this.controller?.signal)
     const permissionPresenter = new TelegramPermissionPresenter(
       this.client,
@@ -235,14 +220,12 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
       permissionId => this.permissionRoutes.delete(permissionId),
       this.controller?.signal
     )
-    this.activeRuns.set(conversationId, runController)
-    let sessionId: string | undefined
     try {
       // 会话按发送者隔离，群聊历史里用名字标注发言人，模型才能区分是谁说的
       const senderName = displayName(message.from!)
       const conversationLabel = message.chat.type === 'private' ? undefined : `${senderName}:`
-      const images = await this.downloadPhotos(photos, runController.signal)
-      const result = await this.agent.handle({
+      const images = await this.downloadPhotos(photos, run.signal)
+      await this.agent.handle({
         channel: this.channel,
         accountId: String(this.bot.id),
         conversationId,
@@ -252,36 +235,22 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
         text: conversationLabel ? `${conversationLabel} ${text}`.trim() : text,
         images: images.length > 0 ? images : undefined,
         approveMode: this.config.approveMode,
-        signal: runController.signal,
+        signal: run.signal,
         events: combineAgentEventSinks(this.agentEvents, response.events),
         permissionPresenters: [permissionPresenter],
         permissionTimeoutMs: 10 * 60 * 1000,
-        onSessionReady: id => {
-          const accepted = this.onActivity?.({ sessionId: id, state: 'running' }) !== false
-          if (accepted) {
-            sessionId = id
-            this.activeSessionRuns.set(id, runController)
-          }
-          return accepted
-        }
+        onSessionReady: run.onSessionReady
       })
-      sessionId = result.sessionId
       await response.flush()
-      this.onActivity?.({ sessionId, state: 'complete' })
     } catch (error) {
       await response.flush()
       if (error instanceof AgentAbortedError) {
-        if (sessionId) this.onActivity?.({ sessionId, state: 'aborted' })
-        return
+        throw error
       }
       log('error', `Telegram message failed: ${safeError(error)}`)
       await this.client.sendText(message.chat.id, `Error: ${safeError(error)}`, replyOptions(message), this.controller?.signal)
         .catch(sendError => log('warn', `Telegram error reply failed: ${safeError(sendError)}`))
-      if (sessionId) this.onActivity?.({ sessionId, state: 'error' })
-    } finally {
-      if (sessionId) this.permissions.cancelSession(sessionId)
-      if (this.activeRuns.get(conversationId) === runController) this.activeRuns.delete(conversationId)
-      if (sessionId && this.activeSessionRuns.get(sessionId) === runController) this.activeSessionRuns.delete(sessionId)
+      throw error
     }
   }
 

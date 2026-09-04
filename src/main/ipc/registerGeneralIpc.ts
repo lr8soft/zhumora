@@ -1,6 +1,5 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron'
 import type { AppSettings } from '../../shared/types'
-import type { TelegramBotConfig } from '../../shared/types'
 import * as db from '../store/db'
 import { fetchContextWindow } from '../agent/context'
 import { listProviderModels } from '../llm/models'
@@ -9,7 +8,6 @@ import { reloadSkills } from '../skill/manager'
 import { logCertModeChanged } from '../net/fetch'
 import { equivalentConfigList } from './settingsChange'
 import type { ApplicationServices } from '../composition'
-import { equivalentTelegramBotConfig } from '../../shared/telegram'
 import type { AgentIpcRuntime } from './runtime'
 
 export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime, services: ApplicationServices): void {
@@ -52,7 +50,6 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
     const mcpChanged = !equivalentConfigList(settings.mcpServers, previous.mcpServers)
     const skillsChanged = !equivalentConfigList(settings.skills, previous.skills)
     const certModeChanged = (settings.useSystemCerts === true) !== (previous.useSystemCerts === true)
-    const telegramChanged = !equivalentTelegramBotConfig(settings.telegramBot, previous.telegramBot)
 
     if (skillsChanged) {
       try {
@@ -69,11 +66,9 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
         console.error('MCP reconnect error:', error)
       }
     }
-    if (telegramChanged || certModeChanged) {
-      void services.telegram.configure(settings.telegramBot).catch(error => {
-        console.error('Telegram reconnect error:', error)
-      })
-    }
+    void services.bots.applySettings(settings, previous, certModeChanged).catch(error => {
+      console.error('Bot platform reconfigure error:', error)
+    })
     return true
   })
   ipcMain.handle('settings:pickDirectory', async () => {
@@ -94,9 +89,10 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
 
   ipcMain.handle('token:summary', () => db.getTokenUsageSummary())
   ipcMain.handle('token:buckets', (_event, days?: number) => db.getTokenUsageBuckets(days || 7))
-  ipcMain.handle('telegram:test', async (_event, config: TelegramBotConfig) => {
+  ipcMain.handle('bot:test', async (_event, channel: unknown, config: unknown) => {
+    if (typeof channel !== 'string' || !channel) return { error: 'Invalid Bot platform.' }
     try {
-      return { ok: true, bot: await services.telegram.test(config) }
+      return { ok: true, bot: await services.bots.test(channel, config) }
     } catch (error) {
       return { error: error instanceof Error ? error.message : String(error) }
     }

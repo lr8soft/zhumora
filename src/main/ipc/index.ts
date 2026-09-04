@@ -29,22 +29,20 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   })
   services.permissions.addPresenter(createIpcPermissionPresenter(win.webContents))
   const botEventSink = createIpcAgentEventSink(win.webContents)
-  for (const bot of services.bots) {
-    bot.setAgentEventSink(botEventSink)
-    bot.setActivityListener(({ sessionId, state }) => {
-      if (state === 'running') {
-        if (runtime.runningSessions.has(sessionId)) return false
-        runtime.setRunning(sessionId, true)
-      } else if (state === 'complete') {
-        runtime.setRunning(sessionId, false)
-      } else if (state === 'aborted') {
-        runtime.setRunning(sessionId, false)
-        if (!win.isDestroyed()) win.webContents.send('agent:aborted', { sessionId })
-      } else {
-        runtime.setRunning(sessionId, false)
-      }
-    })
-  }
+  services.bots.setAgentEventSink(botEventSink)
+  services.bots.setActivityListener(({ sessionId, state }) => {
+    if (state === 'running') {
+      if (runtime.runningSessions.has(sessionId)) return false
+      runtime.setRunning(sessionId, true)
+    } else if (state === 'complete') {
+      runtime.setRunning(sessionId, false)
+    } else if (state === 'aborted') {
+      runtime.setRunning(sessionId, false)
+      if (!win.isDestroyed()) win.webContents.send('agent:aborted', { sessionId })
+    } else {
+      runtime.setRunning(sessionId, false)
+    }
+  })
   registerGeneralIpc(win, runtime, services)
 
   // ============================================================
@@ -195,9 +193,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
       // 立即通知前端该会话已停止（runAgent 的 finally 也会清理一次，幂等）
       win.webContents.send('agent:aborted', { sessionId })
     } else {
-      for (const bot of services.bots) {
-        if (bot.abortSession(sessionId)) break
-      }
+      services.bots.abortSession(sessionId)
     }
     // 只清理该会话的悬挂权限请求（以 false resolve，避免内存泄漏；
     // 其他并行会话的权限弹窗不受影响）
