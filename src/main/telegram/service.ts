@@ -149,7 +149,10 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
   private dispatchMessage(message: TelegramMessage): void {
     const sender = message.from
     const text = (message.text || message.caption || '').trim()
-    const photos = message.photo || []
+    // Telegram 的 photo 是同一张图的多个尺寸（最后一张最大），取最大尺寸那一个当一张图。
+    // 下游 downloadPhotos 仍按“真正的多图”处理，便于其他 bot adapter 一次传多张。
+    const largestPhoto = message.photo?.at(-1)
+    const photos = largestPhoto ? [largestPhoto] : []
     if (!text && photos.length === 0) return
     if (!sender || sender.is_bot || !this.client || !this.bot) return
 
