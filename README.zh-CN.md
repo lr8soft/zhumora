@@ -21,17 +21,22 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 - 通过 MCP 扩展工具
 - 从 Markdown 文件加载 Skills
 - 本地保存会话、长期记忆和 Token 用量
-- 接入 Telegram Bot，用手机和同一个本地 Agent 对话，实时显示进度
+- 接入 Telegram Bot 或 QQ Bot，用手机和同一个本地 Agent 对话，实时显示进度
 - 对高风险操作进行权限确认
 - 支持深色 / 浅色主题与多语言界面
 
-## 用 Telegram 随身对话
+## 用 Telegram / QQ 随身对话
 
-在 **设置** 里接入 Telegram Bot，就能用手机和同一个本地 Agent 对话，不必守在电脑前。
+在 **设置 → 聊天机器人** 里接入 Telegram Bot 或 QQ Bot，就能用手机和同一个本地 Agent 对话，不必守在电脑前。
 
+<p align="center">
+  <img src="./img/image-chatbot.png" alt="Zhumora — 设置 · 聊天机器人（Telegram 与 QQ）" width="960" />
+</p>
+
+- **双平台接入** — Telegram 填 BotFather Token，QQ 填开放平台的 AppID / AppSecret，两端跑的是同一个 Agent、同一套工具和权限
 - **看得见进度** — 思考过程实时流出（`💭 …`），每个工具调用都即时可见（`🔧 bash: npm test`），完成后变成 `✅ 1.2s`，长时间任务不会让人以为卡死
-- **随时随地审批** — 高风险操作会把「允许 / 拒绝」按钮直接发到聊天里
-- **始终可控** — Bot 只响应白名单用户（先发 `/id` 拿到自己的 ID），随时 `/stop` 中止当前任务
+- **随时随地审批** — 高风险操作会在聊天里请求确认：Telegram 发「允许 / 拒绝」内联按钮，QQ 回复 `y` / `n`
+- **始终可控** — Bot 只响应白名单用户（先发 `/id` 拿到自己的 ID / OpenID），随时 `/stop` 中止当前任务
 
 ## 桌面控制
 

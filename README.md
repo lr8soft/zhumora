@@ -21,17 +21,22 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Extend tools through MCP servers
 - Load reusable skills from Markdown files
 - Local session history, long-term memory, and token usage records
-- Chat with the same agent from your phone through a Telegram bot, with live progress updates
+- Chat with the same agent from your phone through a Telegram bot or a QQ bot, with live progress updates
 - Permission prompts for potentially dangerous actions
 - Light / dark themes and multilingual UI
 
-## Chat from Telegram
+## Chat from Telegram and QQ
 
-Connect a Telegram bot in **Settings** and talk to the same local agent from your phone — no need to sit at the desktop.
+Open **Settings → Chat Bots** and connect a Telegram bot or a QQ bot, then talk to the same local agent from your phone — no need to sit at the desktop.
 
+<p align="center">
+  <img src="./img/image-chatbot.png" alt="Zhumora — Settings, Chat Bots (Telegram and QQ)" width="960" />
+</p>
+
+- **Two platforms** — Telegram via BotFather token, QQ via the AppID / AppSecret from QQ Open Platform. Both run the same agent, tools, permissions, and session history
 - **See it working** — thinking streams live (`💭 …`) and every tool call shows up as it happens (`🔧 bash: npm test`), turning into `✅ 1.2s` when it finishes, so a long task never looks frozen
-- **Approve from anywhere** — risky actions send inline Allow / Deny buttons straight to the chat
-- **Stay in control** — the bot only answers users you whitelist (send it `/id` to get your ID), and `/stop` cancels the current run at any moment
+- **Approve from anywhere** — risky actions ask for confirmation in the chat: inline Allow / Deny buttons on Telegram, a `y` / `n` reply on QQ
+- **Stay in control** — the bots only answer users you whitelist (send `/id` to get your ID / OpenID), and `/stop` cancels the current run at any moment
 
 ## Desktop control
 
