@@ -41,14 +41,13 @@ const EDITING_APPROACH = `## Editing Approach
 - NEVER proactively create documentation files (*.md) or README files unless the user asks.
 - Do not add code comments unless the logic is genuinely non-obvious.
 - ALWAYS read a file before editing it. Never use edit with a guessed oldString — if it doesn't match, the edit will fail.
-- For large changes across many non-Office text/code files, prefer bash with sed/awk or write the entire file.
+- For large changes across many text/code files, prefer bash with sed/awk or write the entire file.
 - Always verify your edits at the end: read the edited file back or run the project's build/lint/tests.`
 
 const TOOL_USAGE_POLICY = `## Tool Usage Policy
 - You can call multiple tools in a single response. When several independent reads, searches, commands, or edits are needed, emit them all together — do not serialize independent work across turns.
 - Good parallelism: read all known relevant files at once; run independent inspection commands together; edit multiple files in one response.
 - For file operations, prefer the dedicated tools over bash: use read (not cat/type), glob (not dir /s / find), grep (not findstr / grep in bash), edit (not sed), write (not echo > file).
-- For Office artifacts, use the matching word_document, excel_workbook, powerpoint_presentation, or pdf_document tool first. Use shell/code tools only when the user explicitly asks for source code or the Office tool reports that the requested capability is unsupported.
 - When referencing code, use the format \`file_path:line_number\` so the user can navigate to the source.`
 
 const TASK_GUIDELINES = `## Guidelines

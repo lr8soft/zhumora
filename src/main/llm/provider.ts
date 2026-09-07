@@ -5,7 +5,7 @@
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from '../../shared/types'
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
-import { HttpError, getMaxRetries, isRetriableError, withRetry } from '../net/retry'
+import { getMaxRetries, isRetriableError, withRetry } from '../net/retry'
 import {
   createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer, type TokenUsage
 } from './sseAccumulator'
@@ -38,8 +38,6 @@ export interface CompletionParams {
   tools?: ToolDefinition[]
   /** OpenAI-compatible tool selection mode. Defaults to auto when tools are present. */
   toolChoice?: ToolChoice
-  /** required 被兼容端点拒绝时允许的显式降级策略；仅由上层路由决定。 */
-  toolChoiceFallback?: 'auto'
   temperature?: number
   maxTokens?: number
   reasoningEffort?: 'low' | 'medium' | 'high'
@@ -115,24 +113,7 @@ export async function streamChat(
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
       }
     )
-    let result
-    try {
-      result = await runRequest()
-    } catch (err) {
-      if (
-        params.toolChoice === 'required'
-        && params.toolChoiceFallback === 'auto'
-        && err instanceof HttpError
-        && err.status === 400
-        && /tool.?choice|required|unsupported/i.test(err.message)
-      ) {
-        log('warn', 'LLM endpoint rejected tool_choice=required; applying caller-approved auto fallback')
-        body.tool_choice = 'auto'
-        result = await runRequest()
-      } else {
-        throw err
-      }
-    }
+    const result = await runRequest()
     cb?.onComplete?.(result.content, result.toolCalls)
     return { content: result.content, toolCalls: result.toolCalls, usage: result.usage, finishReason: result.finishReason }
   } catch (err) {

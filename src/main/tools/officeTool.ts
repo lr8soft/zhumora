@@ -271,32 +271,3 @@ export const officeTools: { name: string; handler: ToolHandler }[] = [
   { name: 'powerpoint_presentation', handler: powerpointPresentationTool },
   { name: 'pdf_document', handler: pdfDocumentTool }
 ]
-
-/** Legacy generic definition retained for direct API/tests; it is no longer registered for model selection. */
-export const officeTool: ToolHandler = {
-  definition: {
-    type: 'function',
-    function: {
-      name: 'office',
-      description: 'Legacy generic Office tool. Prefer the format-specific Word, Excel, PowerPoint, or PDF tool.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: { type: 'string', enum: ['read', 'create', 'edit'] },
-          file_path: { type: 'string' },
-          content: { type: 'string' },
-          ops: { type: 'array', items: { type: 'object' } },
-          edit: { type: 'object' },
-          font: { type: 'string' },
-          theme: { type: 'string' }
-        },
-        required: ['action', 'file_path']
-      }
-    }
-  },
-  permission: 'normal',
-  getPermission: getOfficePermission,
-  execute(args, ctx) {
-    return executeOffice(args as unknown as OfficeArgs, ctx.workspacePath, ctx.signal)
-  }
-}

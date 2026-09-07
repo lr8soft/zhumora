@@ -13,8 +13,6 @@ const BINARY_EXTENSIONS = new Set([
   '.webm', '.webp', '.woff', '.woff2', '.xlsx', '.xz', '.zip', '.docx'
 ])
 
-const OFFICE_EXTENSIONS = new Set(['.docx', '.xlsx', '.pptx', '.pdf'])
-
 export function resolveToolPath(workspacePath: string, requestedPath: string): string {
   if (!requestedPath?.trim()) throw new Error('A file path is required')
   return path.resolve(workspacePath, requestedPath)
@@ -70,11 +68,7 @@ export async function readPath(
 
   const sample = await readSample(resolved)
   if (detectBinary(sample, resolved)) {
-    const ext = path.extname(resolved).toLowerCase()
-    const hint = OFFICE_EXTENSIONS.has(ext)
-      ? ` This is an office document — use the "office" tool (action=read) instead of bash or python.`
-      : ''
-    throw new Error(`Cannot read binary file as text: ${resolved}.${hint}`)
+    throw new Error(`Cannot read binary file as text: ${resolved}`)
   }
 
   const decoder = new TextDecoder('utf-8', { fatal: true })

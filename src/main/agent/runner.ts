@@ -12,7 +12,7 @@
 // - 恢复预算：recoveryPolicy.RecoveryBudget。
 // ============================================================
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '../../shared/types'
-import { streamChat, type ToolChoice } from '../llm/provider'
+import { streamChat } from '../llm/provider'
 import { log } from '../llm/logger'
 import { toolRegistry, type ToolRegistry } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
@@ -22,7 +22,6 @@ import { buildEffectiveConversation, sanitizeHistoryWithIds, type CompactionStat
 import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
 import { AgentAbortedError } from '../../shared/types'
-import { detectOfficeRoute, selectToolsForOfficeRoute } from './officeRouting'
 import { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS, RecoveryBudget } from './recoveryPolicy'
 import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
@@ -111,17 +110,9 @@ export async function runAgent(
   let hardStop: string | null = null
   const allAssistantMessages: ChatMessage[] = []
 
-  // office 领域路由：决定本轮暴露哪些工具、是否强制首选工具。
-  const officeRoute = detectOfficeRoute(
-    extractTextContent(getLastUserMessage(messages)),
-    buildRecentRouteContext(messages)
-  )
-  if (officeRoute) log('info', `Office artifact route selected: ${officeRoute.format} -> ${officeRoute.toolName}`)
-  let officeToolAttempted = false
-
-  // 工具阶段的静态依赖只构造一次；hardStop / officeToolAttempted 每轮从
+  // 工具阶段的静态依赖只构造一次；hardStop 每轮从
   // 局部变量同步进 base（phase 内部推进后由返回值带回）
-  const toolPhaseBase: Omit<ToolPhaseOptions, 'hardStop' | 'officeToolAttempted'> = {
+  const toolPhaseBase: Omit<ToolPhaseOptions, 'hardStop'> = {
     conversation,
     toolsRegistry,
     workspacePath,
@@ -131,7 +122,6 @@ export async function runAgent(
     onSessionTitleUpdate,
     loopDetector,
     loopConfig,
-    officeRoute,
     cb
   }
 
@@ -145,13 +135,10 @@ export async function runAgent(
     // round=1 的检查即"发送前检查"，后续轮检查工具结果带来的膨胀
     await compactor.applyIfOverThreshold(conversation, `at round ${round}`)
 
-    const tools = selectToolsForOfficeRoute(toolsRegistry.definitions(), officeRoute)
-    // office 路由：首选工具可用且尚未尝试 → 强制 tool_choice=required
-    const routedOfficeAvailable = !!officeRoute && !officeToolAttempted
-      && tools.some(tool => tool.function.name === officeRoute.toolName)
-    const toolChoice: ToolChoice = routedOfficeAvailable ? 'required' : 'auto'
-
-    const result = await streamRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, toolChoice, signal, cb)
+    // 每个工具只负责自身契约与执行。Runner 统一暴露注册表快照，
+    // 不允许某个领域工具通过意图识别裁剪其他内置工具或 MCP。
+    const tools = toolsRegistry.definitions()
+    const result = await streamRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, signal, cb)
     if (result.usage) cb.onTokenUsage?.(result.usage, opts.modelOverride || provider.defaultModel)
 
     // 中止检查：provider 层对"用户中止"按部分内容正常返回（不抛错）。
@@ -202,11 +189,9 @@ export async function runAgent(
 
     const toolPhase = await runToolCallPhase(result.toolCalls, assistantPersistId, {
       ...toolPhaseBase,
-      hardStop,
-      officeToolAttempted
+      hardStop
     })
     hardStop = toolPhase.hardStop
-    officeToolAttempted = toolPhase.officeToolAttempted
 
     // 继续下一轮，让 LLM 看到工具结果后决定下一步
   }
@@ -285,7 +270,6 @@ async function streamRound(
   modelOverride: string | undefined,
   reasoningEffort: 'low' | 'medium' | 'high' | undefined,
   tools: ReturnType<ToolRegistry['definitions']>,
-  toolChoice: ToolChoice,
   signal: AbortSignal | undefined,
   cb: AgentEventCallbacks
 ): Promise<RoundResult> {
@@ -294,9 +278,7 @@ async function streamRound(
   const { content, toolCalls, usage, finishReason } = await streamChat(provider, {
     messages: conversation.messages,
     tools: tools.length > 0 ? tools : undefined,
-    toolChoice,
-    // office 路由的降级策略由调用方显式批准：路由工具被端点拒绝时才回落 auto
-    toolChoiceFallback: toolChoice === 'required' ? 'auto' : undefined,
+    toolChoice: 'auto',
     model,
     temperature: provider.temperature,
     reasoningEffort,
@@ -311,14 +293,6 @@ async function streamRound(
     onRetry: cb.onRetry
   })
   return { content, toolCalls, usage, finishReason, reasoning: roundReasoning }
-}
-
-/** 最近若干条历史拼成的路由上下文文本（office 路由判断用） */
-function buildRecentRouteContext(messages: ChatMessage[]): string {
-  return messages.slice(-12, -1).map(message => {
-    const calledTools = message.tool_calls?.map(call => call.function.name).join(' ') || ''
-    return `${extractTextContent(message.content)} ${message.name || ''} ${calledTools}`
-  }).join('\n')
 }
 
 /**

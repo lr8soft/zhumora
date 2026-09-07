@@ -3,10 +3,9 @@ import { promises as fs } from 'node:fs'
 import * as os from 'node:os'
 import * as path from 'node:path'
 import { executeOffice } from '../src/main/tools/office.ts'
-import { officeTool, officeTools } from '../src/main/tools/officeTool.ts'
+import { officeTools } from '../src/main/tools/officeTool.ts'
 import { splitFontCollection } from '../src/main/tools/officeFonts.ts'
-import { getToolPermission } from '../src/main/tools/registry.ts'
-import { registerTool } from '../src/main/tools/registry.ts'
+import { getToolPermission, registerTool, ToolRegistry } from '../src/main/tools/registry.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'zhumora-office-'))
 const OFFICE_THEMES = ['modern_blue', 'dark_tech', 'warm_minimal', 'forest', 'corporate']
@@ -22,22 +21,67 @@ async function check(name: string, fn: () => Promise<void>) {
 // ============================================================
 // 权限模型
 // ============================================================
-registerTool('office', officeTool, 'builtin')
 for (const { name, handler } of officeTools) registerTool(name, handler, 'builtin')
 await check('permission: read=safe', async () => {
-  assert.equal(getToolPermission('office', { action: 'read', file_path: 'a.docx' }), 'safe')
+  assert.equal(getToolPermission('word_document', { action: 'read', file_path: 'a.docx' }), 'safe')
 })
 await check('permission: create=normal', async () => {
-  assert.equal(getToolPermission('office', { action: 'create', file_path: 'a.docx', content: 'x' }), 'normal')
+  assert.equal(getToolPermission('word_document', { action: 'create_or_replace', file_path: 'a.docx', content: 'x' }), 'normal')
 })
 await check('permission: edit=normal', async () => {
-  assert.equal(getToolPermission('office', { action: 'edit', file_path: 'a.xlsx' }), 'normal')
+  assert.equal(getToolPermission('excel_workbook', { action: 'edit', file_path: 'a.xlsx' }), 'normal')
 })
 // 无 args 回退静态 permission
-assert.equal(getToolPermission('office'), 'normal')
+assert.equal(getToolPermission('word_document'), 'normal')
 await check('format-specific permissions', async () => {
   assert.equal(getToolPermission('word_document', { action: 'read', file_path: 'a.docx' }), 'safe')
   assert.equal(getToolPermission('powerpoint_presentation', { action: 'create_or_replace', file_path: 'a.pptx' }), 'normal')
+})
+
+await check('office tools are additive and do not affect unrelated tools', async () => {
+  const registry = new ToolRegistry()
+  const unrelated = {
+    definition: {
+      type: 'function' as const,
+      function: { name: 'mcp_external', description: 'external', parameters: { type: 'object' } }
+    },
+    execute: async () => ({ content: 'ok' })
+  }
+  registry.register('mcp_external', unrelated, 'mcp:test')
+  for (const { name, handler } of officeTools) registry.register(name, handler, 'builtin')
+
+  assert.deepEqual(registry.definitions().map(tool => tool.function.name), [
+    'mcp_external',
+    'word_document',
+    'excel_workbook',
+    'powerpoint_presentation',
+    'pdf_document'
+  ])
+  assert.equal(registry.get('mcp_external')?.source, 'mcp:test')
+})
+
+await check('format-specific schemas remain self-contained', async () => {
+  assert.deepEqual(officeTools.map(entry => entry.name), [
+    'word_document',
+    'excel_workbook',
+    'powerpoint_presentation',
+    'pdf_document'
+  ])
+
+  const excelSchema = officeTools.find(entry => entry.name === 'excel_workbook')!
+    .handler.definition.function.parameters as any
+  assert.equal(excelSchema.properties.ops.items.properties.cell.type, 'string')
+  assert.equal(excelSchema.properties.ops.items.properties.formula.type, 'string')
+
+  const pdfSchema = officeTools.find(entry => entry.name === 'pdf_document')!
+    .handler.definition.function.parameters as any
+  assert.deepEqual(pdfSchema.properties.edit.properties.texts.items.required, ['text'])
+  assert.deepEqual(pdfSchema.properties.edit.properties.fields.items.required, ['name', 'value'])
+  assert.deepEqual(pdfSchema.properties.theme.enum, OFFICE_THEMES)
+
+  const wordSchema = officeTools.find(entry => entry.name === 'word_document')!
+    .handler.definition.function.parameters as any
+  assert.deepEqual(wordSchema.properties.theme.enum, OFFICE_THEMES)
 })
 
 // ============================================================

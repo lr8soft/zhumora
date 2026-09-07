@@ -10,7 +10,6 @@ import { log } from '../llm/logger'
 import type { ToolContext, ToolRegistry } from '../tools/registry'
 import { executeToolCall } from './toolExecutor'
 import { LoopDetector, type LoopDetectionConfig } from './loopDetector'
-import type { OfficeRoute } from './officeRouting'
 import {
   EMPTY_CONTINUE_PROMPT,
   MAX_EMPTY_CONTINUATIONS,
@@ -94,15 +93,12 @@ export interface ToolPhaseOptions {
   onSessionTitleUpdate?: (sessionId: string, title: string) => void
   loopDetector: LoopDetector
   loopConfig: LoopDetectionConfig
-  officeRoute: OfficeRoute | null
   hardStop: string | null
-  officeToolAttempted: boolean
   cb: AgentEventCallbacks
 }
 
 export interface ToolPhaseResult {
   hardStop: string | null
-  officeToolAttempted: boolean
 }
 
 /**
@@ -117,15 +113,14 @@ export async function runToolCallPhase(
 ): Promise<ToolPhaseResult> {
   const {
     conversation, toolsRegistry, workspacePath, sessionId, signal, permissionCheck,
-    onSessionTitleUpdate, loopDetector, loopConfig, officeRoute, cb
+    onSessionTitleUpdate, loopDetector, loopConfig, cb
   } = opts
-  let { hardStop, officeToolAttempted } = opts
+  let { hardStop } = opts
 
   const toolContext: ToolContext = { workspacePath, sessionId, signal, onSessionTitleUpdate }
 
   for (const tc of toolCalls) {
     cb.onToolCall?.(tc, assistantPersistId)
-    if (officeRoute && tc.function.name === officeRoute.toolName) officeToolAttempted = true
 
     // 循环检测：工具名 + 参数完全相同地连续调用
     const verdict = loopDetector.inspect(tc.function.name, tc.function.arguments || '', loopConfig)
@@ -152,5 +147,5 @@ export async function runToolCallPhase(
     conversation.append(executed.llmMessage, persistId)
   }
 
-  return { hardStop, officeToolAttempted }
+  return { hardStop }
 }
