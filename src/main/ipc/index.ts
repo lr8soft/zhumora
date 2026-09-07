@@ -53,7 +53,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   // ============================================================
   // Agent 对话
   // ============================================================
-  ipcMain.handle('agent:run', (e, sessionId: string, userMessage: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode; reasoningEffort?: ReasoningEffort }) => {
+  ipcMain.handle('agent:run', async (e, sessionId: string, userMessage: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode; reasoningEffort?: ReasoningEffort }) => {
     // 同一会话同一时刻只允许一个运行（UI 已禁用运行中的输入；这里是防御性检查）。
     // 不同会话之间完全并行，互不阻塞。
     if (runtime.runningSessions.has(sessionId)) {
@@ -73,6 +73,9 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     if (!provider) {
       return { error: 'No active provider. Please configure one in Settings.' }
     }
+    // An enabled Avatar's exact capabilities are part of this turn's system
+    // contract. Wait for the renderer scan so the model never has to guess names.
+    const avatarSystemPrompt = await services.avatar.buildSystemPrompt(sessionId)
 
     // 保存用户消息
     const persistedUserMessage = {
@@ -126,7 +129,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
         signal: abortController.signal,
         modelOverride: options?.modelOverride,
         reasoningEffort: options?.reasoningEffort,
-        systemPromptExtra: services.avatar.buildSystemPrompt(sessionId),
+        systemPromptExtra: avatarSystemPrompt,
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
         skillsPrompt: getSkillsSystemPrompt(),

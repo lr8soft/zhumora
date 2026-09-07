@@ -6,6 +6,7 @@ import {
   VRMAnimationLoaderPlugin,
   type VRMAnimation
 } from '@pixiv/three-vrm-animation'
+import { resolveStartupAvatarAnimation } from '@shared/avatar'
 import type { AvatarBootstrap, AvatarCapabilities, AvatarCommand } from '@shared/avatar'
 
 type AssetLoader = (assetId: string) => Promise<Uint8Array>
@@ -74,12 +75,16 @@ export class AvatarScene {
     this.frameModel(vrm.scene)
 
     const configured = bootstrap.model.animations.map(animation => animation.name)
+    const animations = [...new Set([...configured, ...this.embeddedClips.keys()])]
     const expressions = vrm.expressionManager
       ? Object.keys(vrm.expressionManager.expressionMap)
       : []
+    const defaultAnimation = resolveStartupAvatarAnimation(bootstrap.model, animations)
+    if (defaultAnimation) await this.playAnimation(defaultAnimation, true)
     return {
-      animations: [...new Set([...configured, ...this.embeddedClips.keys()])],
-      expressions
+      animations,
+      expressions,
+      defaultAnimation
     }
   }
 
@@ -87,15 +92,7 @@ export class AvatarScene {
     if (command.type === 'show_message') return
     if (!this.vrm) throw new Error('Avatar model is not ready.')
     if (command.type === 'play_animation') {
-      const clip = await this.resolveClip(command.animation)
-      this.mixer?.stopAllAction()
-      const action = this.mixer!.clipAction(clip).reset()
-      if (command.loop) action.setLoop(THREE.LoopRepeat, Infinity)
-      else {
-        action.setLoop(THREE.LoopOnce, 1)
-        action.clampWhenFinished = true
-      }
-      action.play()
+      await this.playAnimation(command.animation, command.loop)
       return
     }
     if (command.type === 'set_expression') {
@@ -135,6 +132,18 @@ export class AvatarScene {
       this.animationClips.set(config.id, pending)
     }
     return pending
+  }
+
+  private async playAnimation(name: string, loop: boolean): Promise<void> {
+    const clip = await this.resolveClip(name)
+    this.mixer?.stopAllAction()
+    const action = this.mixer!.clipAction(clip).reset()
+    if (loop) action.setLoop(THREE.LoopRepeat, Infinity)
+    else {
+      action.setLoop(THREE.LoopOnce, 1)
+      action.clampWhenFinished = true
+    }
+    action.play()
   }
 
   private async loadVrmAnimation(assetId: string): Promise<THREE.AnimationClip> {

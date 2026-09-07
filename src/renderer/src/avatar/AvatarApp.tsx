@@ -29,6 +29,7 @@ export default function AvatarApp() {
       } catch (error) {
         if (current !== generation) return
         setStatus(error instanceof Error ? error.message : String(error))
+        await window.avatarApi.reportCapabilities({ animations: [], expressions: [] })
       }
     }
 
@@ -55,7 +56,6 @@ export default function AvatarApp() {
         })
       })
     ]
-    void window.avatarApi.reportReady()
     void reload()
 
     return () => {

@@ -50,7 +50,10 @@ export function AvatarSettings({ models, defaultModelId, onChange }: Props) {
   }
 
   const removeAnimation = (model: AvatarModelConfig, animationId: string) => {
-    updateModel(model.id, { animations: model.animations.filter(animation => animation.id !== animationId) })
+    updateModel(model.id, {
+      animations: model.animations.filter(animation => animation.id !== animationId),
+      defaultAnimationId: model.defaultAnimationId === animationId ? undefined : model.defaultAnimationId
+    })
   }
 
   return (
@@ -130,6 +133,16 @@ export function AvatarSettings({ models, defaultModelId, onChange }: Props) {
               ) : (
                 <span className="avatar-animation-file" title={animation.filePath}>{animation.filePath}</span>
               )}
+              <button
+                className={model.defaultAnimationId === animation.id ? 'avatar-animation-default active' : 'avatar-animation-default'}
+                title={t('settings.avatar.default')}
+                aria-label={t('settings.avatar.default')}
+                onClick={() => updateModel(model.id, {
+                  defaultAnimationId: model.defaultAnimationId === animation.id ? undefined : animation.id
+                })}
+              >
+                <Star size={12} fill={model.defaultAnimationId === animation.id ? 'currentColor' : 'none'} />
+              </button>
               <button className="danger-link" onClick={() => removeAnimation(model, animation.id)}>
                 <Trash2 size={12} />
               </button>

@@ -7,7 +7,7 @@ import { ToolRegistry } from '../src/main/tools/registry.ts'
 
 const calls: Array<{ sessionId?: string; command: AvatarCommand; signal?: AbortSignal }> = []
 const controller: AvatarController = {
-  buildSystemPrompt: () => '',
+  buildSystemPrompt: async () => '',
   async execute(sessionId, command, signal): Promise<ToolExecutionResult> {
     calls.push({ sessionId, command, signal })
     return { content: 'acknowledged' }

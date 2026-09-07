@@ -6,7 +6,6 @@ const avatarApi = {
   getAsset: (assetId: string): Promise<Uint8Array> => ipcRenderer.invoke('avatar:asset', assetId),
   reportCapabilities: (capabilities: AvatarCapabilities): Promise<boolean> =>
     ipcRenderer.invoke('avatar:capabilities', capabilities),
-  reportReady: (): Promise<boolean> => ipcRenderer.invoke('avatar:ready'),
   reportCommandResult: (commandId: string, error?: string): Promise<boolean> =>
     ipcRenderer.invoke('avatar:command-result', commandId, error),
   setPointerPassthrough: (passthrough: boolean): Promise<boolean> =>

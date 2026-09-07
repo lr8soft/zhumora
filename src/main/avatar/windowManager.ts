@@ -19,6 +19,8 @@ interface AvatarWindowEntry {
   latestMessage: string
   capabilities: AvatarCapabilities
   ready: boolean
+  readyPromise: Promise<void>
+  resolveReady: () => void
 }
 
 interface AvatarWindowManagerOptions {
@@ -49,7 +51,12 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       const changed = !equivalentAvatarModel(existing.model, model)
       existing.model = structuredClone(model)
       if (changed) {
+        existing.resolveReady()
+        const readiness = createReadiness()
         existing.capabilities = { animations: [], expressions: [] }
+        existing.ready = false
+        existing.readyPromise = readiness.promise
+        existing.resolveReady = readiness.resolve
         existing.window.webContents.send('avatar:state-changed')
       }
       existing.window.showInactive()
@@ -57,15 +64,19 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     }
 
     const window = this.createWindow(sessionId)
+    const readiness = createReadiness()
     const entry: AvatarWindowEntry = {
       window,
       model: structuredClone(model),
       latestMessage: '',
       capabilities: { animations: [], expressions: [] },
-      ready: false
+      ready: false,
+      readyPromise: readiness.promise,
+      resolveReady: readiness.resolve
     }
     this.entries.set(sessionId, entry)
     window.on('closed', () => {
+      entry.resolveReady()
       if (this.entries.get(sessionId)?.window === window) this.entries.delete(sessionId)
       this.rejectPendingForSession(sessionId, 'Avatar window was closed.')
     })
@@ -129,7 +140,8 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       model: {
         id: entry.model.id,
         name: entry.model.name,
-        animations: entry.model.animations.map(({ filePath: _filePath, ...animation }) => animation)
+        animations: entry.model.animations.map(({ filePath: _filePath, ...animation }) => animation),
+        defaultAnimationId: entry.model.defaultAnimationId
       },
       latestMessage: entry.latestMessage
     }
@@ -144,16 +156,19 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
   }
 
   reportCapabilities(senderId: number, capabilities: AvatarCapabilities): void {
-    const [, entry] = this.entryForSender(senderId)
-    entry.capabilities = {
-      animations: cleanNames(capabilities?.animations),
-      expressions: cleanNames(capabilities?.expressions)
-    }
-  }
-
-  markReady(senderId: number): void {
     const [sessionId, entry] = this.entryForSender(senderId)
+    const animations = cleanNames(capabilities?.animations)
+    const defaultAnimation = typeof capabilities?.defaultAnimation === 'string'
+      && animations.includes(capabilities.defaultAnimation)
+      ? capabilities.defaultAnimation
+      : undefined
+    entry.capabilities = {
+      animations,
+      expressions: cleanNames(capabilities?.expressions),
+      defaultAnimation
+    }
     entry.ready = true
+    entry.resolveReady()
     log('info', `Avatar renderer ready (sessionId=${sessionId})`)
   }
 
@@ -182,20 +197,34 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     if (!entry.window.isDestroyed()) entry.window.webContents.send('avatar:message', normalized)
   }
 
-  buildSystemPrompt(sessionId: string): string {
-    const entry = this.entries.get(sessionId)
+  async buildSystemPrompt(sessionId: string): Promise<string> {
+    let entry = this.entries.get(sessionId)
+    if (!entry) return ''
+    await this.waitForCapabilities(sessionId, entry)
+    entry = this.entries.get(sessionId)
     if (!entry) return ''
     const animations = this.availableAnimations(entry)
     const expressions = entry.capabilities.expressions
+    if (!entry.ready) {
+      return [
+        '## Session Avatar',
+        `This session has the Avatar "${entry.model.name}" enabled, but its capability scan is not ready.`,
+        'Do not guess animation or expression names. You may only use avatar_control with show_message until capabilities are available.'
+      ].join('\n')
+    }
     return [
       '## Session Avatar',
       `This session has the Avatar "${entry.model.name}" enabled in a separate desktop window.`,
       animations.length > 0
-        ? `Available animation names (use exact spelling): ${animations.join(', ')}.`
+        ? `Available animation names (case-sensitive; use exact spelling): ${animations.join(', ')}.`
         : 'No playable animations are currently configured or embedded; do not request an animation.',
       expressions.length > 0
-        ? `Available expression names (use exact spelling): ${expressions.join(', ')}.`
+        ? `Available expression names (case-sensitive; use exact spelling): ${expressions.join(', ')}.`
         : 'No expression names have been reported yet.',
+      entry.capabilities.defaultAnimation
+        ? `The default animation "${entry.capabilities.defaultAnimation}" is already playing in a loop.`
+        : 'No default animation is configured and no animation named idle was found.',
+      'Never invent an animation or expression name and never change its letter case.',
       'Use avatar_control only when a motion or expression naturally reinforces the current response. It changes presentation only and never replaces task work.'
     ].join('\n')
   }
@@ -239,6 +268,17 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       ...entry.model.animations.map(animation => animation.name),
       ...entry.capabilities.animations
     ])
+  }
+
+  private async waitForCapabilities(sessionId: string, initialEntry: AvatarWindowEntry): Promise<void> {
+    const deadline = Date.now() + 15_000
+    let entry: AvatarWindowEntry | undefined = initialEntry
+    while (entry && !entry.ready) {
+      const remaining = deadline - Date.now()
+      if (remaining <= 0) return
+      await waitForPromise(entry.readyPromise, remaining)
+      entry = this.entries.get(sessionId)
+    }
   }
 
   private dispatchCommand(
@@ -363,4 +403,19 @@ function describeCommand(command: AvatarCommand): string {
 
 function formatError(error: unknown): string {
   return error instanceof Error ? error.message : String(error)
+}
+
+function createReadiness(): { promise: Promise<void>; resolve: () => void } {
+  let resolve = () => {}
+  const promise = new Promise<void>(done => { resolve = done })
+  return { promise, resolve }
+}
+
+async function waitForPromise(promise: Promise<void>, timeoutMs: number): Promise<void> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  await Promise.race([
+    promise,
+    new Promise<void>(resolve => { timer = setTimeout(resolve, timeoutMs) })
+  ])
+  if (timer) clearTimeout(timer)
 }

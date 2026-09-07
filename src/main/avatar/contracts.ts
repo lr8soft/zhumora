@@ -3,7 +3,7 @@ import type { ToolExecutionResult } from '../../shared/types'
 
 export interface AvatarController {
   execute(sessionId: string | undefined, command: AvatarCommand, signal?: AbortSignal): Promise<ToolExecutionResult>
-  buildSystemPrompt(sessionId: string): string
+  buildSystemPrompt(sessionId: string): Promise<string>
 }
 
 export interface AvatarMessageTarget {

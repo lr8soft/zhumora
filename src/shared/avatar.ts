@@ -17,6 +17,8 @@ export interface AvatarModelConfig {
   /** Managed .vrm file path. Renderer never receives this path directly. */
   filePath: string
   animations: AvatarAnimationConfig[]
+  /** Animation started in a loop after the model loads. */
+  defaultAnimationId?: string
 }
 
 export interface AvatarSessionUpdate {
@@ -27,6 +29,8 @@ export interface AvatarSessionUpdate {
 export interface AvatarCapabilities {
   animations: string[]
   expressions: string[]
+  /** Exact public animation name currently used as the startup idle. */
+  defaultAnimation?: string
 }
 
 export type AvatarCommand =
@@ -46,6 +50,7 @@ export interface AvatarBootstrap {
     id: string
     name: string
     animations: Array<Omit<AvatarAnimationConfig, 'filePath'>>
+    defaultAnimationId?: string
   }
   latestMessage: string
 }
@@ -87,7 +92,14 @@ export function normalizeAvatarModels(value: unknown): AvatarModelConfig[] {
         filePath: source === 'vrma' ? animationPath : undefined
       })
     }
-    models.push({ id, name, filePath, animations })
+    const defaultAnimationId = cleanText(raw.defaultAnimationId, 128)
+    models.push({
+      id,
+      name,
+      filePath,
+      animations,
+      ...(animations.some(animation => animation.id === defaultAnimationId) ? { defaultAnimationId } : {})
+    })
   }
   return models
 }
@@ -97,9 +109,23 @@ export function resolveDefaultAvatarModelId(models: AvatarModelConfig[], request
   return models[0]?.id ?? null
 }
 
+export function resolveStartupAvatarAnimation(
+  model: Pick<AvatarModelConfig, 'animations' | 'defaultAnimationId'>,
+  availableNames: string[]
+): string | undefined {
+  const configured = model.animations.find(animation => animation.id === model.defaultAnimationId)?.name
+  if (configured && availableNames.includes(configured)) return configured
+  return availableNames.find(name => /(^|[\s_.-])idle($|[\s_.-])/i.test(name.trim()))
+}
+
 /** Presentation order is not part of the runtime identity of a model or its animations. */
 export function equivalentAvatarModel(left: AvatarModelConfig, right: AvatarModelConfig): boolean {
-  if (left.id !== right.id || left.name !== right.name || left.filePath !== right.filePath) return false
+  if (
+    left.id !== right.id
+    || left.name !== right.name
+    || left.filePath !== right.filePath
+    || left.defaultAnimationId !== right.defaultAnimationId
+  ) return false
   const canonicalize = (animations: AvatarAnimationConfig[]) => animations
     .map(animation => ({
       id: animation.id,

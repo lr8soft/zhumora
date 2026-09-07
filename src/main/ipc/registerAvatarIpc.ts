@@ -48,10 +48,6 @@ export function registerAvatarIpc(win: BrowserWindow, avatar: AvatarWindowManage
     avatar.reportCapabilities(event.sender.id, capabilities)
     return true
   })
-  ipcMain.handle('avatar:ready', event => {
-    avatar.markReady(event.sender.id)
-    return true
-  })
   ipcMain.handle('avatar:command-result', (event, commandId: unknown, error?: unknown) => {
     if (typeof commandId !== 'string' || !commandId) throw new Error('Invalid Avatar command id.')
     avatar.resolveCommand(event.sender.id, commandId, typeof error === 'string' ? error : undefined)
