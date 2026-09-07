@@ -1,12 +1,13 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, BrainCircuit, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors, UserRound } from 'lucide-react'
+import { ArrowUp, BrainCircuit, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors, UserRound, Volume2, VolumeX } from 'lucide-react'
 
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT } from '../store'
 import MessageBubble from './MessageBubble'
 import type { AutoApproveMode, UIMessage } from '@shared/types'
 import { toolPresentationRevision } from '@shared/toolPresentation'
+import { ttsPlayback } from '../tts/playback'
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
@@ -23,6 +24,7 @@ export default function ChatView() {
   const compaction = useAppStore(s => (activeSessionId ? s.compactionMarkers[activeSessionId] : undefined))
   // 单轮输出被 max_tokens 截断的通知（自动消失）
   const truncatedNotice = useAppStore(s => (activeSessionId ? s.truncatedNotices[activeSessionId] : undefined))
+  const ttsError = useAppStore(s => activeSessionId ? s.ttsErrors[activeSessionId] : undefined)
   // 全部用 selector 订阅 —— 无选择器 useAppStore() 会订阅全 store，
   // 流式 token 更新 messages 时连带 sessions/settings 等无关字段也触发重渲染
   const sessions = useAppStore(s => s.sessions)
@@ -71,6 +73,8 @@ export default function ChatView() {
     ? avatarModels.find(model => model.id === activeSession.avatarModelId)
     : undefined
   const setSessionAvatar = useAppStore(s => s.setSessionAvatar)
+  const setSessionTts = useAppStore(s => s.setSessionTts)
+  const ttsReady = settings.ttsModels.some(model => model.id === settings.defaultTtsModelId)
 
   const handleChangeWorkspace = async () => {
     const dir = await window.api.settings.pickDirectory()
@@ -122,6 +126,7 @@ export default function ChatView() {
   const handleSubmit = () => {
     const text = input.trim()
     if ((!text && pendingImages.length === 0) || isRunning) return
+    if (activeSession?.ttsEnabled) void ttsPlayback.unlock().catch(error => setImageError(String(error)))
     sendMessage(text, pendingImages.length > 0 ? [...pendingImages] : undefined)
     setInput('')
     setPendingImages([])
@@ -438,6 +443,7 @@ export default function ChatView() {
             </div>
           )}
           {imageError && <p className="chat-image-error">{imageError}</p>}
+          {ttsError && <p className="chat-image-error">{t('chat.ttsError')}: {ttsError}</p>}
 
           {/* 文本区（拖拽调高时唯一吸收变化的元素） */}
           <textarea
@@ -540,6 +546,18 @@ export default function ChatView() {
                 </>
               )}
             </div>
+            <button
+              className={activeSession?.ttsEnabled ? 'composer-mode-chip tts-active' : 'composer-mode-chip'}
+              disabled={!activeSession || (!activeSession.ttsEnabled && !ttsReady)}
+              title={!ttsReady ? t('chat.ttsNoModel') : activeSession?.ttsEnabled ? t('chat.ttsDisable') : t('chat.ttsEnable')}
+              onClick={() => {
+                if (!activeSession?.ttsEnabled) void ttsPlayback.unlock().catch(error => setImageError(String(error)))
+                void setSessionTts(!activeSession?.ttsEnabled).catch(error => setImageError(String(error)))
+              }}
+            >
+              {activeSession?.ttsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
+              TTS
+            </button>
             <div className="composer-toolbar-spacer" />
             {/* 思考强度（仅当前 provider 开启该功能时显示；自定义菜单向上展开） */}
             {reasoningSupported && (

@@ -23,6 +23,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Local session history, long-term memory, and token usage records
 - Chat with the same agent from your phone through a Telegram bot or a QQ bot, with live progress updates
 - Import VRM characters and opt into a separate transparent Avatar window per session, with Agent-controlled configured motions and expressions
+- Import local sherpa-onnx VITS/Kokoro voices and opt into spoken final responses per session
 - Permission prompts for potentially dangerous actions
 - Light / dark themes and multilingual UI
 
@@ -103,6 +104,10 @@ Import `.vrm` characters under **Settings → Avatar**, then configure embedded 
 Avatars include application-owned idle, thinking, explaining, nodding, head-shaking, greeting, celebration and sadness motions, adapted to VRM 0/1. Default motions use restrained head/body movement with relaxed arms; greeting and celebration add a smile, while sadness lowers the head and uses the model's sad expression when available. They blink and vary their idle pose without LLM calls. Agent activity drives thinking and response gestures; one-shot gestures return to the current activity with blended transitions. Mouse gaze follows only inside the Avatar window and smoothly returns forward on exit. Expressions fade in and return to neutral automatically. Explicitly configured custom animations retain their own choreography.
 
 Drag the character, message bubble or top handle to move its window; empty transparent space remains click-through. **Settings → Avatar → Window size** controls width and height in logical pixels for all Avatar windows, including already open ones after saving. Windows are fitted to the monitor's available work area.
+
+## Local TTS
+
+Import a compatible sherpa-onnx VITS or Kokoro model folder under **Settings → Speech**, then select the default voice and its speaker ID/speed. The TTS button in the composer is off for every new session. When enabled, only the final assistant response is converted from Markdown to bounded prose, synthesized locally, and played; Agent prompts, tools, and history are unchanged. Starting another synthesis interrupts the previous one. Imported weights keep their own license and must contain `model.onnx`, `tokens.txt`, plus `voices.bin` for Kokoro.
 
 In the animation library, use the semantic dropdown to replace a built-in motion with an imported clip; the star selects the startup idle. The Agent can use one `avatar_control` call with `action: "perform"`, an `intent` and optional `emotion`/`intensity`. Exact clip playback remains available for explicit looping. Imported motion quality and unusual character proportions can still require model-specific animation adjustments.
 

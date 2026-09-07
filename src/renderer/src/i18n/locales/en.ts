@@ -52,6 +52,10 @@ export default {
     avatarHint: 'Choose and enable an Avatar for this session',
     avatarNoModels: 'Import a VRM model in Settings first',
     avatarDefault: 'Default',
+    ttsEnable: 'Enable speech output for this session',
+    ttsDisable: 'Disable speech output for this session',
+    ttsNoModel: 'Import and select a default TTS model in Settings first',
+    ttsError: 'Speech output failed',
     selectModelHint: 'Select model (empty = provider default)',
     modelDefaultSuffix: '(default)',
     attachImage: "Add images (or paste / drop)",
@@ -94,6 +98,7 @@ export default {
       mcp: 'MCP Servers',
       bots: 'Chat Bots',
       avatar: 'Avatar',
+      tts: 'Speech',
       skills: 'Skills',
       memory: 'Memory',
       usage: 'Usage',
@@ -207,6 +212,11 @@ export default {
       importModel: 'Import .vrm model', empty: 'No VRM models imported yet.', modelName: 'Character name', default: 'Set default', defaultAnimation: 'Startup idle animation (click again to clear)',
       animations: 'Available animations', animationsHint: 'Embedded clips are discovered when loaded. You can also name a clip or import a VRMA.',
       addEmbedded: 'Add embedded clip', importVrma: 'Import .vrma', embedded: 'Embedded', animationName: 'Animation name for LLM', clipName: 'Embedded VRM clip name', newAnimation: 'New animation'
+    },
+    tts: {
+      library: 'TTS Model Library', hint: 'Import a sherpa-onnx VITS or Kokoro model folder. Speech is opt-in per session and off by default.',
+      importModel: 'Import model folder', empty: 'No TTS models imported yet.', modelName: 'Voice name', default: 'Set default',
+      speakerId: 'Speaker ID', speed: 'Speed (0.5–2)', modelLicense: 'Model weights retain their own licenses. Only use voices you have permission to use.'
     },
     memory: {
       hint: 'Long-term memory entries automatically captured from conversations. The agent uses these to personalize responses.',

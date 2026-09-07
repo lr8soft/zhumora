@@ -20,6 +20,7 @@ import { QQBotService } from './qq/service'
 import { getFetch } from './net/fetch'
 import type { AvatarWindowManager } from './avatar/windowManager'
 import { createAvatarTools } from './tools/avatar'
+import { TtsManager } from './tts/manager'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -35,6 +36,7 @@ export interface ApplicationServices {
   permissions: PermissionBroker
   bots: BotPlatformManager
   avatar: AvatarWindowManager
+  tts: TtsManager
 }
 
 export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
@@ -43,6 +45,7 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
   }
   const permissions = new PermissionBroker()
+  const tts = new TtsManager(db)
   const botAgent = new BotAgentBridge({
     tools: toolRegistry,
     permissions,
@@ -69,5 +72,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, bots, avatar }
+  return { tools: toolRegistry, permissions, bots, avatar, tts }
 }

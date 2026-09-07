@@ -52,6 +52,10 @@ export default {
     avatarHint: 'このセッションの Avatar を選択・有効化',
     avatarNoModels: '先に設定で VRM モデルをインポート',
     avatarDefault: 'デフォルト',
+    ttsEnable: 'この会話の音声出力を有効にする',
+    ttsDisable: 'この会話の音声出力を無効にする',
+    ttsNoModel: '設定でデフォルト TTS モデルを選択してください',
+    ttsError: '音声出力に失敗しました',
     selectModelHint: 'モデルを選択 (空 = プロバイダーのデフォルト)',
     modelDefaultSuffix: '(デフォルト)',
     attachImage: "画像を追加（ペースト/ドラッグも可）",
@@ -94,6 +98,7 @@ export default {
       mcp: 'MCP サーバー',
       bots: 'チャット Bot',
       avatar: 'Avatar',
+      tts: '音声',
       skills: 'スキル',
       memory: 'メモリ',
       usage: '使用量',
@@ -207,6 +212,11 @@ export default {
       importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定', defaultAnimation: '起動時の待機アニメーション（再クリックで解除）',
       animations: '利用可能なアニメーション', animationsHint: '埋め込み clip は読み込み時に検出されます。clip 名や VRMA も追加できます。',
       addEmbedded: 'clip を追加', importVrma: '.vrma をインポート', embedded: '埋め込み', animationName: 'LLM 用の名前', clipName: '埋め込み clip 名', newAnimation: '新規アニメーション'
+    },
+    tts: {
+      library: 'TTS モデルライブラリ', hint: 'sherpa-onnx の VITS または Kokoro モデルフォルダーを読み込みます。会話ごとに有効化し、初期状態はオフです。',
+      importModel: 'モデルフォルダーを読み込む', empty: 'TTS モデルはまだありません。', modelName: '音声名', default: 'デフォルトに設定',
+      speakerId: '話者 ID', speed: '速度（0.5～2）', modelLicense: 'モデルのライセンスと音声の使用許可を確認してください。'
     },
     memory: {
       hint: '会話から自動的にキャプチャされた長期メモリ。エージェントはこれらを使用して応答を個別化します。',

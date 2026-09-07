@@ -16,6 +16,7 @@ import {
   applyTokenDeltas,
   type TokenDelta
 } from './agentEvents'
+import { ttsPlayback } from './tts/playback'
 
 // ============================================================
 // 流式 token 批量缓冲（长会话卡顿的核心修复）
@@ -154,6 +155,20 @@ export default function App() {
     document.documentElement.style.fontSize = `${fontSize}px`
     try { localStorage.setItem(FONT_SIZE_STORAGE_KEY, String(fontSize)) } catch { /* ignore */ }
   }, [fontSize])
+
+  useEffect(() => {
+    const unsubs = [
+      window.api.tts.onAudio(payload => {
+        useAppStore.getState().setTtsError(payload.sessionId, null)
+        void ttsPlayback.play(payload).catch(error => {
+          useAppStore.getState().setTtsError(payload.sessionId, error instanceof Error ? error.message : String(error))
+        })
+      }),
+      window.api.tts.onStop(({ sessionId }) => ttsPlayback.stop(sessionId)),
+      window.api.tts.onError(({ sessionId, error }) => useAppStore.getState().setTtsError(sessionId, error))
+    ]
+    return () => { unsubs.forEach(unsub => unsub()); ttsPlayback.dispose() }
+  }, [])
 
   // 注册 IPC 事件
   // 核心原则：所有 agent 事件都携带 sessionId 并按会话路由 ——

@@ -29,6 +29,7 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
   ipcMain.handle('session:delete', (_event, id: string) => {
     services.permissions.cancelSession(id)
     services.avatar.hide(id)
+    services.tts.stop(id)
     db.deleteSession(id)
     runtime.deleteSession(id)
     return true
@@ -72,6 +73,7 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
       console.error('Bot platform reconfigure error:', error)
     })
     await services.avatar.applySettings(settings, previous)
+    services.tts.applySettings(settings, previous)
     reconcileAvatarSessions(services.avatar, settings)
     return settings
   })

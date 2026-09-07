@@ -67,6 +67,8 @@ Each Avatar window owns an `AvatarWindowInteraction` instance for drag capture a
 
 Avatar presentation state belongs to each window. The event adapter projects session-tagged Agent events into idle/thinking/speaking, while the IPC runtime's generic running callback covers startup, completion and abort. The motion controller owns bounded semantic overrides, default idle, autonomous variation and interruptible weight blending. Original built-in quaternion clips pass through VRM0 coordinate conversion; imported VRMA uses the library retargeter. Expression fading/blinking has a separate owner. Semantic animation mappings persist at the normalized settings boundary; capability reports include validated clips and semantic intents before prompt construction. Animation/expressions never create conversation history or invoke other tools.
 
+TTS is another isolated presentation adapter. A session-persisted opt-in flag lets the TTS event sink consume only the final `complete` event. `TtsManager` owns cancellation and output ordering, `SherpaOnnxTtsProvider` owns the native model lifecycle, and the renderer owns Web Audio playback. Model paths are normalized in settings and validated to remain inside the selected directory before the native runtime sees them. TTS does not register a tool, change the Agent prompt, or write audio into conversation history.
+
 ## 4. LLM providers
 
 Zhumora uses OpenAI-compatible chat-completions endpoints and SSE streaming.

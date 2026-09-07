@@ -3,6 +3,7 @@
 // ============================================================
 import type { AvatarModelConfig } from './avatar'
 import type { AvatarWindowSize } from './avatarWindow'
+import type { TtsModelConfig } from './tts'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -92,6 +93,8 @@ export interface Session {
   /** Avatar windows are opt-in per session. */
   avatarEnabled: boolean
   avatarModelId?: string
+  /** Speech output is opt-in per session. */
+  ttsEnabled: boolean
 }
 
 /** 工具描述（供 LLM function-calling） */
@@ -259,6 +262,9 @@ export interface AppSettings {
   /** Model preselected when a session enables its Avatar for the first time. */
   defaultAvatarModelId: string | null
   avatarWindowSize: AvatarWindowSize
+  /** User-imported sherpa-onnx model library. */
+  ttsModels: TtsModelConfig[]
+  defaultTtsModelId: string | null
 }
 
 // ============================================================

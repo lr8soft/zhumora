@@ -5,6 +5,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningEffort } from '../shared/types'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
+import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 
 const api = {
   // ============================================================
@@ -196,6 +197,27 @@ const api = {
       ipcRenderer.invoke('avatar:import-animation'),
     setSession: (sessionId: string, update: AvatarSessionUpdate): Promise<Session> =>
       ipcRenderer.invoke('avatar:session-set', sessionId, update)
+  },
+
+  tts: {
+    importModel: (): Promise<TtsModelConfig | null> => ipcRenderer.invoke('tts:import-model'),
+    setSession: (sessionId: string, update: TtsSessionUpdate): Promise<Session> =>
+      ipcRenderer.invoke('tts:session-set', sessionId, update),
+    onAudio: (cb: (payload: TtsAudioPayload) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: TtsAudioPayload) => cb(payload)
+      ipcRenderer.on('tts:audio', handler)
+      return () => ipcRenderer.removeListener('tts:audio', handler)
+    },
+    onStop: (cb: (payload: { sessionId: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { sessionId: string }) => cb(payload)
+      ipcRenderer.on('tts:stop', handler)
+      return () => ipcRenderer.removeListener('tts:stop', handler)
+    },
+    onError: (cb: (payload: { sessionId: string; error: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { sessionId: string; error: string }) => cb(payload)
+      ipcRenderer.on('tts:error', handler)
+      return () => ipcRenderer.removeListener('tts:error', handler)
+    }
   },
 
   // ============================================================

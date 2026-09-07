@@ -52,6 +52,10 @@ export default {
     avatarHint: 'Avatar für diese Sitzung auswählen',
     avatarNoModels: 'Zuerst ein VRM-Modell in den Einstellungen importieren',
     avatarDefault: 'Standard',
+    ttsEnable: 'Sprachausgabe für diese Sitzung aktivieren',
+    ttsDisable: 'Sprachausgabe für diese Sitzung deaktivieren',
+    ttsNoModel: 'Zuerst ein Standard-TTS-Modell in den Einstellungen wählen',
+    ttsError: 'Sprachausgabe fehlgeschlagen',
     selectModelHint: 'Modell auswählen (leer = Anbieter-Standard)',
     modelDefaultSuffix: '(Standard)',
     attachImage: "Bilder hinzufügen (auch per Einfügen/Ziehen)",
@@ -94,6 +98,7 @@ export default {
       mcp: 'MCP-Server',
       bots: 'Chat-Bots',
       avatar: 'Avatar',
+      tts: 'Sprache',
       skills: 'Skills',
       memory: 'Gedächtnis',
       usage: 'Nutzung',
@@ -207,6 +212,11 @@ export default {
       importModel: '.vrm-Modell importieren', empty: 'Noch keine VRM-Modelle importiert.', modelName: 'Charaktername', default: 'Als Standard', defaultAnimation: 'Start-Leerlaufanimation (erneut klicken zum Löschen)',
       animations: 'Verfügbare Animationen', animationsHint: 'Eingebettete Clips werden beim Laden erkannt; alternativ Clip benennen oder VRMA importieren.',
       addEmbedded: 'Clip hinzufügen', importVrma: '.vrma importieren', embedded: 'Eingebettet', animationName: 'Animationsname für LLM', clipName: 'Eingebetteter Clipname', newAnimation: 'Neue Animation'
+    },
+    tts: {
+      library: 'TTS-Modellbibliothek', hint: 'Einen sherpa-onnx-VITS- oder Kokoro-Modellordner importieren. Pro Sitzung optional und standardmäßig aus.',
+      importModel: 'Modellordner importieren', empty: 'Noch keine TTS-Modelle importiert.', modelName: 'Stimmenname', default: 'Als Standard',
+      speakerId: 'Sprecher-ID', speed: 'Tempo (0,5–2)', modelLicense: 'Modelllizenzen und Nutzungsrechte der Stimme müssen beachtet werden.'
     },
     memory: {
       hint: 'Langzeitgedächtnis-Einträge, die automatisch aus Konversationen erfasst wurden. Der Agent verwendet diese, um Antworten zu personalisieren.',

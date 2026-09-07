@@ -588,6 +588,11 @@ select.input-field { cursor: pointer; }
 .memory-stars button.filled { color: var(--app-color-warn); }
 .memory-stars button:hover { color: var(--app-color-warn); }
 .composer-mode-chip.avatar-active { color: var(--app-color-primary-strong); background: var(--app-color-active-bg); }
+.composer-mode-chip.tts-active { color: var(--app-color-success); background: color-mix(in srgb, var(--app-color-success) 12%, transparent); }
+.tts-model-card { border: 1px solid var(--app-color-border); border-radius: 10px; padding: 14px; margin-top: 12px; background: var(--app-color-surface); }
+.tts-model-card.default { border-color: var(--app-color-primary); }
+.tts-model-options { display: flex; gap: 12px; margin-top: 12px; }
+.tts-model-options .form-field { width: 160px; margin-bottom: 0; }
 .composer-mode-chip > svg.chevron-up { transform: rotate(180deg); }
 .avatar-menu { min-width: 210px; }
 .avatar-menu .mode-menu-item { justify-content: flex-start; }

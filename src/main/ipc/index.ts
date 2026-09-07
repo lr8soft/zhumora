@@ -25,14 +25,19 @@ import { complete } from '../llm/provider'
 import { combineAgentEventSinks } from '../agent/persistedCallbacks'
 import { createAvatarAgentEventSink } from '../avatar/agentEvents'
 import { registerAvatarIpc } from './registerAvatarIpc'
+import { registerTtsIpc } from './registerTtsIpc'
+import { createTtsAgentEventSink } from '../tts/agentEvents'
 
 export function setupIpc(win: BrowserWindow, services: ApplicationServices): void {
+  services.tts.attachRenderer(win.webContents)
   const runtime = new AgentIpcRuntime((channel, payload) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
   }, (sessionId, running) => services.avatar.setActivity(sessionId, running ? 'thinking' : 'idle'))
   services.permissions.addPresenter(createIpcPermissionPresenter(win.webContents))
   const avatarEventSink = createAvatarAgentEventSink(services.avatar)
-  const botEventSink = combineAgentEventSinks(createIpcAgentEventSink(win.webContents), avatarEventSink)
+  const ttsEventSink = createTtsAgentEventSink(services.tts)
+  const presentationEventSink = combineAgentEventSinks(avatarEventSink, ttsEventSink)
+  const botEventSink = combineAgentEventSinks(createIpcAgentEventSink(win.webContents), presentationEventSink)
   services.bots.setAgentEventSink(botEventSink)
   services.bots.setActivityListener(({ sessionId, state }) => {
     if (state === 'running') {
@@ -49,6 +54,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   })
   registerGeneralIpc(win, runtime, services)
   registerAvatarIpc(win, services.avatar)
+  registerTtsIpc(win, services.tts)
 
   // ============================================================
   // Agent 对话
@@ -91,6 +97,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
       status: 'done'
     } as const
     db.addMessage(persistedUserMessage)
+    presentationEventSink.userMessage?.(persistedUserMessage)
 
     // 获取历史消息（完整保留，绝不删除 —— 压缩只影响发给 LLM 的上下文）
     const history = db.getMessages(sessionId)
@@ -104,7 +111,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     const needsTitle = isDefaultTitle(session?.title)
 
     // 构建回调（流式 token / 工具调用 / DB 持久化）
-    const { callbacks } = buildAgentCallbacks(sessionId, e.sender, avatarEventSink)
+    const { callbacks } = buildAgentCallbacks(sessionId, e.sender, presentationEventSink)
 
     // 构建权限检查闭包 — 使用动态 getter，运行中切换模式即时生效
     const permissionCheck = services.permissions.createCheck({

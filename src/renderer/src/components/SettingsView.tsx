@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Brain, Cable, Send, Server, Settings2, Sparkles, UserRound } from 'lucide-react'
+import { BarChart3, Brain, Cable, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
 import { useAppStore } from '../store'
 import { ProviderSettings } from './settings/ProviderSettings'
 import { McpSettings } from './settings/McpSettings'
@@ -11,14 +11,16 @@ import { GeneralSettings } from './settings/GeneralSettings'
 import { TelegramSettings } from './settings/TelegramSettings'
 import { QQSettings } from './settings/QQSettings'
 import { AvatarSettings } from './settings/AvatarSettings'
+import { TtsSettings } from './settings/TtsSettings'
 
-type Tab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'skills' | 'memory' | 'usage' | 'general'
+type Tab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
 
 const TAB_ICONS: Record<Tab, typeof Server> = {
   providers: Server,
   mcp: Cable,
   bots: Send,
   avatar: UserRound,
+  tts: Volume2,
   skills: Sparkles,
   memory: Brain,
   usage: BarChart3,
@@ -36,7 +38,7 @@ export default function SettingsView() {
     openSettings()
   }, [openSettings])
 
-  const tabs: Tab[] = ['providers', 'mcp', 'bots', 'avatar', 'skills', 'memory', 'usage', 'general']
+  const tabs: Tab[] = ['providers', 'mcp', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -100,6 +102,11 @@ export default function SettingsView() {
           onWindowSizeChange={avatarWindowSize => useAppStore.getState().updateSettingsDraft({ avatarWindowSize })}
           onChange={(avatarModels, defaultAvatarModelId) =>
             useAppStore.getState().updateSettingsDraft({ avatarModels, defaultAvatarModelId })}
+        />}
+        {tab === 'tts' && <TtsSettings
+          models={settingsDraft.ttsModels}
+          defaultModelId={settingsDraft.defaultTtsModelId}
+          onChange={(ttsModels, defaultTtsModelId) => useAppStore.getState().updateSettingsDraft({ ttsModels, defaultTtsModelId })}
         />}
         {tab === 'skills' && <SkillSettings
           skills={settingsDraft.skills}

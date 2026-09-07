@@ -52,6 +52,10 @@ export default {
     avatarHint: 'Choisir et activer un Avatar pour cette session',
     avatarNoModels: "Importez d'abord un modèle VRM dans les paramètres",
     avatarDefault: 'Par défaut',
+    ttsEnable: 'Activer la sortie vocale pour cette session',
+    ttsDisable: 'Désactiver la sortie vocale pour cette session',
+    ttsNoModel: 'Importez et choisissez un modèle TTS par défaut dans les paramètres',
+    ttsError: 'Échec de la sortie vocale',
     selectModelHint: 'Sélectionner le modèle (vide = défaut du fournisseur)',
     modelDefaultSuffix: '(par défaut)',
     attachImage: "Ajouter des images (ou coller / glisser)",
@@ -94,6 +98,7 @@ export default {
       mcp: 'Serveurs MCP',
       bots: 'Bots de discussion',
       avatar: 'Avatar',
+      tts: 'Voix',
       skills: 'Compétences',
       memory: 'Mémoire',
       usage: 'Utilisation',
@@ -207,6 +212,11 @@ export default {
       importModel: 'Importer un modèle .vrm', empty: 'Aucun modèle VRM importé.', modelName: 'Nom du personnage', default: 'Par défaut', defaultAnimation: "Animation d'attente au démarrage (recliquer pour retirer)",
       animations: 'Animations disponibles', animationsHint: 'Les clips intégrés sont détectés au chargement ; vous pouvez aussi nommer un clip ou importer un VRMA.',
       addEmbedded: 'Ajouter un clip', importVrma: 'Importer .vrma', embedded: 'Intégré', animationName: 'Nom pour le LLM', clipName: 'Nom du clip intégré', newAnimation: 'Nouvelle animation'
+    },
+    tts: {
+      library: 'Bibliothèque de modèles TTS', hint: 'Importez un dossier de modèle VITS ou Kokoro sherpa-onnx. Activation par session, désactivée par défaut.',
+      importModel: 'Importer un dossier', empty: 'Aucun modèle TTS importé.', modelName: 'Nom de la voix', default: 'Par défaut',
+      speakerId: 'ID du locuteur', speed: 'Vitesse (0,5–2)', modelLicense: "Vérifiez la licence du modèle et les droits d'utilisation de la voix."
     },
     memory: {
       hint: "Entrées de mémoire à long terme capturées automatiquement des conversations. L'agent les utilise pour personnaliser ses réponses.",

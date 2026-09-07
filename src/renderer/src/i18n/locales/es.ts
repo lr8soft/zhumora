@@ -52,6 +52,10 @@ export default {
     avatarHint: 'Elegir y activar un Avatar para esta sesión',
     avatarNoModels: 'Primero importa un modelo VRM en Ajustes',
     avatarDefault: 'Predeterminado',
+    ttsEnable: 'Activar voz para esta sesión',
+    ttsDisable: 'Desactivar voz para esta sesión',
+    ttsNoModel: 'Importa y selecciona un modelo TTS predeterminado en Ajustes',
+    ttsError: 'Error de salida de voz',
     selectModelHint: 'Seleccionar modelo (vacío = default del proveedor)',
     modelDefaultSuffix: '(por defecto)',
     attachImage: "Añadir imágenes (también pegar o arrastrar)",
@@ -94,6 +98,7 @@ export default {
       mcp: 'Servidores MCP',
       bots: 'Bots de chat',
       avatar: 'Avatar',
+      tts: 'Voz',
       skills: 'Skills',
       memory: 'Memoria',
       usage: 'Uso',
@@ -207,6 +212,11 @@ export default {
       importModel: 'Importar modelo .vrm', empty: 'Aún no hay modelos VRM.', modelName: 'Nombre del personaje', default: 'Predeterminado', defaultAnimation: 'Animación de espera inicial (clic de nuevo para quitar)',
       animations: 'Animaciones disponibles', animationsHint: 'Los clips integrados se detectan al cargar; también puedes nombrar un clip o importar VRMA.',
       addEmbedded: 'Añadir clip', importVrma: 'Importar .vrma', embedded: 'Integrado', animationName: 'Nombre para el LLM', clipName: 'Nombre del clip integrado', newAnimation: 'Nueva animación'
+    },
+    tts: {
+      library: 'Biblioteca de modelos TTS', hint: 'Importa una carpeta de modelo VITS o Kokoro de sherpa-onnx. Se activa por sesión y está desactivado por defecto.',
+      importModel: 'Importar carpeta', empty: 'Aún no hay modelos TTS.', modelName: 'Nombre de voz', default: 'Predeterminado',
+      speakerId: 'ID de hablante', speed: 'Velocidad (0,5–2)', modelLicense: 'Comprueba la licencia del modelo y los derechos de uso de la voz.'
     },
     memory: {
       hint: 'Entradas de memoria a largo plazo capturadas automáticamente de conversaciones. El agente las usa para personalizar respuestas.',

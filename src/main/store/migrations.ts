@@ -132,6 +132,15 @@ const migrations: Migration[] = [
         database.exec('ALTER TABLE sessions ADD COLUMN avatar_model_id TEXT')
       }
     }
+  },
+  {
+    version: 5,
+    up(database) {
+      const columns = database.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]
+      if (!columns.some(column => column.name === 'tts_enabled')) {
+        database.exec('ALTER TABLE sessions ADD COLUMN tts_enabled INTEGER NOT NULL DEFAULT 0')
+      }
+    }
   }
 ]
 

@@ -52,6 +52,10 @@ export default {
     avatarHint: '为当前会话选择并开启 Avatar',
     avatarNoModels: '请先在设置中导入 VRM 模型',
     avatarDefault: '默认',
+    ttsEnable: '开启当前会话的语音输出',
+    ttsDisable: '关闭当前会话的语音输出',
+    ttsNoModel: '请先在设置中导入并选择默认 TTS 模型',
+    ttsError: '语音输出失败',
     selectModelHint: '选择模型（留空 = 使用 Provider 默认）',
     modelDefaultSuffix: '(默认)',
     attachImage: "添加图片（也可粘贴或拖入）",
@@ -104,6 +108,7 @@ export default {
       mcp: 'MCP 服务器',
       bots: '聊天机器人',
       avatar: 'Avatar',
+      tts: '语音',
       skills: 'Skills',
       memory: '记忆',
       usage: '用量',
@@ -228,6 +233,17 @@ export default {
       animationName: '给 LLM 的动画名',
       clipName: 'VRM 内嵌 clip 名',
       newAnimation: '新动画'
+    },
+    tts: {
+      library: 'TTS 模型库',
+      hint: '导入 sherpa-onnx 的 VITS 或 Kokoro 模型目录。语音输出按会话开启，默认关闭。',
+      importModel: '导入模型目录',
+      empty: '尚未导入 TTS 模型。',
+      modelName: '声音名称',
+      default: '设为默认',
+      speakerId: '说话人 ID',
+      speed: '语速（0.5–2）',
+      modelLicense: '模型权重保留其各自许可证；请确认拥有使用该声音的权利。'
     },
     memory: {
       hint: '从对话中自动捕获的长期记忆条目。Agent 使用这些来个性化响应。',

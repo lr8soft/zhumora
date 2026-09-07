@@ -176,6 +176,9 @@ interface AppState {
   deleteSession: (id: string) => Promise<void>
   /** null disables the Avatar; a model id enables it for this session. */
   setSessionAvatar: (modelId: string | null) => Promise<void>
+  setSessionTts: (enabled: boolean) => Promise<void>
+  ttsErrors: Record<string, string>
+  setTtsError: (sessionId: string, error: string | null) => void
   /** 待删除会话的 id（null = 无删除确认弹窗） */
   pendingDeleteId: string | null
   /** 弹出删除确认（不直接删，防误操作） */
@@ -332,7 +335,9 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete messages[id]
       const compactionMarkers = { ...s.compactionMarkers }
       delete compactionMarkers[id]
-      return { sessions: newSessions, activeSessionId: newActiveId, messages, compactionMarkers }
+      const ttsErrors = { ...s.ttsErrors }
+      delete ttsErrors[id]
+      return { sessions: newSessions, activeSessionId: newActiveId, messages, compactionMarkers, ttsErrors }
     })
     if (newActiveId) void get().loadMessages(newActiveId)
   },
@@ -344,6 +349,20 @@ export const useAppStore = create<AppState>((set, get) => ({
       sessions: state.sessions.map(session => session.id === sessionId ? updated : session)
     }))
   },
+  setSessionTts: async (enabled) => {
+    const sessionId = get().activeSessionId
+    if (!sessionId) return
+    get().setTtsError(sessionId, null)
+    const updated = await api.tts.setSession(sessionId, { enabled })
+    set(state => ({ sessions: state.sessions.map(session => session.id === sessionId ? updated : session) }))
+  },
+  ttsErrors: {},
+  setTtsError: (sessionId, error) => set(state => {
+    const ttsErrors = { ...state.ttsErrors }
+    if (error) ttsErrors[sessionId] = error
+    else delete ttsErrors[sessionId]
+    return { ttsErrors }
+  }),
 
   // ---- 删除会话确认（弹窗流程）----
   pendingDeleteId: null,
@@ -610,7 +629,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     workspacePath: '',
     avatarModels: [],
     defaultAvatarModelId: null,
-    avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE }
+    avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
+    ttsModels: [],
+    defaultTtsModelId: null
   },
   settingsDraft: {
     providers: [],
@@ -623,6 +644,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     avatarModels: [],
     defaultAvatarModelId: null,
     avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
+    ttsModels: [],
+    defaultTtsModelId: null,
     theme: 'system',
     fontSize: DEFAULT_FONT_SIZE
   },

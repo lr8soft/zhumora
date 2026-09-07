@@ -10,6 +10,7 @@
     "node": ">=22.12.0"
   },
   "scripts": {
+    "pretest": "node --no-warnings tests/tts.test.ts",
     "dev": "electron-vite dev",
     "build": "electron-vite build",
     "test": "node --no-warnings tests/toolPresentation.test.ts && node --no-warnings tests/toolExecutor.test.ts && node --no-warnings tests/permission.test.ts && node --no-warnings tests/persistedCallbacks.test.ts && node --no-warnings tests/botInfrastructure.test.ts && node --no-warnings tests/mcpConfig.test.ts && node --no-warnings tests/telegram.test.ts && node --no-warnings tests/qq.test.ts && node --no-warnings tests/sessionTitle.test.ts && node --no-warnings tests/migrations.test.ts && node --no-warnings tests/settingsChange.test.ts && node --no-warnings tests/avatarConfig.test.ts && node --no-warnings tests/avatarPrompt.test.ts && node --no-warnings tests/avatarMotion.test.ts && node --no-warnings tests/avatarTool.test.ts && node --no-warnings tests/recoveryPolicy.test.ts && node --no-warnings tests/turnDecision.test.ts && node --no-warnings tests/agentEvents.test.ts && node --no-warnings tests/builtinTools.test.ts && node --no-warnings tests/desktop.test.ts && node --no-warnings tests/history.test.ts && node --no-warnings tests/loopDetector.test.ts && node --no-warnings tests/multimodal.test.ts && node --no-warnings tests/truncation.test.ts && node --no-warnings tests/systemFonts.test.ts && node --no-warnings tests/officeTools.test.ts",
@@ -40,6 +41,7 @@
     "pptxgenjs": "^4.0.1",
     "react-i18next": "^17.0.11",
     "recharts": "^3.10.1",
+    "sherpa-onnx-node": "^1.13.7",
     "three": "^0.185.1",
     "xlsx-populate": "^1.21.0",
     "zod": "^3.25.76"
@@ -86,6 +88,8 @@
       "node_modules/docx/**/*",
       "node_modules/xlsx-populate/**/*",
       "node_modules/pptxgenjs/**/*",
+      "node_modules/sherpa-onnx-node/**/*",
+      "node_modules/sherpa-onnx-win-x64/**/*",
       "!node_modules/officeparser/dist/officeparser.browser*.mjs",
       "!node_modules/**/{README,readme,CHANGELOG,changelog,LICENSE,license,*.md,*.map,*.ts}/**",
       "!node_modules/playwright-core/lib/opus/**",
@@ -98,7 +102,8 @@
     "asarUnpack": [
       "node_modules/better-sqlite3/**/*",
       "node_modules/@mediar-ai/terminator-win32-*/**/*",
-      "node_modules/@vscode/ripgrep-*/**/*"
+      "node_modules/@vscode/ripgrep-*/**/*",
+      "node_modules/sherpa-onnx-win-x64/**/*"
     ],
     "extraResources": [
       {

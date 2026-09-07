@@ -11,6 +11,7 @@ import { generateId } from '../id'
 import { normalizeTelegramBotConfig } from '../../shared/telegram'
 import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared/avatar'
 import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
+import { normalizeTtsModels, resolveDefaultTtsModelId } from '../../shared/tts'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -36,7 +37,7 @@ export function createSession(title = 'New Session', workspacePath?: string): Se
   const now = Date.now()
   db!.prepare('INSERT INTO sessions (id, title, created_at, updated_at, workspace_path) VALUES (?, ?, ?, ?, ?)')
     .run(id, title, now, now, workspacePath || null)
-  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, avatarEnabled: false }
+  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, avatarEnabled: false, ttsEnabled: false }
 }
 
 export function getSessions(): Session[] {
@@ -55,7 +56,8 @@ export function getSessions(): Session[] {
     messageCount: r.msg_count,
     workspacePath: r.workspace_path || undefined,
     avatarEnabled: r.avatar_enabled === 1,
-    avatarModelId: r.avatar_model_id || undefined
+    avatarModelId: r.avatar_model_id || undefined,
+    ttsEnabled: r.tts_enabled === 1
   }))
 }
 
@@ -71,7 +73,8 @@ export function getSession(id: string): Session | null {
     messageCount: msgCount,
     workspacePath: row.workspace_path || undefined,
     avatarEnabled: row.avatar_enabled === 1,
-    avatarModelId: row.avatar_model_id || undefined
+    avatarModelId: row.avatar_model_id || undefined,
+    ttsEnabled: row.tts_enabled === 1
   }
 }
 
@@ -99,6 +102,10 @@ export function updateSessionWorkspace(id: string, workspacePath: string): void 
 export function updateSessionAvatar(id: string, enabled: boolean, modelId: string | null): void {
   db!.prepare('UPDATE sessions SET avatar_enabled = ?, avatar_model_id = ? WHERE id = ?')
     .run(enabled ? 1 : 0, modelId, id)
+}
+
+export function updateSessionTts(id: string, enabled: boolean): void {
+  db!.prepare('UPDATE sessions SET tts_enabled = ? WHERE id = ?').run(enabled ? 1 : 0, id)
 }
 
 export function deleteSession(id: string): void {
@@ -134,7 +141,8 @@ export function getOrCreateBotSession(
       messageCount: msgCount,
       workspacePath: existing.workspace_path || undefined,
       avatarEnabled: existing.avatar_enabled === 1,
-      avatarModelId: existing.avatar_model_id || undefined
+      avatarModelId: existing.avatar_model_id || undefined,
+      ttsEnabled: existing.tts_enabled === 1
     }
   }
 
@@ -196,7 +204,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 8
+export const SETTINGS_SCHEMA_VERSION = 9
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -244,7 +252,9 @@ function defaultSettings(): AppSettings {
     maxRounds: 20,
     avatarModels: [],
     defaultAvatarModelId: null,
-    avatarWindowSize: normalizeAvatarWindowSize(undefined)
+    avatarWindowSize: normalizeAvatarWindowSize(undefined),
+    ttsModels: [],
+    defaultTtsModelId: null
   }
 }
 
@@ -264,6 +274,7 @@ export function normalizeSettings(input: unknown): AppSettings {
   if (!input || typeof input !== 'object') return defaults
   const raw = input as Partial<AppSettings>
   const avatarModels = normalizeAvatarModels(raw.avatarModels)
+  const ttsModels = normalizeTtsModels(raw.ttsModels)
   return {
     ...defaults,
     ...raw,
@@ -276,6 +287,8 @@ export function normalizeSettings(input: unknown): AppSettings {
     avatarModels,
     avatarWindowSize: normalizeAvatarWindowSize(raw.avatarWindowSize),
     defaultAvatarModelId: resolveDefaultAvatarModelId(avatarModels, raw.defaultAvatarModelId),
+    ttsModels,
+    defaultTtsModelId: resolveDefaultTtsModelId(ttsModels, raw.defaultTtsModelId),
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId
       : defaults.activeProviderId,

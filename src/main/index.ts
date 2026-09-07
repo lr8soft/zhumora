@@ -130,6 +130,7 @@ app.on('before-quit', () => {
   void applicationServices?.bots.stopAll()
   applicationServices?.permissions.dispose()
   applicationServices?.avatar.dispose()
+  applicationServices?.tts.dispose()
   void disposeDesktopAdapter().catch(error => {
     log('warn', `Failed to stop desktop automation process: ${String(error)}`)
   })
