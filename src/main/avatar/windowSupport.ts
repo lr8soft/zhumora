@@ -1,5 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import type { AvatarCommand } from '../../shared/avatar'
+import { fitAvatarBounds, type AvatarWindowSize } from '../../shared/avatarWindow'
 import { log } from '../llm/logger'
 
 export interface AvatarWindowPaths {
@@ -21,17 +22,15 @@ export function attachDiagnostics(sessionId: string, window: BrowserWindow): voi
   })
 }
 
-export function createAvatarWindow(sessionId: string, index: number, options: AvatarWindowPaths): BrowserWindow {
+export function createAvatarWindow(sessionId: string, index: number, options: AvatarWindowPaths, size: AvatarWindowSize): BrowserWindow {
   const workArea = screen.getPrimaryDisplay().workArea
-  const width = 360
-  const height = 540
+  const { width, height } = size
+  const bounds = fitAvatarBounds({ width, height,
+    x: workArea.x + workArea.width - width - 24 - index * 28,
+    y: workArea.y + workArea.height - height - 24 - index * 28
+  }, workArea)
   const window = new BrowserWindow({
-    width,
-    height,
-    minWidth: 260,
-    minHeight: 360,
-    x: Math.max(workArea.x, workArea.x + workArea.width - width - 24 - index * 28),
-    y: Math.max(workArea.y, workArea.y + workArea.height - height - 24 - index * 28),
+    ...bounds,
     show: false,
     frame: false,
     transparent: true,
@@ -39,7 +38,7 @@ export function createAvatarWindow(sessionId: string, index: number, options: Av
     hasShadow: false,
     alwaysOnTop: true,
     skipTaskbar: true,
-    resizable: true,
+    resizable: false,
     title: `Zhumora Avatar — ${sessionId}`,
     webPreferences: {
       preload: options.preloadPath,

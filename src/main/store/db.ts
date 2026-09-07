@@ -10,6 +10,7 @@ import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
 import { normalizeTelegramBotConfig } from '../../shared/telegram'
 import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared/avatar'
+import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -195,7 +196,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 7
+export const SETTINGS_SCHEMA_VERSION = 8
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -242,7 +243,8 @@ function defaultSettings(): AppSettings {
     maxRetries: 5,
     maxRounds: 20,
     avatarModels: [],
-    defaultAvatarModelId: null
+    defaultAvatarModelId: null,
+    avatarWindowSize: normalizeAvatarWindowSize(undefined)
   }
 }
 
@@ -272,6 +274,7 @@ export function normalizeSettings(input: unknown): AppSettings {
     qqBot: normalizeQQBotConfig(raw.qqBot),
     skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,
     avatarModels,
+    avatarWindowSize: normalizeAvatarWindowSize(raw.avatarWindowSize),
     defaultAvatarModelId: resolveDefaultAvatarModelId(avatarModels, raw.defaultAvatarModelId),
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId

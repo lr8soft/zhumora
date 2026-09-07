@@ -18,7 +18,7 @@ export function buildAvatarSystemPrompt(
     '## Session Avatar',
     `This session has the Avatar "${modelName}" enabled in a separate desktop window.`,
     capabilities.intents?.length
-      ? `Prefer one avatar_control call with action="perform" and intent from: ${capabilities.intents.join(', ')}. acknowledge=nod, disagree=shake head, greet=wave, thinking=ponder, explain=explain, celebrate=celebrate, idle=rest. Optional emotion: neutral/happy/sad/angry/surprised/relaxed; intensity: 0..1 (default 0.6).`
+      ? `Prefer one avatar_control call with action="perform" and intent from: ${capabilities.intents.join(', ')}. acknowledge=small nod, disagree=gentle head shake, greet=nod and smile, thinking=ponder, explain=subtle head movement, celebrate=smile and slight head lift, sad=lower head with sad expression, idle=rest. Built-in motions keep arms relaxed. Optional emotion: neutral/happy/sad/angry/surprised/relaxed; intensity: 0..1 (default 0.6).`
       : '',
     'Idle variation, blinking, thinking and response gestures are automatic. Do not repeatedly call tools to keep the Avatar alive. Semantic gestures return automatically; expressions fade back to neutral. Prefer at most one meaningful gesture per response.',
     animations.length > 0

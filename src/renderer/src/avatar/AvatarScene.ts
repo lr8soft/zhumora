@@ -21,6 +21,8 @@ export class AvatarScene {
   private readonly camera = new THREE.PerspectiveCamera(28, 1, 0.01, 100)
   private readonly lookTarget = new THREE.Object3D()
   private readonly desiredLookTarget = new THREE.Vector3()
+  private readonly raycaster = new THREE.Raycaster()
+  private framingBounds: THREE.Box3 | null = null
   private readonly clock = new THREE.Clock()
   private readonly resizeObserver: ResizeObserver
   private readonly container: HTMLElement
@@ -135,7 +137,9 @@ export class AvatarScene {
     if (!this.vrm) throw new Error('Avatar model is not ready.')
     if (command.type === 'perform') {
       await this.motion?.perform(command.intent, command.intensity)
-      if (command.emotion) this.expressions?.emotion(command.emotion, command.intensity)
+      const emotion = command.emotion ?? (command.intent === 'sad' ? 'sad'
+        : command.intent === 'greet' || command.intent === 'celebrate' ? 'happy' : undefined)
+      if (emotion) this.expressions?.emotion(emotion, command.intensity)
       return
     }
     if (command.type === 'play_animation') {
@@ -173,6 +177,17 @@ export class AvatarScene {
   setActivity(activity: AvatarActivity): void {
     this.activity = activity
     this.motion?.setActivity(activity)
+  }
+
+  hitTest(clientX: number, clientY: number): boolean {
+    if (!this.vrm) return false
+    const rect = this.renderer.domElement.getBoundingClientRect()
+    if (rect.width <= 0 || rect.height <= 0 || clientX < rect.left || clientX > rect.right || clientY < rect.top || clientY > rect.bottom) return false
+    this.raycaster.setFromCamera(new THREE.Vector2(
+      (clientX - rect.left) / rect.width * 2 - 1,
+      1 - (clientY - rect.top) / rect.height * 2
+    ), this.camera)
+    return this.raycaster.intersectObject(this.vrm.scene, true).some(hit => hit.object.visible)
   }
 
   dispose(): void {
@@ -224,7 +239,7 @@ export class AvatarScene {
 
   private frameModel(root: THREE.Object3D): void {
     root.updateWorldMatrix(true, true)
-    const box = new THREE.Box3().setFromObject(root)
+    const box = this.framingBounds ??= new THREE.Box3().setFromObject(root)
     const size = box.getSize(new THREE.Vector3())
     const center = box.getCenter(new THREE.Vector3())
     const height = Math.max(size.y, 0.1)
@@ -262,6 +277,7 @@ export class AvatarScene {
   }
 
   private disposeModel(): void {
+    this.framingBounds = null
     this.motion?.dispose()
     this.motion = null
     this.expressions = null

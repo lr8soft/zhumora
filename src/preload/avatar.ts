@@ -1,7 +1,9 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AvatarActivity, AvatarBootstrap, AvatarCapabilities, AvatarCommandEnvelope, AvatarLookTarget } from '../shared/avatar'
+import type { AvatarDragPhase } from '../shared/avatarWindow'
 
 const avatarApi = {
+  drag: (phase: AvatarDragPhase): Promise<boolean> => ipcRenderer.invoke('avatar:drag', phase),
   onActivity: (callback: (activity: AvatarActivity) => void) => {
     const handler = (_event: Electron.IpcRendererEvent, activity: AvatarActivity) => callback(activity)
     ipcRenderer.on('avatar:activity', handler)

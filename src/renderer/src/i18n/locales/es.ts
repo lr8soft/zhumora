@@ -197,7 +197,12 @@ export default {
     avatar: {
       intent: "Reemplazar movimiento",
       intentNone: "Solo reproducción directa",
-      intentNames: {"idle":"Espera","thinking":"Pensar","explain":"Explicar","acknowledge":"Asentir","disagree":"Negar","greet":"Saludar","celebrate":"Celebrar"},
+      intentNames: {"idle":"Espera","thinking":"Pensar","explain":"Explicar","acknowledge":"Asentir","disagree":"Negar","greet":"Saludar con la cabeza","celebrate":"Celebrar","sad":"Triste"},
+      windowSize: "Tamaño de ventana Avatar",
+      windowSizeHint: "Al guardar se aplica a todas las ventanas Avatar. Arrastra el personaje, el mensaje o el asa superior; las zonas vacías dejan pasar los clics.",
+      windowWidth: "Ancho (240–960)",
+      windowHeight: "Alto (320–1440)",
+      windowReset: "Restablecer tamaño",
       library: 'Biblioteca de avatares', hint: 'Importa modelos VRM aquí una vez. Las sesiones están desactivadas por defecto.',
       importModel: 'Importar modelo .vrm', empty: 'Aún no hay modelos VRM.', modelName: 'Nombre del personaje', default: 'Predeterminado', defaultAnimation: 'Animación de espera inicial (clic de nuevo para quitar)',
       animations: 'Animaciones disponibles', animationsHint: 'Los clips integrados se detectan al cargar; también puedes nombrar un clip o importar VRMA.',

@@ -207,7 +207,12 @@ export default {
     avatar: {
       intent: "替换内置动作",
       intentNone: "仅精确播放",
-      intentNames: {"idle":"待机","thinking":"思考","explain":"解释","acknowledge":"点头认同","disagree":"摇头否定","greet":"挥手招呼","celebrate":"庆祝"},
+      intentNames: {"idle":"待机","thinking":"思考","explain":"解释","acknowledge":"点头认同","disagree":"摇头否定","greet":"点头招呼","celebrate":"庆祝","sad":"伤心"},
+      windowSize: "Avatar 窗口大小",
+      windowSizeHint: "保存后应用于所有 Avatar 窗口，新窗口也会沿用。可按住角色、消息框或顶部把手拖动；透明空白处允许点击穿透。",
+      windowWidth: "宽度（240–960）",
+      windowHeight: "高度（320–1440）",
+      windowReset: "恢复默认大小",
       library: 'Avatar 模型库',
       hint: '在这里一次性导入 VRM；会话中只从模型库选择，默认不开启。',
       importModel: '导入 .vrm 模型',

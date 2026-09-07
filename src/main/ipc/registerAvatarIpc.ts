@@ -40,6 +40,11 @@ export function registerAvatarIpc(win: BrowserWindow, avatar: AvatarWindowManage
   })
 
   ipcMain.handle('avatar:bootstrap', event => avatar.getBootstrap(event.sender.id))
+  ipcMain.handle('avatar:drag', (event, phase: unknown) => {
+    if (phase !== 'start' && phase !== 'move' && phase !== 'end') throw new Error('Invalid Avatar drag phase.')
+    avatar.drag(event.sender.id, phase)
+    return true
+  })
   ipcMain.handle('avatar:asset', (event, assetId: unknown) => {
     if (typeof assetId !== 'string' || !assetId) throw new Error('Invalid Avatar asset id.')
     return avatar.getAsset(event.sender.id, assetId)

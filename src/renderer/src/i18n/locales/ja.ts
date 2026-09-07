@@ -197,7 +197,12 @@ export default {
     avatar: {
       intent: "内蔵モーションを置換",
       intentNone: "直接再生のみ",
-      intentNames: {"idle":"待機","thinking":"思考","explain":"説明","acknowledge":"うなずく","disagree":"首を振る","greet":"手を振る","celebrate":"喜ぶ"},
+      intentNames: {"idle":"待機","thinking":"思考","explain":"説明","acknowledge":"うなずく","disagree":"首を振る","greet":"会釈","celebrate":"喜ぶ","sad":"悲しみ"},
+      windowSize: "Avatar ウィンドウサイズ",
+      windowSizeHint: "保存すると全 Avatar に適用されます。キャラクター、吹き出し、上部のハンドルをドラッグして移動できます。透明な余白はクリックを通します。",
+      windowWidth: "幅（240–960）",
+      windowHeight: "高さ（320–1440）",
+      windowReset: "サイズをリセット",
       library: 'Avatar モデルライブラリ', hint: 'ここで VRM を一度インポートします。セッションはデフォルトでオフです。',
       importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定', defaultAnimation: '起動時の待機アニメーション（再クリックで解除）',
       animations: '利用可能なアニメーション', animationsHint: '埋め込み clip は読み込み時に検出されます。clip 名や VRMA も追加できます。',

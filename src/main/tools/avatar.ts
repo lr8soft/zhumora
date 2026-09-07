@@ -19,7 +19,7 @@ export function createAvatarTools(controller: AvatarController): Array<{ name: s
           type: 'object',
           properties: {
             action: { type: 'string', enum: ['perform', 'play_animation', 'set_expression', 'reset_pose', 'show_message'] },
-            intent: { type: 'string', enum: [...AVATAR_INTENTS], description: 'perform: idle=rest, thinking=ponder, explain=explain, acknowledge=nod, disagree=shake head, greet=wave, celebrate=celebrate.' },
+            intent: { type: 'string', enum: [...AVATAR_INTENTS], description: 'perform: idle=rest, thinking=ponder, explain=subtle head movement, acknowledge=nod, disagree=shake head, greet=nod and smile, celebrate=smile and slight head lift, sad=lower head and sad expression. Built-in motions keep arms relaxed.' },
             emotion: { type: 'string', enum: [...AVATAR_EMOTIONS] },
             intensity: { type: 'number', minimum: 0, maximum: 1, description: 'perform strength, default 0.6; automatically returns to current activity.' },
             animation: { type: 'string', description: 'Required for play_animation.' },

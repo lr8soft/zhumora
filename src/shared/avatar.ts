@@ -1,6 +1,6 @@
 export type AvatarAnimationSource = 'embedded' | 'vrma'
 
-export const AVATAR_INTENTS = ['idle', 'thinking', 'explain', 'acknowledge', 'disagree', 'greet', 'celebrate'] as const
+export const AVATAR_INTENTS = ['idle', 'thinking', 'explain', 'acknowledge', 'disagree', 'greet', 'celebrate', 'sad'] as const
 export type AvatarIntent = typeof AVATAR_INTENTS[number]
 export const AVATAR_EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'relaxed'] as const
 export type AvatarEmotion = typeof AVATAR_EMOTIONS[number]

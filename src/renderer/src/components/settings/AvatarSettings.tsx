@@ -2,14 +2,18 @@ import { Film, Plus, Star, Trash2, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AvatarAnimationConfig, AvatarModelConfig } from '@shared/avatar'
 import { AVATAR_INTENTS, type AvatarIntent } from '@shared/avatar'
+import type { AvatarWindowSize } from '@shared/avatarWindow'
+import { AvatarWindowSettings } from './AvatarWindowSettings'
 
 interface Props {
   models: AvatarModelConfig[]
   defaultModelId: string | null
+  windowSize: AvatarWindowSize
+  onWindowSizeChange: (size: AvatarWindowSize) => void
   onChange: (models: AvatarModelConfig[], defaultModelId: string | null) => void
 }
 
-export function AvatarSettings({ models, defaultModelId, onChange }: Props) {
+export function AvatarSettings({ models, defaultModelId, onChange, windowSize, onWindowSizeChange }: Props) {
   const { t } = useTranslation()
 
   const updateModel = (id: string, patch: Partial<AvatarModelConfig>) => {
@@ -60,6 +64,7 @@ export function AvatarSettings({ models, defaultModelId, onChange }: Props) {
 
   return (
     <div>
+      <AvatarWindowSettings size={windowSize} onChange={onWindowSizeChange} />
       <div className="settings-section">
         <div className="settings-section-title">
           <UserRound size={17} />

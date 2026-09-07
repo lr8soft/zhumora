@@ -96,6 +96,8 @@ export default function SettingsView() {
         {tab === 'avatar' && <AvatarSettings
           models={settingsDraft.avatarModels}
           defaultModelId={settingsDraft.defaultAvatarModelId}
+          windowSize={settingsDraft.avatarWindowSize}
+          onWindowSizeChange={avatarWindowSize => useAppStore.getState().updateSettingsDraft({ avatarWindowSize })}
           onChange={(avatarModels, defaultAvatarModelId) =>
             useAppStore.getState().updateSettingsDraft({ avatarModels, defaultAvatarModelId })}
         />}

@@ -16,6 +16,8 @@ import { generateId } from '../id'
 import { log } from '../llm/logger'
 import { buildAvatarSystemPrompt } from './prompt'
 import { mapScreenPointToAvatarLookTarget } from './lookTarget'
+import { DEFAULT_AVATAR_WINDOW_SIZE, type AvatarDragPhase, type AvatarWindowSize } from '../../shared/avatarWindow'
+import { AvatarWindowInteraction } from './windowInteraction'
 import { attachDiagnostics, createAvatarWindow, loadAvatarWindow, cleanNames, describeCommand, formatError, createReadiness, waitForPromise } from './windowSupport'
 
 interface AvatarWindowEntry {
@@ -28,6 +30,7 @@ interface AvatarWindowEntry {
   resolveReady: () => void
   pointerInside: boolean
   activity: AvatarActivity
+  interaction: AvatarWindowInteraction
 }
 
 interface AvatarWindowManagerOptions {
@@ -48,6 +51,7 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
   private readonly pendingCommands = new Map<string, PendingCommand>()
   private readonly options: AvatarWindowManagerOptions
   private lookTrackingTimer: ReturnType<typeof setInterval> | undefined
+  private windowSize: AvatarWindowSize = { ...DEFAULT_AVATAR_WINDOW_SIZE }
 
   constructor(options: AvatarWindowManagerOptions) {
     this.options = options
@@ -72,7 +76,7 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       return
     }
 
-    const window = createAvatarWindow(sessionId, this.entries.size, this.options)
+    const window = createAvatarWindow(sessionId, this.entries.size, this.options, this.windowSize)
     const readiness = createReadiness()
     const entry: AvatarWindowEntry = {
       window,
@@ -83,7 +87,11 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       readyPromise: readiness.promise,
       resolveReady: readiness.resolve,
       pointerInside: false,
-      activity: 'idle'
+      activity: 'idle',
+      interaction: new AvatarWindowInteraction(window, {
+        cursor: () => screen.getCursorScreenPoint(),
+        workArea: bounds => screen.getDisplayMatching(bounds).workArea
+      })
     }
     this.entries.set(sessionId, entry)
     this.startLookTracking()
@@ -111,6 +119,7 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
   }
 
   syncSessions(sessions: Session[], settings: AppSettings): void {
+    this.applyWindowSize(settings.avatarWindowSize)
     const activeIds = new Set<string>()
     for (const session of sessions) {
       if (!session.avatarEnabled || !session.avatarModelId) continue
@@ -125,6 +134,7 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
   }
 
   async applySettings(next: AppSettings, previous: AppSettings): Promise<void> {
+    this.applyWindowSize(next.avatarWindowSize)
     for (const [sessionId, entry] of this.entries) {
       const model = next.avatarModels.find(candidate => candidate.id === entry.model.id)
       if (!model) this.hide(sessionId)
@@ -199,9 +209,17 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
 
   setPointerPassthrough(senderId: number, passthrough: boolean): void {
     const [, entry] = this.entryForSender(senderId)
-    if (entry.window.isDestroyed()) return
-    if (passthrough) entry.window.setIgnoreMouseEvents(true, { forward: true })
-    else entry.window.setIgnoreMouseEvents(false)
+    entry.interaction.setPassthrough(passthrough)
+  }
+
+  drag(senderId: number, phase: AvatarDragPhase): void {
+    this.entryForSender(senderId)[1].interaction.drag(phase)
+  }
+
+  private applyWindowSize(size: AvatarWindowSize): void {
+    if (this.windowSize.width === size.width && this.windowSize.height === size.height) return
+    this.windowSize = { ...size }
+    for (const entry of this.entries.values()) entry.interaction.resize(size)
   }
 
   setMessage(sessionId: string, message: string): void {

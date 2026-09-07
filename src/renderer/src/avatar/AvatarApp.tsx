@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import { AvatarScene } from './AvatarScene'
+import { useAvatarDrag } from './useAvatarDrag'
 
 export default function AvatarApp() {
   const stageRef = useRef<HTMLDivElement>(null)
@@ -7,8 +8,7 @@ export default function AvatarApp() {
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState('Loading Avatar…')
 
-  const capturePointer = () => { void window.avatarApi.setPointerPassthrough(false) }
-  const releasePointer = () => { void window.avatarApi.setPointerPassthrough(true) }
+  const dragHandlers = useAvatarDrag(sceneRef, setStatus)
 
   useEffect(() => {
     if (!stageRef.current) return
@@ -71,19 +71,17 @@ export default function AvatarApp() {
   }, [])
 
   return (
-    <div className="avatar-root">
+    <div className="avatar-root" {...dragHandlers}>
       <div
         className="avatar-drag-handle"
         title="Drag to move"
-        onMouseEnter={capturePointer}
-        onMouseLeave={releasePointer}
+        data-avatar-drag
       />
       {(status || message) && (
         <div
           className={status ? 'avatar-bubble error' : 'avatar-bubble'}
           title={status || message}
-          onMouseEnter={capturePointer}
-          onMouseLeave={releasePointer}
+          data-avatar-drag
         >
           {status || message}
         </div>

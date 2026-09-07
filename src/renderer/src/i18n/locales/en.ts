@@ -197,7 +197,12 @@ export default {
     avatar: {
       intent: "Replace built-in motion",
       intentNone: "Exact playback only",
-      intentNames: {"idle":"Idle","thinking":"Thinking","explain":"Explain","acknowledge":"Nod","disagree":"Shake head","greet":"Wave","celebrate":"Celebrate"},
+      intentNames: {"idle":"Idle","thinking":"Thinking","explain":"Explain","acknowledge":"Nod","disagree":"Shake head","greet":"Nod hello","celebrate":"Celebrate","sad":"Sad"},
+      windowSize: "Avatar window size",
+      windowSizeHint: "Save to apply to all Avatar windows and future windows. Drag the character, message bubble or top handle; empty areas stay click-through.",
+      windowWidth: "Width (240–960)",
+      windowHeight: "Height (320–1440)",
+      windowReset: "Reset size",
       library: 'Avatar Model Library', hint: 'Import VRM models once here. Sessions only choose from this library and remain off by default.',
       importModel: 'Import .vrm model', empty: 'No VRM models imported yet.', modelName: 'Character name', default: 'Set default', defaultAnimation: 'Startup idle animation (click again to clear)',
       animations: 'Available animations', animationsHint: 'Embedded clips are discovered when loaded. You can also name a clip or import a VRMA.',

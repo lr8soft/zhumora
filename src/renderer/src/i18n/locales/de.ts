@@ -197,7 +197,12 @@ export default {
     avatar: {
       intent: "Standardbewegung ersetzen",
       intentNone: "Nur direkt abspielen",
-      intentNames: {"idle":"Leerlauf","thinking":"Nachdenken","explain":"Erklären","acknowledge":"Nicken","disagree":"Kopfschütteln","greet":"Winken","celebrate":"Feiern"},
+      intentNames: {"idle":"Leerlauf","thinking":"Nachdenken","explain":"Erklären","acknowledge":"Nicken","disagree":"Kopfschütteln","greet":"Begrüßend nicken","celebrate":"Feiern","sad":"Traurig"},
+      windowSize: "Avatar-Fenstergröße",
+      windowSizeHint: "Nach dem Speichern für alle Avatar-Fenster. Figur, Sprechblase oder oberen Griff ziehen; leere Bereiche lassen Klicks durch.",
+      windowWidth: "Breite (240–960)",
+      windowHeight: "Höhe (320–1440)",
+      windowReset: "Größe zurücksetzen",
       library: 'Avatar-Modellbibliothek', hint: 'VRM-Modelle einmal hier importieren. Sitzungen sind standardmäßig deaktiviert.',
       importModel: '.vrm-Modell importieren', empty: 'Noch keine VRM-Modelle importiert.', modelName: 'Charaktername', default: 'Als Standard', defaultAnimation: 'Start-Leerlaufanimation (erneut klicken zum Löschen)',
       animations: 'Verfügbare Animationen', animationsHint: 'Eingebettete Clips werden beim Laden erkannt; alternativ Clip benennen oder VRMA importieren.',

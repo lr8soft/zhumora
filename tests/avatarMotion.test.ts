@@ -6,6 +6,7 @@ import { AvatarExpressionController } from '../src/renderer/src/avatar/AvatarExp
 import { AvatarClipAdapter } from '../src/renderer/src/avatar/AvatarClipAdapter.ts'
 import { mapScreenPointToAvatarLookTarget } from '../src/main/avatar/lookTarget.ts'
 import { AVATAR_INTENTS } from '../src/shared/avatar.ts'
+import { createBuiltinMotion } from '../src/renderer/src/avatar/motionClips.ts'
 import { createAvatarAgentEventSink } from '../src/main/avatar/agentEvents.ts'
 
 assert.deepEqual(mapScreenPointToAvatarLookTarget({ x: 280, y: 220 }, { x: 100, y: 100, width: 360, height: 240 }), { x: 0, y: 0 })
@@ -57,6 +58,21 @@ function fixture(version: '0' | '1', authorRotation = 0) {
 for (const version of ['0', '1'] as const) {
   for (const authorRotation of [0, Math.PI / 3]) {
     const f = fixture(version, authorRotation)
+    const idleClip = createBuiltinMotion(f.vrm, 'idle')
+    for (const intent of AVATAR_INTENTS) {
+      const clip = createBuiltinMotion(f.vrm, intent)
+      for (const side of ['left', 'right'] as const) {
+        for (const part of ['UpperArm', 'LowerArm', 'Hand'] as const) {
+          const node = f.vrm.humanoid.getNormalizedBoneNode(`${side}${part}`)!
+          const name = `${node.uuid}.quaternion`
+          const track = clip.tracks.find(track => track.name === name)!
+          const idle = idleClip.tracks.find(track => track.name === name)!
+          for (let i = 0; i < track.values.length; i += 4) {
+            assert.deepEqual(track.values.slice(i, i + 4), idle.values.slice(0, 4), `${intent}: arms stay relaxed`)
+          }
+        }
+      }
+    }
     await f.controller.initialize()
     f.step(0.02)
     for (const side of ['left', 'right'] as const) {

@@ -5,7 +5,7 @@ import type { AvatarIntent } from '../../../shared/avatar.ts'
 type Angles = [number, number, number]
 type Pose = Partial<Record<VRMHumanBoneName, Angles>>
 const durations: Record<AvatarIntent, number> = {
-  idle: 6, thinking: 5, explain: 4, acknowledge: 2, disagree: 2.4, greet: 3, celebrate: 3
+  idle: 6, thinking: 5, explain: 4, acknowledge: 2, disagree: 2.4, greet: 3, celebrate: 3, sad: 5
 }
 
 /** Original application-owned curves in canonical VRM1 space. */
@@ -28,29 +28,21 @@ function poseAt(intent: AvatarIntent, t: number, variant: number, intensity: num
     pose.head = [0, Math.sin(phase) * 0.045 * variant, envelope * 0.04 * variant]
     pose.spine![2] += envelope * 0.025 * variant
   } else if (intent === 'thinking') {
-    pose.head = [0.10 * envelope, 0.10 * envelope, -0.09 * envelope]
-    pose.chest![1] = -0.07 * envelope
-    pose.rightUpperArm = [-0.25 * envelope, 0, 1.32 - 0.3 * envelope]
-    pose.rightLowerArm = [-0.3 * envelope, 0.15 + 0.8 * envelope, 0]
+    pose.head = [0.08 * envelope, 0.06 * envelope, -0.06 * envelope]
   } else if (intent === 'acknowledge') {
-    pose.head = [Math.sin(phase * 2) * 0.2 * envelope, 0, 0]
+    pose.head = [Math.sin(phase) * 0.13 * envelope, 0, 0]
   } else if (intent === 'disagree') {
-    pose.head = [0, Math.sin(phase * 2) * 0.25 * envelope, 0]
+    pose.head = [0, Math.sin(phase) * 0.16 * envelope, 0]
   } else if (intent === 'greet') {
-    pose.rightUpperArm = [0, 0, 1.32 - 2.05 * envelope]
-    pose.rightLowerArm = [0, 0.15, 0.2 * envelope]
-    pose.rightHand = [0, 0, Math.sin(phase * 4) * 0.3 * envelope]
-    pose.head = [0, 0, 0.07 * envelope]
+    pose.head = [0.1 * envelope, 0, 0.035 * envelope]
   } else if (intent === 'explain') {
-    const side = variant < 0 ? 'left' : 'right'
-    const sign = side === 'left' ? -1 : 1
-    pose[`${side}UpperArm`] = [-0.25 * envelope, 0, sign * (1.32 - 0.65 * envelope)]
-    pose[`${side}LowerArm`] = [-0.2 * envelope, sign * (0.15 + 0.5 * envelope), 0]
-    pose.head = [Math.sin(phase * 2) * 0.05 * envelope, 0.07 * envelope * variant, 0]
+    pose.head = [Math.sin(phase) * 0.045 * envelope, 0.035 * envelope * variant, 0]
   } else if (intent === 'celebrate') {
-    pose.leftUpperArm![2] += 1.3 * envelope
-    pose.rightUpperArm![2] -= 1.3 * envelope
-    pose.head = [-0.1 * envelope, 0, 0]
+    pose.head = [-0.06 * envelope, 0, 0.035 * envelope]
+  } else if (intent === 'sad') {
+    pose.head = [0.18 * envelope, 0, -0.045 * envelope]
+    pose.neck = [0.025 * envelope, 0, 0]
+    pose.spine![0] += 0.025 * envelope
   }
   return pose
 }

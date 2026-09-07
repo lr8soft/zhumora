@@ -2,6 +2,7 @@
 // Shared types — 主进程 & 渲染进程共用契约
 // ============================================================
 import type { AvatarModelConfig } from './avatar'
+import type { AvatarWindowSize } from './avatarWindow'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -257,6 +258,7 @@ export interface AppSettings {
   avatarModels: AvatarModelConfig[]
   /** Model preselected when a session enables its Avatar for the first time. */
   defaultAvatarModelId: string | null
+  avatarWindowSize: AvatarWindowSize
 }
 
 // ============================================================

@@ -15,20 +15,24 @@ body,
   height: 100%;
   overflow: hidden;
   user-select: none;
+  touch-action: none;
 }
+
+.avatar-root.can-drag { cursor: grab; }
+.avatar-root.dragging { cursor: grabbing; }
 
 .avatar-drag-handle {
   position: absolute;
   z-index: 6;
   top: 4px;
   left: 50%;
-  width: 42px;
-  height: 8px;
+  width: 64px;
+  height: 12px;
   transform: translateX(-50%);
   border-radius: 999px;
   background: rgba(24, 28, 38, 0.46);
   box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 .avatar-stage {
@@ -62,7 +66,7 @@ body,
   text-overflow: ellipsis;
   white-space: nowrap;
   backdrop-filter: blur(12px);
-  -webkit-app-region: drag;
+  -webkit-app-region: no-drag;
 }
 
 .avatar-bubble.error {

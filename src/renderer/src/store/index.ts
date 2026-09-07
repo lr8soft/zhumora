@@ -10,6 +10,7 @@
 // ============================================================
 import { create } from 'zustand'
 import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort } from '@shared/types'
+import { DEFAULT_AVATAR_WINDOW_SIZE } from '@shared/avatarWindow'
 
 export type { ReasoningEffort }
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
@@ -608,7 +609,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     activeProviderId: null,
     workspacePath: '',
     avatarModels: [],
-    defaultAvatarModelId: null
+    defaultAvatarModelId: null,
+    avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE }
   },
   settingsDraft: {
     providers: [],
@@ -620,6 +622,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     workspacePath: '',
     avatarModels: [],
     defaultAvatarModelId: null,
+    avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
     theme: 'system',
     fontSize: DEFAULT_FONT_SIZE
   },
