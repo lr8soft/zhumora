@@ -29,7 +29,7 @@ import { registerAvatarIpc } from './registerAvatarIpc'
 export function setupIpc(win: BrowserWindow, services: ApplicationServices): void {
   const runtime = new AgentIpcRuntime((channel, payload) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
-  })
+  }, (sessionId, running) => services.avatar.setActivity(sessionId, running ? 'thinking' : 'idle'))
   services.permissions.addPresenter(createIpcPermissionPresenter(win.webContents))
   const avatarEventSink = createAvatarAgentEventSink(services.avatar)
   const botEventSink = combineAgentEventSinks(createIpcAgentEventSink(win.webContents), avatarEventSink)
@@ -76,6 +76,9 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     // An enabled Avatar's exact capabilities are part of this turn's system
     // contract. Wait for the renderer scan so the model never has to guess names.
     const avatarSystemPrompt = await services.avatar.buildSystemPrompt(sessionId)
+    if (runtime.runningSessions.has(sessionId)) {
+      return { error: 'This session already has a running agent.' }
+    }
 
     // 保存用户消息
     const persistedUserMessage = {

@@ -603,7 +603,7 @@ select.input-field { cursor: pointer; }
 .avatar-animation-head { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding-top: 12px; border-top: 1px solid var(--app-color-border); }
 .avatar-animation-head strong { font-size: 0.8rem; }
 .avatar-animation-actions { display: flex; gap: 6px; flex-wrap: wrap; justify-content: flex-end; }
-.avatar-animation-row { display: grid; grid-template-columns: 62px minmax(100px, .8fr) minmax(140px, 1.2fr) 24px 24px; align-items: center; gap: 7px; margin-top: 8px; }
+.avatar-animation-row { display: grid; grid-template-columns: 62px minmax(90px, .8fr) minmax(100px, 1.2fr) minmax(100px, .7fr) 24px 24px; align-items: center; gap: 7px; margin-top: 8px; }
 .avatar-animation-source { color: var(--app-color-text-mute); font-size: 0.667rem; font-weight: 700; text-align: center; }
 .avatar-animation-default { width: 24px; height: 24px; display: grid; place-items: center; padding: 0; color: var(--app-color-text-mute); border: 0; background: transparent; cursor: pointer; }
 .avatar-animation-default.active { color: var(--app-color-primary-strong); }

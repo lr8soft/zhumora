@@ -63,6 +63,8 @@ The renderer does not receive unrestricted Electron IPC access. The preload laye
 
 Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
+Avatar presentation state belongs to each window. The event adapter projects session-tagged Agent events into idle/thinking/speaking, while the IPC runtime's generic running callback covers startup, completion and abort. The motion controller owns bounded semantic overrides, default idle, autonomous variation and interruptible weight blending. Original built-in quaternion clips pass through VRM0 coordinate conversion; imported VRMA uses the library retargeter. Expression fading/blinking has a separate owner. Semantic animation mappings persist at the normalized settings boundary; capability reports include validated clips and semantic intents before prompt construction. Animation/expressions never create conversation history or invoke other tools.
+
 ## 4. LLM providers
 
 Zhumora uses OpenAI-compatible chat-completions endpoints and SSE streaming.

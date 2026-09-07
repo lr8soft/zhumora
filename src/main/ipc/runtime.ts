@@ -6,7 +6,10 @@ export class AgentIpcRuntime {
   readonly runningSessions = new Set<string>()
   private readonly approveModes = new Map<string, AutoApproveMode>()
 
-  constructor(private readonly send: (channel: string, payload: unknown) => void) {}
+  constructor(
+    private readonly send: (channel: string, payload: unknown) => void,
+    private readonly onRunning?: (sessionId: string, running: boolean) => void
+  ) {}
 
   getApproveMode(sessionId: string): AutoApproveMode {
     return this.approveModes.get(sessionId) || 'manual'
@@ -24,6 +27,7 @@ export class AgentIpcRuntime {
     if (running) this.runningSessions.add(sessionId)
     else this.runningSessions.delete(sessionId)
     this.send('agent:running', { sessionId, running })
+    this.onRunning?.(sessionId, running)
   }
 
   abort(sessionId: string): void {

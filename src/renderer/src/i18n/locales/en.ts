@@ -195,8 +195,11 @@ export default {
       remove: 'Remove'
     },
     avatar: {
+      intent: "Replace built-in motion",
+      intentNone: "Exact playback only",
+      intentNames: {"idle":"Idle","thinking":"Thinking","explain":"Explain","acknowledge":"Nod","disagree":"Shake head","greet":"Wave","celebrate":"Celebrate"},
       library: 'Avatar Model Library', hint: 'Import VRM models once here. Sessions only choose from this library and remain off by default.',
-      importModel: 'Import .vrm model', empty: 'No VRM models imported yet.', modelName: 'Character name', default: 'Set default',
+      importModel: 'Import .vrm model', empty: 'No VRM models imported yet.', modelName: 'Character name', default: 'Set default', defaultAnimation: 'Startup idle animation (click again to clear)',
       animations: 'Available animations', animationsHint: 'Embedded clips are discovered when loaded. You can also name a clip or import a VRMA.',
       addEmbedded: 'Add embedded clip', importVrma: 'Import .vrma', embedded: 'Embedded', animationName: 'Animation name for LLM', clipName: 'Embedded VRM clip name', newAnimation: 'New animation'
     },

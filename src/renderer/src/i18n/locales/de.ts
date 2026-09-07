@@ -195,8 +195,11 @@ export default {
       remove: 'Entfernen'
     },
     avatar: {
+      intent: "Standardbewegung ersetzen",
+      intentNone: "Nur direkt abspielen",
+      intentNames: {"idle":"Leerlauf","thinking":"Nachdenken","explain":"Erklären","acknowledge":"Nicken","disagree":"Kopfschütteln","greet":"Winken","celebrate":"Feiern"},
       library: 'Avatar-Modellbibliothek', hint: 'VRM-Modelle einmal hier importieren. Sitzungen sind standardmäßig deaktiviert.',
-      importModel: '.vrm-Modell importieren', empty: 'Noch keine VRM-Modelle importiert.', modelName: 'Charaktername', default: 'Als Standard',
+      importModel: '.vrm-Modell importieren', empty: 'Noch keine VRM-Modelle importiert.', modelName: 'Charaktername', default: 'Als Standard', defaultAnimation: 'Start-Leerlaufanimation (erneut klicken zum Löschen)',
       animations: 'Verfügbare Animationen', animationsHint: 'Eingebettete Clips werden beim Laden erkannt; alternativ Clip benennen oder VRMA importieren.',
       addEmbedded: 'Clip hinzufügen', importVrma: '.vrma importieren', embedded: 'Eingebettet', animationName: 'Animationsname für LLM', clipName: 'Eingebetteter Clipname', newAnimation: 'Neue Animation'
     },

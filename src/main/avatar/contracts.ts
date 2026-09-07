@@ -1,4 +1,4 @@
-import type { AvatarCommand } from '../../shared/avatar'
+import type { AvatarActivity, AvatarCommand } from '../../shared/avatar'
 import type { ToolExecutionResult } from '../../shared/types'
 
 export interface AvatarController {
@@ -8,4 +8,5 @@ export interface AvatarController {
 
 export interface AvatarMessageTarget {
   setMessage(sessionId: string, message: string): void
+  setActivity(sessionId: string, activity: AvatarActivity): void
 }

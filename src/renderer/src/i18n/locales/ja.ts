@@ -195,8 +195,11 @@ export default {
       remove: '削除'
     },
     avatar: {
+      intent: "内蔵モーションを置換",
+      intentNone: "直接再生のみ",
+      intentNames: {"idle":"待機","thinking":"思考","explain":"説明","acknowledge":"うなずく","disagree":"首を振る","greet":"手を振る","celebrate":"喜ぶ"},
       library: 'Avatar モデルライブラリ', hint: 'ここで VRM を一度インポートします。セッションはデフォルトでオフです。',
-      importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定',
+      importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定', defaultAnimation: '起動時の待機アニメーション（再クリックで解除）',
       animations: '利用可能なアニメーション', animationsHint: '埋め込み clip は読み込み時に検出されます。clip 名や VRMA も追加できます。',
       addEmbedded: 'clip を追加', importVrma: '.vrma をインポート', embedded: '埋め込み', animationName: 'LLM 用の名前', clipName: '埋め込み clip 名', newAnimation: '新規アニメーション'
     },

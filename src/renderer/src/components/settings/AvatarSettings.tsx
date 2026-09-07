@@ -1,6 +1,7 @@
 import { Film, Plus, Star, Trash2, UserRound } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import type { AvatarAnimationConfig, AvatarModelConfig } from '@shared/avatar'
+import { AVATAR_INTENTS, type AvatarIntent } from '@shared/avatar'
 
 interface Props {
   models: AvatarModelConfig[]
@@ -45,7 +46,8 @@ export function AvatarSettings({ models, defaultModelId, onChange }: Props) {
   const updateAnimation = (model: AvatarModelConfig, animationId: string, patch: Partial<AvatarAnimationConfig>) => {
     updateModel(model.id, {
       animations: model.animations.map(animation =>
-        animation.id === animationId ? { ...animation, ...patch } : animation)
+        animation.id === animationId ? { ...animation, ...patch }
+          : patch.intent && animation.intent === patch.intent ? { ...animation, intent: undefined } : animation)
     })
   }
 
@@ -133,10 +135,20 @@ export function AvatarSettings({ models, defaultModelId, onChange }: Props) {
               ) : (
                 <span className="avatar-animation-file" title={animation.filePath}>{animation.filePath}</span>
               )}
+              <select
+                className="input-field"
+                aria-label={t('settings.avatar.intent')}
+                title={t('settings.avatar.intent')}
+                value={animation.intent || ''}
+                onChange={event => updateAnimation(model, animation.id, { intent: (event.target.value || undefined) as AvatarIntent | undefined })}
+              >
+                <option value="">{t('settings.avatar.intentNone')}</option>
+                {AVATAR_INTENTS.map(intent => <option key={intent} value={intent}>{t(`settings.avatar.intentNames.${intent}`)}</option>)}
+              </select>
               <button
                 className={model.defaultAnimationId === animation.id ? 'avatar-animation-default active' : 'avatar-animation-default'}
-                title={t('settings.avatar.default')}
-                aria-label={t('settings.avatar.default')}
+                title={t('settings.avatar.defaultAnimation')}
+                aria-label={t('settings.avatar.defaultAnimation')}
                 onClick={() => updateModel(model.id, {
                   defaultAnimationId: model.defaultAnimationId === animation.id ? undefined : animation.id
                 })}

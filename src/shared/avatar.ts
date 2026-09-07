@@ -1,5 +1,11 @@
 export type AvatarAnimationSource = 'embedded' | 'vrma'
 
+export const AVATAR_INTENTS = ['idle', 'thinking', 'explain', 'acknowledge', 'disagree', 'greet', 'celebrate'] as const
+export type AvatarIntent = typeof AVATAR_INTENTS[number]
+export const AVATAR_EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'relaxed'] as const
+export type AvatarEmotion = typeof AVATAR_EMOTIONS[number]
+export type AvatarActivity = 'idle' | 'thinking' | 'speaking'
+
 export interface AvatarAnimationConfig {
   id: string
   /** Name exposed to the user and the LLM. */
@@ -9,6 +15,8 @@ export interface AvatarAnimationConfig {
   clipName?: string
   /** Managed .vrma file path when source=vrma. */
   filePath?: string
+  /** Semantic slot replacing an application motion. */
+  intent?: AvatarIntent
 }
 
 export interface AvatarModelConfig {
@@ -31,9 +39,19 @@ export interface AvatarCapabilities {
   expressions: string[]
   /** Exact public animation name currently used as the startup idle. */
   defaultAnimation?: string
+  intents?: AvatarIntent[]
+}
+
+export interface AvatarLookTarget {
+  tracking?: boolean
+  /** Horizontal pointer position relative to the Avatar window, in NDC-like units. */
+  x: number
+  /** Vertical pointer position relative to the Avatar window, positive upward. */
+  y: number
 }
 
 export type AvatarCommand =
+  | { type: 'perform'; intent: AvatarIntent; emotion?: AvatarEmotion; intensity: number }
   | { type: 'play_animation'; animation: string; loop: boolean }
   | { type: 'set_expression'; expression: string; value: number }
   | { type: 'reset_pose' }
@@ -53,6 +71,7 @@ export interface AvatarBootstrap {
     defaultAnimationId?: string
   }
   latestMessage: string
+  activity?: AvatarActivity
 }
 
 function cleanText(value: unknown, maxLength: number): string {
@@ -89,7 +108,8 @@ export function normalizeAvatarModels(value: unknown): AvatarModelConfig[] {
         name: animationName,
         source,
         clipName: source === 'embedded' ? cleanText(candidate.clipName, 240) || animationName : undefined,
-        filePath: source === 'vrma' ? animationPath : undefined
+        filePath: source === 'vrma' ? animationPath : undefined,
+        ...(AVATAR_INTENTS.includes(candidate.intent as AvatarIntent) ? { intent: candidate.intent } : {})
       })
     }
     const defaultAnimationId = cleanText(raw.defaultAnimationId, 128)
@@ -132,7 +152,8 @@ export function equivalentAvatarModel(left: AvatarModelConfig, right: AvatarMode
       name: animation.name,
       source: animation.source,
       clipName: animation.clipName || '',
-      filePath: animation.filePath || ''
+      filePath: animation.filePath || '',
+      intent: animation.intent || ''
     }))
     .sort((a, b) => a.id.localeCompare(b.id))
   return JSON.stringify(canonicalize(left.animations)) === JSON.stringify(canonicalize(right.animations))

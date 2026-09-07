@@ -195,7 +195,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 5
+export const SETTINGS_SCHEMA_VERSION = 7
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()

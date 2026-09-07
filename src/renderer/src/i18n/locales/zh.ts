@@ -205,12 +205,16 @@ export default {
       remove: '移除'
     },
     avatar: {
+      intent: "替换内置动作",
+      intentNone: "仅精确播放",
+      intentNames: {"idle":"待机","thinking":"思考","explain":"解释","acknowledge":"点头认同","disagree":"摇头否定","greet":"挥手招呼","celebrate":"庆祝"},
       library: 'Avatar 模型库',
       hint: '在这里一次性导入 VRM；会话中只从模型库选择，默认不开启。',
       importModel: '导入 .vrm 模型',
       empty: '尚未导入 VRM 模型。',
       modelName: '角色名称',
       default: '设为默认',
+      defaultAnimation: '启动待机动画（再次点击取消）',
       animations: '可用动画',
       animationsHint: '内嵌 clip 会在加载时自动发现；也可声明 clip 名或导入 VRMA。',
       addEmbedded: '添加内嵌 clip',

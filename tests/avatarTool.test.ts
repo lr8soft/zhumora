@@ -45,4 +45,18 @@ assert.deepEqual(
 )
 assert.equal(calls.length, 1)
 
+await avatar.execute({ action: 'perform', intent: 'acknowledge', emotion: 'happy', intensity: 0.4 }, { workspacePath: process.cwd(), sessionId: 'session-2' })
+assert.deepEqual(calls[1].command, { type: 'perform', intent: 'acknowledge', emotion: 'happy', intensity: 0.4 })
+assert.equal(calls[1].sessionId, 'session-2')
+for (const args of [
+  { action: 'perform', intent: 'invented' },
+  { action: 'perform', intent: 'greet', emotion: 'invented' },
+  { action: 'perform', intent: 'greet', intensity: NaN },
+  { action: 'set_expression', expression: 'happy', value: Infinity }
+]) {
+  const invalid = await avatar.execute(args, { workspacePath: process.cwd(), sessionId: 'session-2' })
+  assert.equal(typeof invalid === 'object' && invalid.isError, true)
+}
+assert.equal(calls.length, 2, 'invalid arguments must not reach the controller')
+
 console.log('avatar tool tests passed')

@@ -21,6 +21,8 @@ export default function AvatarApp() {
       setStatus('Loading Avatar…')
       try {
         const bootstrap = await window.avatarApi.getBootstrap()
+        if (current !== generation) return
+        scene.setActivity(bootstrap.activity ?? 'idle')
         const capabilities = await scene.load(bootstrap, assetId => window.avatarApi.getAsset(assetId))
         if (current !== generation) return
         setMessage(bootstrap.latestMessage)
@@ -44,6 +46,8 @@ export default function AvatarApp() {
     const unsubs = [
       window.avatarApi.onStateChanged(() => { void reload() }),
       window.avatarApi.onMessage(setMessage),
+      window.avatarApi.onActivity(activity => scene.setActivity(activity)),
+      window.avatarApi.onLookTarget(target => scene.setLookTarget(target)),
       window.avatarApi.onCommand(({ id, command }) => {
         if (command.type === 'show_message') setMessage(command.message)
         void scene.handle(command).then(async () => {

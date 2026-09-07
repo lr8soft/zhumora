@@ -195,8 +195,11 @@ export default {
       remove: 'Supprimer'
     },
     avatar: {
+      intent: "Remplacer un mouvement",
+      intentNone: "Lecture directe uniquement",
+      intentNames: {"idle":"Repos","thinking":"Réfléchir","explain":"Expliquer","acknowledge":"Acquiescer","disagree":"Désapprouver","greet":"Saluer","celebrate":"Célébrer"},
       library: "Bibliothèque d'avatars", hint: 'Importez les modèles VRM une fois ici. Les sessions restent désactivées par défaut.',
-      importModel: 'Importer un modèle .vrm', empty: 'Aucun modèle VRM importé.', modelName: 'Nom du personnage', default: 'Par défaut',
+      importModel: 'Importer un modèle .vrm', empty: 'Aucun modèle VRM importé.', modelName: 'Nom du personnage', default: 'Par défaut', defaultAnimation: "Animation d'attente au démarrage (recliquer pour retirer)",
       animations: 'Animations disponibles', animationsHint: 'Les clips intégrés sont détectés au chargement ; vous pouvez aussi nommer un clip ou importer un VRMA.',
       addEmbedded: 'Ajouter un clip', importVrma: 'Importer .vrma', embedded: 'Intégré', animationName: 'Nom pour le LLM', clipName: 'Nom du clip intégré', newAnimation: 'Nouvelle animation'
     },

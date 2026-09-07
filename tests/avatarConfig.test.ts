@@ -44,4 +44,9 @@ assert.equal(resolveStartupAvatarAnimation(models[0], ['Wave', 'Dance']), 'Dance
 assert.equal(resolveStartupAvatarAnimation({ animations: [] }, ['Blink', 'calm_idle_loop']), 'calm_idle_loop')
 assert.equal(resolveStartupAvatarAnimation({ animations: [] }, ['Wave']), undefined)
 
+const mapped = normalizeAvatarModels([{ ...models[0], animations: [{ ...models[0].animations[0], intent: 'greet' }] }])[0]
+assert.equal(mapped.animations[0].intent, 'greet')
+assert.equal(equivalentAvatarModel(mapped, { ...mapped, animations: [{ ...mapped.animations[0], intent: 'explain' }] }), false)
+assert.equal(normalizeAvatarModels([{ ...models[0], animations: [{ ...models[0].animations[0], intent: 'invalid' }] }])[0].animations[0].intent, undefined)
+
 console.log('avatar config tests passed')

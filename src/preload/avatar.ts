@@ -1,7 +1,12 @@
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AvatarBootstrap, AvatarCapabilities, AvatarCommandEnvelope } from '../shared/avatar'
+import type { AvatarActivity, AvatarBootstrap, AvatarCapabilities, AvatarCommandEnvelope, AvatarLookTarget } from '../shared/avatar'
 
 const avatarApi = {
+  onActivity: (callback: (activity: AvatarActivity) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, activity: AvatarActivity) => callback(activity)
+    ipcRenderer.on('avatar:activity', handler)
+    return () => ipcRenderer.removeListener('avatar:activity', handler)
+  },
   getBootstrap: (): Promise<AvatarBootstrap> => ipcRenderer.invoke('avatar:bootstrap'),
   getAsset: (assetId: string): Promise<Uint8Array> => ipcRenderer.invoke('avatar:asset', assetId),
   reportCapabilities: (capabilities: AvatarCapabilities): Promise<boolean> =>
@@ -24,6 +29,11 @@ const avatarApi = {
     const handler = (_event: Electron.IpcRendererEvent, message: string) => callback(message)
     ipcRenderer.on('avatar:message', handler)
     return () => ipcRenderer.removeListener('avatar:message', handler)
+  },
+  onLookTarget: (callback: (target: AvatarLookTarget) => void) => {
+    const handler = (_event: Electron.IpcRendererEvent, target: AvatarLookTarget) => callback(target)
+    ipcRenderer.on('avatar:look-target', handler)
+    return () => ipcRenderer.removeListener('avatar:look-target', handler)
   }
 }
 
