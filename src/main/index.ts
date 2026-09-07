@@ -12,6 +12,9 @@ import { disposeDesktopAdapter } from './desktop/adapter'
 import { createApplicationServices } from './composition'
 import type { ApplicationServices } from './composition'
 import { reloadSkills } from './skill/manager'
+import { AvatarAssetStore } from './avatar/assetStore'
+import { AvatarWindowManager } from './avatar/windowManager'
+import { reconcileAvatarSessions } from './ipc/registerAvatarIpc'
 
 export let mainWindow: BrowserWindow | null = null
 let applicationServices: ApplicationServices | null = null
@@ -46,6 +49,13 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  mainWindow.on('closed', () => {
+    mainWindow = null
+    // Avatar windows are auxiliary. They must not keep a headless app alive after
+    // the user closes the primary window on platforms where close means quit.
+    if (process.platform !== 'darwin') app.quit()
+  })
+
   mainWindow.webContents.setWindowOpenHandler((details) => {
     shell.openExternal(details.url)
     return { action: 'deny' }
@@ -73,7 +83,13 @@ app.whenReady().then(async () => {
   initDatabase()
 
   // 组合根：集中构造并注册进程级服务，避免 IPC 层承担初始化副作用。
-  const services = createApplicationServices()
+  const avatar = new AvatarWindowManager({
+    preloadPath: path.join(__dirname, '../preload/avatar.mjs'),
+    productionHtmlPath: path.join(__dirname, '../renderer/avatar.html'),
+    developmentUrl: is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined,
+    assets: new AvatarAssetStore(path.join(app.getPath('userData'), 'avatars'))
+  })
+  const services = createApplicationServices(avatar)
   applicationServices = services
 
   // 创建窗口
@@ -89,6 +105,7 @@ app.whenReady().then(async () => {
 
   // 启动时自动连接已配置的 MCP 服务器
   const settings = getSettings()
+  reconcileAvatarSessions(avatar, settings)
   await reloadSkills(settings.skills)
   if (settings.mcpServers?.length > 0) {
     log('info', `Auto-connecting ${settings.mcpServers.length} MCP server(s) on startup`)
@@ -112,6 +129,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   void applicationServices?.bots.stopAll()
   applicationServices?.permissions.dispose()
+  applicationServices?.avatar.dispose()
   void disposeDesktopAdapter().catch(error => {
     log('warn', `Failed to stop desktop automation process: ${String(error)}`)
   })

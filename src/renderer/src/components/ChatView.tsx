@@ -1,6 +1,6 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUp, BrainCircuit, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors } from 'lucide-react'
+import { ArrowUp, BrainCircuit, FolderOpen, ImagePlus, Shield, ShieldCheck, ShieldOff, Square, X, MinusCircle, Shrink, XCircle, Archive, ChevronDown, ChevronUp, Scissors, UserRound } from 'lucide-react'
 
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT } from '../store'
@@ -53,6 +53,7 @@ export default function ChatView() {
   const [modelMenuOpen, setModelMenuOpen] = useState(false)
   // 思考强度下拉是否展开
   const [effortMenuOpen, setEffortMenuOpen] = useState(false)
+  const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
   const enabledProviders = settings.providers.filter(p => p.enabled)
   // 当前生效 provider（聊天页选择优先，否则 active provider）
   const spmParts = selectedProviderModel?.split('::')
@@ -65,6 +66,11 @@ export default function ChatView() {
   // 当前 session 的工作目录
   const activeSession = sessions.find(s => s.id === activeSessionId)
   const workspacePath = activeSession?.workspacePath || settings.workspacePath
+  const avatarModels = settings.avatarModels || []
+  const activeAvatarModel = activeSession?.avatarEnabled
+    ? avatarModels.find(model => model.id === activeSession.avatarModelId)
+    : undefined
+  const setSessionAvatar = useAppStore(s => s.setSessionAvatar)
 
   const handleChangeWorkspace = async () => {
     const dir = await window.api.settings.pickDirectory()
@@ -492,6 +498,42 @@ export default function ChatView() {
                           <strong>{modeLabel(mode)}</strong>
                           <small>{modeHint(mode)}</small>
                         </span>
+                      </button>
+                    ))}
+                  </div>
+                </>
+              )}
+            </div>
+            <div className="mode-selector">
+              <button
+                className={activeAvatarModel ? 'composer-mode-chip avatar-active' : 'composer-mode-chip'}
+                onClick={() => setAvatarMenuOpen(!avatarMenuOpen)}
+                disabled={avatarModels.length === 0}
+                title={avatarModels.length === 0 ? t('chat.avatarNoModels') : t('chat.avatarHint')}
+              >
+                <UserRound size={13} />
+                {activeAvatarModel?.name || t('chat.avatarOff')}
+                <ChevronDown size={11} className={avatarMenuOpen ? 'chevron-up' : ''} />
+              </button>
+              {avatarMenuOpen && (
+                <>
+                  <div className="mode-menu-backdrop" onClick={() => setAvatarMenuOpen(false)} />
+                  <div className="mode-menu avatar-menu">
+                    <button
+                      className={!activeAvatarModel ? 'mode-menu-item active' : 'mode-menu-item'}
+                      onClick={() => { void setSessionAvatar(null); setAvatarMenuOpen(false) }}
+                    >
+                      {t('chat.avatarOff')}
+                    </button>
+                    {avatarModels.map(model => (
+                      <button
+                        key={model.id}
+                        className={activeAvatarModel?.id === model.id ? 'mode-menu-item active' : 'mode-menu-item'}
+                        onClick={() => { void setSessionAvatar(model.id); setAvatarMenuOpen(false) }}
+                      >
+                        <UserRound size={13} />
+                        {model.name}
+                        {model.id === settings.defaultAvatarModelId && <small>{t('chat.avatarDefault')}</small>}
                       </button>
                     ))}
                   </div>

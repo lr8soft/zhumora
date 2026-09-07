@@ -576,7 +576,7 @@ async function writePptxFromSlides(filePath: string, content: string, themeName?
           x: 0.72, y: Math.min(cursorY, 5.25), w: 11.7,
           fontFace: face, fontSize: 12, color: theme.body,
           border: { pt: 0.6, color: theme.tableAlt },
-          margin: 0.08, rowH: 0.4, autoFit: false,
+          margin: 0.08, rowH: 0.4,
           valign: 'middle', breakLine: false
         })
       }

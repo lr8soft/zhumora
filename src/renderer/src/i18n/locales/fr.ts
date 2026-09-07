@@ -48,6 +48,10 @@ export default {
     workspace: 'Workspace',
     changeWorkspace: 'Changer',
     defaultModel: '(Modèle par défaut)',
+    avatarOff: 'Avatar désactivé',
+    avatarHint: 'Choisir et activer un Avatar pour cette session',
+    avatarNoModels: "Importez d'abord un modèle VRM dans les paramètres",
+    avatarDefault: 'Par défaut',
     selectModelHint: 'Sélectionner le modèle (vide = défaut du fournisseur)',
     modelDefaultSuffix: '(par défaut)',
     attachImage: "Ajouter des images (ou coller / glisser)",
@@ -89,6 +93,7 @@ export default {
       providers: 'Fournisseurs LLM',
       mcp: 'Serveurs MCP',
       bots: 'Bots de discussion',
+      avatar: 'Avatar',
       skills: 'Compétences',
       memory: 'Mémoire',
       usage: 'Utilisation',
@@ -188,6 +193,12 @@ export default {
       on: 'On',
       off: 'Off',
       remove: 'Supprimer'
+    },
+    avatar: {
+      library: "Bibliothèque d'avatars", hint: 'Importez les modèles VRM une fois ici. Les sessions restent désactivées par défaut.',
+      importModel: 'Importer un modèle .vrm', empty: 'Aucun modèle VRM importé.', modelName: 'Nom du personnage', default: 'Par défaut',
+      animations: 'Animations disponibles', animationsHint: 'Les clips intégrés sont détectés au chargement ; vous pouvez aussi nommer un clip ou importer un VRMA.',
+      addEmbedded: 'Ajouter un clip', importVrma: 'Importer .vrma', embedded: 'Intégré', animationName: 'Nom pour le LLM', clipName: 'Nom du clip intégré', newAnimation: 'Nouvelle animation'
     },
     memory: {
       hint: "Entrées de mémoire à long terme capturées automatiquement des conversations. L'agent les utilise pour personnaliser ses réponses.",

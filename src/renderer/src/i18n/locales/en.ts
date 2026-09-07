@@ -48,6 +48,10 @@ export default {
     workspace: 'Workspace',
     changeWorkspace: 'Change',
     defaultModel: '(Default Model)',
+    avatarOff: 'Avatar off',
+    avatarHint: 'Choose and enable an Avatar for this session',
+    avatarNoModels: 'Import a VRM model in Settings first',
+    avatarDefault: 'Default',
     selectModelHint: 'Select model (empty = provider default)',
     modelDefaultSuffix: '(default)',
     attachImage: "Add images (or paste / drop)",
@@ -89,6 +93,7 @@ export default {
       providers: 'LLM Providers',
       mcp: 'MCP Servers',
       bots: 'Chat Bots',
+      avatar: 'Avatar',
       skills: 'Skills',
       memory: 'Memory',
       usage: 'Usage',
@@ -188,6 +193,12 @@ export default {
       on: 'On',
       off: 'Off',
       remove: 'Remove'
+    },
+    avatar: {
+      library: 'Avatar Model Library', hint: 'Import VRM models once here. Sessions only choose from this library and remain off by default.',
+      importModel: 'Import .vrm model', empty: 'No VRM models imported yet.', modelName: 'Character name', default: 'Set default',
+      animations: 'Available animations', animationsHint: 'Embedded clips are discovered when loaded. You can also name a clip or import a VRMA.',
+      addEmbedded: 'Add embedded clip', importVrma: 'Import .vrma', embedded: 'Embedded', animationName: 'Animation name for LLM', clipName: 'Embedded VRM clip name', newAnimation: 'New animation'
     },
     memory: {
       hint: 'Long-term memory entries automatically captured from conversations. The agent uses these to personalize responses.',

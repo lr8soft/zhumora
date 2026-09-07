@@ -25,7 +25,10 @@ export default defineConfig({
   preload: {
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/preload/index.ts') }
+        input: {
+          index: resolve(__dirname, 'src/preload/index.ts'),
+          avatar: resolve(__dirname, 'src/preload/avatar.ts')
+        }
       }
     }
   },
@@ -33,7 +36,10 @@ export default defineConfig({
     root: 'src/renderer',
     build: {
       rollupOptions: {
-        input: { index: resolve(__dirname, 'src/renderer/index.html') }
+        input: {
+          index: resolve(__dirname, 'src/renderer/index.html'),
+          avatar: resolve(__dirname, 'src/renderer/avatar.html')
+        }
       }
     },
     resolve: {

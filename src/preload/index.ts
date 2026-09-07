@@ -4,6 +4,7 @@
 // ============================================================
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningEffort } from '../shared/types'
+import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 
 const api = {
   // ============================================================
@@ -167,7 +168,7 @@ const api = {
   settings: {
     get: (): Promise<AppSettings> =>
       ipcRenderer.invoke('settings:get'),
-    save: (settings: AppSettings): Promise<boolean> =>
+    save: (settings: AppSettings): Promise<AppSettings> =>
       ipcRenderer.invoke('settings:save', settings),
     pickDirectory: (): Promise<string | null> =>
       ipcRenderer.invoke('settings:pickDirectory'),
@@ -186,6 +187,15 @@ const api = {
   bot: {
     test: (channel: string, config: unknown): Promise<{ ok?: boolean; bot?: { name: string; username?: string }; error?: string }> =>
       ipcRenderer.invoke('bot:test', channel, config)
+  },
+
+  avatar: {
+    importModel: (): Promise<AvatarModelConfig | null> =>
+      ipcRenderer.invoke('avatar:import-model'),
+    importAnimation: (): Promise<AvatarAnimationConfig | null> =>
+      ipcRenderer.invoke('avatar:import-animation'),
+    setSession: (sessionId: string, update: AvatarSessionUpdate): Promise<Session> =>
+      ipcRenderer.invoke('avatar:session-set', sessionId, update)
   },
 
   // ============================================================

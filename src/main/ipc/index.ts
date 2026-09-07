@@ -22,13 +22,17 @@ import { registerGeneralIpc } from './registerGeneralIpc'
 import { ensureSessionTitle, collectUserTexts } from '../agent/titleService'
 import { sessionNeedsTitle as isDefaultTitle } from '../../shared/sessionTitle'
 import { complete } from '../llm/provider'
+import { combineAgentEventSinks } from '../agent/persistedCallbacks'
+import { createAvatarAgentEventSink } from '../avatar/agentEvents'
+import { registerAvatarIpc } from './registerAvatarIpc'
 
 export function setupIpc(win: BrowserWindow, services: ApplicationServices): void {
   const runtime = new AgentIpcRuntime((channel, payload) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
   })
   services.permissions.addPresenter(createIpcPermissionPresenter(win.webContents))
-  const botEventSink = createIpcAgentEventSink(win.webContents)
+  const avatarEventSink = createAvatarAgentEventSink(services.avatar)
+  const botEventSink = combineAgentEventSinks(createIpcAgentEventSink(win.webContents), avatarEventSink)
   services.bots.setAgentEventSink(botEventSink)
   services.bots.setActivityListener(({ sessionId, state }) => {
     if (state === 'running') {
@@ -44,6 +48,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     }
   })
   registerGeneralIpc(win, runtime, services)
+  registerAvatarIpc(win, services.avatar)
 
   // ============================================================
   // Agent 对话
@@ -93,7 +98,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     const needsTitle = isDefaultTitle(session?.title)
 
     // 构建回调（流式 token / 工具调用 / DB 持久化）
-    const { callbacks } = buildAgentCallbacks(sessionId, e.sender)
+    const { callbacks } = buildAgentCallbacks(sessionId, e.sender, avatarEventSink)
 
     // 构建权限检查闭包 — 使用动态 getter，运行中切换模式即时生效
     const permissionCheck = services.permissions.createCheck({
@@ -121,6 +126,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
         signal: abortController.signal,
         modelOverride: options?.modelOverride,
         reasoningEffort: options?.reasoningEffort,
+        systemPromptExtra: services.avatar.buildSystemPrompt(sessionId),
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
         skillsPrompt: getSkillsSystemPrompt(),

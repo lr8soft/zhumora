@@ -30,6 +30,7 @@ The agent can use built-in local tools, browser automation, desktop capture, mem
 | MCP | `@modelcontextprotocol/sdk` |
 | Storage | better-sqlite3 |
 | Skill parsing | gray-matter |
+| Avatar rendering | Three.js + `@pixiv/three-vrm` |
 
 Supported UI languages currently include Chinese, English, Japanese, Spanish, French, and German.
 
@@ -59,6 +60,8 @@ Supported UI languages currently include Chinese, English, Japanese, Spanish, Fr
 ```
 
 The renderer does not receive unrestricted Electron IPC access. The preload layer exposes a limited application API through `contextBridge`.
+
+Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
 ## 4. LLM providers
 

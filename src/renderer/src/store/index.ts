@@ -173,6 +173,8 @@ interface AppState {
   loadSessions: () => Promise<void>
   createSession: () => Promise<void>
   deleteSession: (id: string) => Promise<void>
+  /** null disables the Avatar; a model id enables it for this session. */
+  setSessionAvatar: (modelId: string | null) => Promise<void>
   /** 待删除会话的 id（null = 无删除确认弹窗） */
   pendingDeleteId: string | null
   /** 弹出删除确认（不直接删，防误操作） */
@@ -332,6 +334,14 @@ export const useAppStore = create<AppState>((set, get) => ({
       return { sessions: newSessions, activeSessionId: newActiveId, messages, compactionMarkers }
     })
     if (newActiveId) void get().loadMessages(newActiveId)
+  },
+  setSessionAvatar: async (modelId) => {
+    const sessionId = get().activeSessionId
+    if (!sessionId) return
+    const updated = await api.avatar.setSession(sessionId, { enabled: modelId !== null, modelId })
+    set((state) => ({
+      sessions: state.sessions.map(session => session.id === sessionId ? updated : session)
+    }))
   },
 
   // ---- 删除会话确认（弹窗流程）----
@@ -596,7 +606,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],
     activeProviderId: null,
-    workspacePath: ''
+    workspacePath: '',
+    avatarModels: [],
+    defaultAvatarModelId: null
   },
   settingsDraft: {
     providers: [],
@@ -606,6 +618,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     skills: [],
     activeProviderId: null,
     workspacePath: '',
+    avatarModels: [],
+    defaultAvatarModelId: null,
     theme: 'system',
     fontSize: DEFAULT_FONT_SIZE
   },
@@ -636,12 +650,12 @@ export const useAppStore = create<AppState>((set, get) => ({
       // 落库的是 AppSettings（theme/fontSize 不在 DB schema 里，
       // 它们是 localStorage 项，setTheme/setFontSize 时已实时持久化）
       const { theme: _theme, fontSize: _fontSize, ...dbSettings } = draft
-      await api.settings.save(dbSettings)
-      // 草稿提升为权威设置；快照前移到已保存值
+      const savedSettings = await api.settings.save(dbSettings)
+      // 使用 main/store 返回的归一化结果作为权威设置；快照前移到已保存值。
       // （之后取消只回滚"本次保存之后"的改动，不会把刚保存的主题/字号退回旧值）
       set({
-        settings: dbSettings,
-        settingsDraft: { ...draft },
+        settings: savedSettings,
+        settingsDraft: { ...savedSettings, theme: draft.theme, fontSize: draft.fontSize },
         isSettingsDirty: false,
         settingsSnapshot: { theme: draft.theme, fontSize: draft.fontSize }
       })

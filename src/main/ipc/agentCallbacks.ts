@@ -1,6 +1,7 @@
 import type { AgentEventCallbacks } from '../agent/runner'
 import type { AgentEventSink } from '../agent/persistedCallbacks'
 import { createPersistedAgentCallbacks } from '../agent/persistedCallbacks'
+import { combineAgentEventSinks } from '../agent/persistedCallbacks'
 import type { PermissionPresenter } from '../agent/permissionBroker'
 import * as db from '../store/db'
 import { generateId } from '../id'
@@ -68,14 +69,16 @@ export function createIpcPermissionPresenter(sender: Electron.WebContents): Perm
 
 export function buildAgentCallbacks(
   sessionId: string,
-  sender: Electron.WebContents
+  sender: Electron.WebContents,
+  additionalSink?: AgentEventSink
 ): { callbacks: AgentEventCallbacks } {
+  const rendererSink = createIpcAgentEventSink(sender)
   return {
     callbacks: createPersistedAgentCallbacks(
       sessionId,
       db,
       generateId,
-      createIpcAgentEventSink(sender)
+      additionalSink ? combineAgentEventSinks(rendererSink, additionalSink) : rendererSink
     )
   }
 }

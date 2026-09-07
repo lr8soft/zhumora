@@ -9,6 +9,7 @@ import { normalizeQQBotConfig } from '../../shared/qq'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
 import { normalizeTelegramBotConfig } from '../../shared/telegram'
+import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared/avatar'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -34,7 +35,7 @@ export function createSession(title = 'New Session', workspacePath?: string): Se
   const now = Date.now()
   db!.prepare('INSERT INTO sessions (id, title, created_at, updated_at, workspace_path) VALUES (?, ?, ?, ?, ?)')
     .run(id, title, now, now, workspacePath || null)
-  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath }
+  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, avatarEnabled: false }
 }
 
 export function getSessions(): Session[] {
@@ -51,7 +52,9 @@ export function getSessions(): Session[] {
     createdAt: r.created_at,
     updatedAt: r.updated_at,
     messageCount: r.msg_count,
-    workspacePath: r.workspace_path || undefined
+    workspacePath: r.workspace_path || undefined,
+    avatarEnabled: r.avatar_enabled === 1,
+    avatarModelId: r.avatar_model_id || undefined
   }))
 }
 
@@ -65,7 +68,9 @@ export function getSession(id: string): Session | null {
     createdAt: row.created_at,
     updatedAt: row.updated_at,
     messageCount: msgCount,
-    workspacePath: row.workspace_path || undefined
+    workspacePath: row.workspace_path || undefined,
+    avatarEnabled: row.avatar_enabled === 1,
+    avatarModelId: row.avatar_model_id || undefined
   }
 }
 
@@ -88,6 +93,11 @@ export function tryUpdateSessionTitleIfDefault(id: string, title: string): boole
 export function updateSessionWorkspace(id: string, workspacePath: string): void {
   db!.prepare('UPDATE sessions SET workspace_path = ? WHERE id = ?')
     .run(workspacePath, id)
+}
+
+export function updateSessionAvatar(id: string, enabled: boolean, modelId: string | null): void {
+  db!.prepare('UPDATE sessions SET avatar_enabled = ?, avatar_model_id = ? WHERE id = ?')
+    .run(enabled ? 1 : 0, modelId, id)
 }
 
 export function deleteSession(id: string): void {
@@ -121,7 +131,9 @@ export function getOrCreateBotSession(
       createdAt: existing.created_at,
       updatedAt: existing.updated_at,
       messageCount: msgCount,
-      workspacePath: existing.workspace_path || undefined
+      workspacePath: existing.workspace_path || undefined,
+      avatarEnabled: existing.avatar_enabled === 1,
+      avatarModelId: existing.avatar_model_id || undefined
     }
   }
 
@@ -183,7 +195,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 4
+export const SETTINGS_SCHEMA_VERSION = 5
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -228,7 +240,9 @@ function defaultSettings(): AppSettings {
     memoryEnabled: true,
     language: 'auto',
     maxRetries: 5,
-    maxRounds: 20
+    maxRounds: 20,
+    avatarModels: [],
+    defaultAvatarModelId: null
   }
 }
 
@@ -247,6 +261,7 @@ export function normalizeSettings(input: unknown): AppSettings {
   const defaults = defaultSettings()
   if (!input || typeof input !== 'object') return defaults
   const raw = input as Partial<AppSettings>
+  const avatarModels = normalizeAvatarModels(raw.avatarModels)
   return {
     ...defaults,
     ...raw,
@@ -256,6 +271,8 @@ export function normalizeSettings(input: unknown): AppSettings {
     telegramBot: normalizeTelegramBotConfig(raw.telegramBot),
     qqBot: normalizeQQBotConfig(raw.qqBot),
     skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,
+    avatarModels,
+    defaultAvatarModelId: resolveDefaultAvatarModelId(avatarModels, raw.defaultAvatarModelId),
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId
       : defaults.activeProviderId,

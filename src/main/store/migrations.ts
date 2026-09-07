@@ -120,6 +120,18 @@ const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_bot_sessions_session ON bot_sessions(session_id);
       `)
     }
+  },
+  {
+    version: 4,
+    up(database) {
+      const columns = database.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]
+      if (!columns.some(column => column.name === 'avatar_enabled')) {
+        database.exec('ALTER TABLE sessions ADD COLUMN avatar_enabled INTEGER NOT NULL DEFAULT 0')
+      }
+      if (!columns.some(column => column.name === 'avatar_model_id')) {
+        database.exec('ALTER TABLE sessions ADD COLUMN avatar_model_id TEXT')
+      }
+    }
   }
 ]
 

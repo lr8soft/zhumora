@@ -22,6 +22,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Load reusable skills from Markdown files
 - Local session history, long-term memory, and token usage records
 - Chat with the same agent from your phone through a Telegram bot or a QQ bot, with live progress updates
+- Import VRM characters and opt into a separate transparent Avatar window per session, with Agent-controlled configured motions and expressions
 - Permission prompts for potentially dangerous actions
 - Light / dark themes and multilingual UI
 
@@ -94,6 +95,12 @@ Open **Settings** and add an OpenAI-compatible provider:
 - Context window
 
 Local and remote endpoints are both supported.
+
+## VRM Avatar
+
+Import `.vrm` characters under **Settings → Avatar**, then configure embedded animation names or attach `.vrma` animations. Avatars are off by default for every session; select one from the upward-opening Avatar menu in the composer when needed. The character runs in its own draggable transparent window, and the Agent can only invoke motions and expressions reported or configured for that model.
+
+No character model is bundled. The `@pixiv/three-vrm` code is MIT-licensed, but each VRM model has its own license; verify the model author's terms before importing or redistributing it.
 
 ## Documentation
 

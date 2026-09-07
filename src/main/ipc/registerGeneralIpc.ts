@@ -9,6 +9,7 @@ import { logCertModeChanged } from '../net/fetch'
 import { equivalentConfigList } from './settingsChange'
 import type { ApplicationServices } from '../composition'
 import type { AgentIpcRuntime } from './runtime'
+import { reconcileAvatarSessions } from './registerAvatarIpc'
 
 export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime, services: ApplicationServices): void {
   ipcMain.handle('window:minimize', () => win.minimize())
@@ -27,6 +28,7 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
   ipcMain.handle('session:get', (_event, id: string) => db.getSession(id))
   ipcMain.handle('session:delete', (_event, id: string) => {
     services.permissions.cancelSession(id)
+    services.avatar.hide(id)
     db.deleteSession(id)
     runtime.deleteSession(id)
     return true
@@ -69,7 +71,9 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
     void services.bots.applySettings(settings, previous, certModeChanged).catch(error => {
       console.error('Bot platform reconfigure error:', error)
     })
-    return true
+    await services.avatar.applySettings(settings, previous)
+    reconcileAvatarSessions(services.avatar, settings)
+    return settings
   })
   ipcMain.handle('settings:pickDirectory', async () => {
     const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })

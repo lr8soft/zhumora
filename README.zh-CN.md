@@ -22,6 +22,7 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 - 从 Markdown 文件加载 Skills
 - 本地保存会话、长期记忆和 Token 用量
 - 接入 Telegram Bot 或 QQ Bot，用手机和同一个本地 Agent 对话，实时显示进度
+- 可导入 VRM 角色并按会话手动开启独立透明 Avatar 窗口，由 Agent 调用已配置的动作和表情
 - 对高风险操作进行权限确认
 - 支持深色 / 浅色主题与多语言界面
 
@@ -94,6 +95,12 @@ npm run build:win
 - Context Window
 
 本地和远程模型端点均可使用。
+
+## VRM Avatar
+
+在 **设置 → Avatar** 导入 `.vrm` 角色，并可为角色填写内嵌动画名称或导入 `.vrma` 动画。新会话默认关闭 Avatar；需要时在会话输入栏的 Avatar 上拉菜单选择角色。启用后，角色运行在可拖动的独立透明窗口中，Agent 只能调用该角色已报告或已配置的动作与表情。
+
+项目不附带角色模型。`@pixiv/three-vrm` 代码采用 MIT 许可证，但每个 VRM 模型拥有独立许可；导入和分发模型前请自行确认模型作者的授权范围。
 
 ## 文档
 

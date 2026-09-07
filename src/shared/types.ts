@@ -1,6 +1,7 @@
 // ============================================================
 // Shared types — 主进程 & 渲染进程共用契约
 // ============================================================
+import type { AvatarModelConfig } from './avatar'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -87,6 +88,9 @@ export interface Session {
   updatedAt: number
   messageCount: number
   workspacePath?: string
+  /** Avatar windows are opt-in per session. */
+  avatarEnabled: boolean
+  avatarModelId?: string
 }
 
 /** 工具描述（供 LLM function-calling） */
@@ -249,6 +253,10 @@ export interface AppSettings {
    * 浏览器已在运行时切换该设置，下次 ensureBrowser 会重启浏览器以生效。
    */
   browserMode?: 'local' | 'headless'
+  /** User-managed VRM library. Models are imported once in Settings. */
+  avatarModels: AvatarModelConfig[]
+  /** Model preselected when a session enables its Avatar for the first time. */
+  defaultAvatarModelId: string | null
 }
 
 // ============================================================

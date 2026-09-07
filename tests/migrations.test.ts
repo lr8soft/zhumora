@@ -7,6 +7,8 @@ runDatabaseMigrations(fresh)
 assert.equal(fresh.pragma('user_version', { simple: true }), DATABASE_SCHEMA_VERSION)
 assert.ok((fresh.prepare('PRAGMA table_info(messages)').all() as { name: string }[]).some(column => column.name === 'reasoning'))
 assert.ok((fresh.prepare('PRAGMA table_info(bot_sessions)').all() as { name: string }[]).some(column => column.name === 'conversation_id'))
+assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_enabled'))
+assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_model_id'))
 fresh.close()
 
 const legacy = new Database(':memory:')
@@ -45,6 +47,7 @@ previousVersion.exec(`
 runDatabaseMigrations(previousVersion)
 assert.equal(previousVersion.pragma('user_version', { simple: true }), DATABASE_SCHEMA_VERSION)
 assert.ok((previousVersion.prepare('PRAGMA table_info(bot_sessions)').all() as { name: string }[]).some(column => column.name === 'account_id'))
+assert.ok((previousVersion.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_enabled'))
 previousVersion.close()
 
 console.log('database migration tests passed')

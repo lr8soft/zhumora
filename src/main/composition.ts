@@ -18,6 +18,8 @@ import { equivalentTelegramBotConfig, normalizeTelegramBotConfig } from '../shar
 import { equivalentQQBotConfig, normalizeQQBotConfig } from '../shared/qq'
 import { QQBotService } from './qq/service'
 import { getFetch } from './net/fetch'
+import type { AvatarWindowManager } from './avatar/windowManager'
+import { createAvatarTools } from './tools/avatar'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -32,11 +34,12 @@ export interface ApplicationServices {
   tools: ToolRegistry
   permissions: PermissionBroker
   bots: BotPlatformManager
+  avatar: AvatarWindowManager
 }
 
-export function createApplicationServices(): ApplicationServices {
+export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
   toolRegistry.clear()
-  for (const group of builtinGroups) {
+  for (const group of [...builtinGroups, createAvatarTools(avatar)]) {
     for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
   }
   const permissions = new PermissionBroker()
@@ -45,7 +48,8 @@ export function createApplicationServices(): ApplicationServices {
     permissions,
     store: db,
     getSkillsPrompt: getSkillsSystemPrompt,
-    getMcpStatus: getMcpConnectionStatus
+    getMcpStatus: getMcpConnectionStatus,
+    getSystemPromptExtra: sessionId => avatar.buildSystemPrompt(sessionId)
   })
   const telegram = new TelegramBotService(botAgent, permissions)
   const qq = new QQBotService(botAgent, permissions, { getFetch })
@@ -65,5 +69,5 @@ export function createApplicationServices(): ApplicationServices {
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, bots }
+  return { tools: toolRegistry, permissions, bots, avatar }
 }

@@ -5,7 +5,7 @@
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from '../../shared/types'
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
-import { getMaxRetries, isRetriableError, withRetry } from '../net/retry'
+import { HttpError, getMaxRetries, isRetriableError, withRetry } from '../net/retry'
 import {
   createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer, type TokenUsage
 } from './sseAccumulator'

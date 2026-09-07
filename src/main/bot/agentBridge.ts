@@ -13,6 +13,7 @@ interface BotAgentBridgeDependencies {
   store: BotAgentStore
   getSkillsPrompt: () => string
   getMcpStatus: () => { id: string; name: string; connected: boolean }[]
+  getSystemPromptExtra?: (sessionId: string) => string
 }
 
 /** Platform-neutral Agent orchestration reused by every chat-bot transport. */
@@ -70,7 +71,10 @@ export class BotAgentBridge {
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
         skillsPrompt: this.deps.getSkillsPrompt(),
-        systemPromptExtra: `You are replying through ${message.channel} to ${message.senderName}. Use plain text and keep the response concise.`,
+        systemPromptExtra: [
+          `You are replying through ${message.channel} to ${message.senderName}. Use plain text and keep the response concise.`,
+          this.deps.getSystemPromptExtra?.(session.id)
+        ].filter(Boolean).join('\n\n'),
         promptRuntime: {
           tools: this.deps.tools.definitions(),
           builtinTools: this.deps.tools.definitionsBySource('builtin'),

@@ -48,6 +48,10 @@ export default {
     workspace: 'ワークスペース',
     changeWorkspace: '変更',
     defaultModel: '(デフォルトモデル)',
+    avatarOff: 'Avatar オフ',
+    avatarHint: 'このセッションの Avatar を選択・有効化',
+    avatarNoModels: '先に設定で VRM モデルをインポート',
+    avatarDefault: 'デフォルト',
     selectModelHint: 'モデルを選択 (空 = プロバイダーのデフォルト)',
     modelDefaultSuffix: '(デフォルト)',
     attachImage: "画像を追加（ペースト/ドラッグも可）",
@@ -89,6 +93,7 @@ export default {
       providers: 'LLM プロバイダー',
       mcp: 'MCP サーバー',
       bots: 'チャット Bot',
+      avatar: 'Avatar',
       skills: 'スキル',
       memory: 'メモリ',
       usage: '使用量',
@@ -188,6 +193,12 @@ export default {
       on: 'オン',
       off: 'オフ',
       remove: '削除'
+    },
+    avatar: {
+      library: 'Avatar モデルライブラリ', hint: 'ここで VRM を一度インポートします。セッションはデフォルトでオフです。',
+      importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定',
+      animations: '利用可能なアニメーション', animationsHint: '埋め込み clip は読み込み時に検出されます。clip 名や VRMA も追加できます。',
+      addEmbedded: 'clip を追加', importVrma: '.vrma をインポート', embedded: '埋め込み', animationName: 'LLM 用の名前', clipName: '埋め込み clip 名', newAnimation: '新規アニメーション'
     },
     memory: {
       hint: '会話から自動的にキャプチャされた長期メモリ。エージェントはこれらを使用して応答を個別化します。',
