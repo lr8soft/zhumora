@@ -17,16 +17,23 @@ body,
   user-select: none;
 }
 
-.avatar-drag-region {
+.avatar-drag-handle {
   position: absolute;
-  inset: 0;
-  z-index: 4;
+  z-index: 6;
+  top: 4px;
+  left: 50%;
+  width: 42px;
+  height: 8px;
+  transform: translateX(-50%);
+  border-radius: 999px;
+  background: rgba(24, 28, 38, 0.46);
+  box-shadow: 0 1px 5px rgba(0, 0, 0, 0.18);
   -webkit-app-region: drag;
 }
 
 .avatar-stage {
   position: absolute;
-  inset: 46px 0 0;
+  inset: 54px 0 0;
 }
 
 .avatar-stage canvas {
@@ -38,7 +45,7 @@ body,
 .avatar-bubble {
   position: absolute;
   z-index: 5;
-  top: 8px;
+  top: 18px;
   left: 50%;
   width: min(310px, calc(100% - 24px));
   transform: translateX(-50%);

@@ -7,6 +7,9 @@ export default function AvatarApp() {
   const [message, setMessage] = useState('')
   const [status, setStatus] = useState('Loading Avatar…')
 
+  const capturePointer = () => { void window.avatarApi.setPointerPassthrough(false) }
+  const releasePointer = () => { void window.avatarApi.setPointerPassthrough(true) }
+
   useEffect(() => {
     if (!stageRef.current) return
     const scene = new AvatarScene(stageRef.current)
@@ -46,12 +49,13 @@ export default function AvatarApp() {
           setStatus('')
           await reportCommand(id)
         }, async error => {
-            const message = error instanceof Error ? error.message : String(error)
-            setStatus(message)
-            await reportCommand(id, message)
+          const message = error instanceof Error ? error.message : String(error)
+          setStatus(message)
+          await reportCommand(id, message)
         })
       })
     ]
+    void window.avatarApi.reportReady()
     void reload()
 
     return () => {
@@ -64,9 +68,19 @@ export default function AvatarApp() {
 
   return (
     <div className="avatar-root">
-      <div className="avatar-drag-region" title="Drag to move" />
+      <div
+        className="avatar-drag-handle"
+        title="Drag to move"
+        onMouseEnter={capturePointer}
+        onMouseLeave={releasePointer}
+      />
       {(status || message) && (
-        <div className={status ? 'avatar-bubble error' : 'avatar-bubble'} title={status || message}>
+        <div
+          className={status ? 'avatar-bubble error' : 'avatar-bubble'}
+          title={status || message}
+          onMouseEnter={capturePointer}
+          onMouseLeave={releasePointer}
+        >
           {status || message}
         </div>
       )}

@@ -34,7 +34,7 @@ function createWindow(): BrowserWindow {
       ? path.join(__dirname, '../../src/renderer/public/icon.ico')
       : path.join(__dirname, '../renderer/icon.ico'),
     webPreferences: {
-      preload: path.join(__dirname, '../preload/index.mjs'),
+      preload: path.join(__dirname, '../preload/index.cjs'),
       sandbox: false,
       contextIsolation: true,
       nodeIntegration: false
@@ -84,7 +84,7 @@ app.whenReady().then(async () => {
 
   // 组合根：集中构造并注册进程级服务，避免 IPC 层承担初始化副作用。
   const avatar = new AvatarWindowManager({
-    preloadPath: path.join(__dirname, '../preload/avatar.mjs'),
+    preloadPath: path.join(__dirname, '../preload/avatar.cjs'),
     productionHtmlPath: path.join(__dirname, '../renderer/avatar.html'),
     developmentUrl: is.dev ? process.env['ELECTRON_RENDERER_URL'] : undefined,
     assets: new AvatarAssetStore(path.join(app.getPath('userData'), 'avatars'))

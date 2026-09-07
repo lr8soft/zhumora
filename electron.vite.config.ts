@@ -28,7 +28,8 @@ export default defineConfig({
         input: {
           index: resolve(__dirname, 'src/preload/index.ts'),
           avatar: resolve(__dirname, 'src/preload/avatar.ts')
-        }
+        },
+        output: { format: 'cjs', entryFileNames: '[name].cjs' }
       }
     }
   },

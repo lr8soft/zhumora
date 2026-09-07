@@ -11,12 +11,14 @@ import type { AppSettings, Session, ToolExecutionResult } from '../../shared/typ
 import type { AvatarController, AvatarMessageTarget } from './contracts'
 import { AvatarAssetStore } from './assetStore'
 import { generateId } from '../id'
+import { log } from '../llm/logger'
 
 interface AvatarWindowEntry {
   window: BrowserWindow
   model: AvatarModelConfig
   latestMessage: string
   capabilities: AvatarCapabilities
+  ready: boolean
 }
 
 interface AvatarWindowManagerOptions {
@@ -59,15 +61,21 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       window,
       model: structuredClone(model),
       latestMessage: '',
-      capabilities: { animations: [], expressions: [] }
+      capabilities: { animations: [], expressions: [] },
+      ready: false
     }
     this.entries.set(sessionId, entry)
     window.on('closed', () => {
       if (this.entries.get(sessionId)?.window === window) this.entries.delete(sessionId)
       this.rejectPendingForSession(sessionId, 'Avatar window was closed.')
     })
-    window.webContents.once('did-finish-load', () => window.showInactive())
-    void this.loadWindow(window)
+    this.attachDiagnostics(sessionId, window)
+    // The user's selection is the show action. Loading the renderer must not be
+    // a hidden precondition for making the native window visible.
+    window.showInactive()
+    void this.loadWindow(window).catch(error => {
+      log('error', `Avatar page load failed (sessionId=${sessionId}): ${formatError(error)}`)
+    })
   }
 
   hide(sessionId: string): void {
@@ -143,6 +151,12 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     }
   }
 
+  markReady(senderId: number): void {
+    const [sessionId, entry] = this.entryForSender(senderId)
+    entry.ready = true
+    log('info', `Avatar renderer ready (sessionId=${sessionId})`)
+  }
+
   resolveCommand(senderId: number, commandId: string, error?: string): void {
     const [sessionId] = this.entryForSender(senderId)
     const pending = this.pendingCommands.get(commandId)
@@ -150,6 +164,13 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     clearTimeout(pending.timer)
     this.pendingCommands.delete(commandId)
     pending.resolve(typeof error === 'string' ? error.trim().slice(0, 500) : undefined)
+  }
+
+  setPointerPassthrough(senderId: number, passthrough: boolean): void {
+    const [, entry] = this.entryForSender(senderId)
+    if (entry.window.isDestroyed()) return
+    if (passthrough) entry.window.setIgnoreMouseEvents(true, { forward: true })
+    else entry.window.setIgnoreMouseEvents(false)
   }
 
   setMessage(sessionId: string, message: string): void {
@@ -184,6 +205,9 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     const entry = this.entries.get(sessionId)
     if (!entry || entry.window.isDestroyed()) {
       return { content: 'This session does not have an active Avatar window.', isError: true }
+    }
+    if (!entry.ready) {
+      return { content: 'The Avatar window exists, but its renderer is not ready.', isError: true }
     }
     if (command.type === 'play_animation') {
       const available = this.availableAnimations(entry)
@@ -262,12 +286,25 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     throw new Error('Avatar IPC request did not originate from an active Avatar window.')
   }
 
+  private attachDiagnostics(sessionId: string, window: BrowserWindow): void {
+    window.webContents.on('preload-error', (_event, preloadPath, error) => {
+      log('error', `Avatar preload failed (sessionId=${sessionId}, path=${preloadPath}): ${formatError(error)}`)
+    })
+    window.webContents.on('did-fail-load', (_event, code, description, url, isMainFrame) => {
+      if (!isMainFrame) return
+      log('error', `Avatar renderer failed to load (sessionId=${sessionId}, code=${code}, url=${url}): ${description}`)
+    })
+    window.webContents.on('render-process-gone', (_event, details) => {
+      log('error', `Avatar renderer exited (sessionId=${sessionId}, reason=${details.reason}, code=${details.exitCode})`)
+    })
+  }
+
   private createWindow(sessionId: string): BrowserWindow {
     const workArea = screen.getPrimaryDisplay().workArea
     const index = this.entries.size
     const width = 360
     const height = 540
-    return new BrowserWindow({
+    const window = new BrowserWindow({
       width,
       height,
       minWidth: 260,
@@ -290,6 +327,10 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
         sandbox: true
       }
     })
+    // Transparent pixels still participate in native hit-testing. Default the
+    // overlay to click-through; the renderer enables input only over visible UI.
+    window.setIgnoreMouseEvents(true, { forward: true })
+    return window
   }
 
   private loadWindow(window: BrowserWindow): Promise<void> {
@@ -318,4 +359,8 @@ function describeCommand(command: AvatarCommand): string {
     case 'reset_pose': return 'Avatar pose and expressions reset.'
     case 'show_message': return 'Avatar message updated.'
   }
+}
+
+function formatError(error: unknown): string {
+  return error instanceof Error ? error.message : String(error)
 }
