@@ -48,11 +48,11 @@ export class AvatarScene {
     this.container.appendChild(this.renderer.domElement)
     this.scene.add(this.lookTarget)
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 0.84))
-    const key = new THREE.DirectionalLight(0xffffff, 1.08)
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 1.5))
+    const key = new THREE.DirectionalLight(0xffffff, 2.0)
     key.position.set(1.5, 2.8, 2.2)
     this.scene.add(key)
-    const fill = new THREE.DirectionalLight(0x9bbcff, 0.48)
+    const fill = new THREE.DirectionalLight(0x9bbcff, 1.0)
     fill.position.set(-2, 1.2, 1)
     this.scene.add(fill)
 
