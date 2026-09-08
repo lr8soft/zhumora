@@ -101,8 +101,9 @@ const shellName = process.platform === 'win32' ? 'cmd.exe' : '/bin/sh'
 const bashDescription = [
   `Execute a non-interactive command using ${shellName}. OS: ${process.platform}.`,
   'Use workdir instead of cd. Use dedicated read/write/edit/grep/glob tools for filesystem work.',
+  'Use mode="detach" when starting a GUI app or long-running service. It returns immediately and leaves that process running. Do not use shell backgrounding syntax.',
   'stdout and stderr are returned in arrival order with exit metadata. Output is capped at 1MB.',
-  'Default timeout is 120 seconds; maximum is 600 seconds. Timeout or user cancellation terminates the whole process tree.',
+  'mode="wait" is the default. Its timeout is 120 seconds by default and 600 seconds maximum; timeout or cancellation terminates the process tree.',
   process.platform === 'win32'
     ? 'Use cmd.exe syntax (%VAR%, &&, quoted paths); do not use Bash-only syntax.'
     : 'Use POSIX sh syntax and quote paths containing spaces.'
@@ -119,6 +120,7 @@ export const bashTool: ToolHandler = {
         properties: {
           command: { type: 'string', description: `Non-interactive ${shellName} command` },
           workdir: { type: 'string', description: 'Working directory, absolute or relative to workspace' },
+          mode: { type: 'string', enum: ['wait', 'detach'], description: 'wait for commands; detach for GUI apps/services and return immediately. Default wait.' },
           timeout: { type: 'number', description: 'Timeout in seconds, default 120, max 600' }
         },
         required: ['command']
@@ -132,8 +134,9 @@ export const bashTool: ToolHandler = {
       command: args.command as string,
       workdir: args.workdir as string | undefined,
       timeoutSeconds: args.timeout,
+      mode: args.mode as 'wait' | 'detach' | undefined,
       signal: ctx.signal
-    })
+    }).then(content => ({ content }))
   }
 }
 

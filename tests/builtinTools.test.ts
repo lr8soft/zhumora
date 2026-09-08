@@ -49,6 +49,27 @@ try {
   assert.match(shell, /shell-ok/)
   assert.match(shell, /exit code: 0/)
 
+  const detachedCommand = `"${process.execPath}" -e "setTimeout(() => {}, 500)"`
+  const detachedStartedAt = Date.now()
+  const detached = await executeShellCommand({ workspacePath: root, workdir: os.tmpdir(), command: detachedCommand, mode: 'detach' })
+  assert.match(detached, /started in detached mode/)
+  assert.match(detached, /launcher pid: \d+/)
+  assert.ok(Date.now() - detachedStartedAt < 450, 'detached command should return before the launched process exits')
+
+  const slowCommand = `"${process.execPath}" -e "setTimeout(() => {}, 5000)"`
+  const timeoutStartedAt = Date.now()
+  const timedOut = await executeShellCommand({ workspacePath: root, workdir: os.tmpdir(), command: slowCommand, timeoutSeconds: 1 })
+  assert.match(timedOut, /timed out after 1s/)
+  assert.ok(Date.now() - timeoutStartedAt < 2500, 'timeout must settle without waiting for the close event')
+  await assert.rejects(
+    executeShellCommand({ workspacePath: root, command, mode: 'invalid' as 'wait' }),
+    /mode must be/
+  )
+  await assert.rejects(
+    executeShellCommand({ workspacePath: root, command, timeoutSeconds: 'invalid' }),
+    /timeout must be/
+  )
+
   const browserRoot = path.join(root, 'browsers', 'chromium-123', 'chrome-win64')
   await fs.mkdir(browserRoot, { recursive: true })
   const fakeChrome = path.join(browserRoot, 'chrome.exe')
