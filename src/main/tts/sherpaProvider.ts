@@ -119,7 +119,10 @@ export class SherpaOnnxTtsProvider {
     })
     const audio = await this.loaded.instance.generateAsync({
       text,
-      enableExternalBuffer: true,
+      // Electron cannot settle sherpa's async result when it owns an external
+      // ArrayBuffer. A copied Float32Array keeps the async/cancellable path
+      // working and can also be cloned safely across renderer IPC.
+      enableExternalBuffer: false,
       generationConfig,
       onProgress: () => signal.aborted ? 0 : 1
     })
