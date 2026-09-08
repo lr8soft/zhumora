@@ -6,6 +6,7 @@ import type {
   UINode
 } from '@mediar-ai/terminator'
 import { DesktopFrameStore, type StoredDesktopTarget } from './frameStore'
+import { encodeKeyboardInput } from './keyboard'
 import type {
   DesktopActionRequest,
   DesktopActionResult,
@@ -181,28 +182,36 @@ export class WindowsTerminatorAdapter implements DesktopAdapter {
         break
       }
       case 'type': {
+        if (!target) await this.requireForegroundProcess(processName)
         const element = target || this.desktop.focusedElement()
         if (request.text === undefined) throw new Error('[INVALID_ARGUMENT] type requires text.')
         details = element.typeText(request.text, {
           clearBeforeTyping: request.clearBeforeTyping ?? false,
           includeWindowScreenshot: false,
           includeMonitorScreenshots: false,
-          tryFocusBefore: true,
-          tryClickBefore: true,
+          tryFocusBefore: !!target,
+          tryClickBefore: false,
           uiDiffBeforeAfter: false
         })
         break
       }
       case 'key': {
-        if (!request.key) throw new Error('[INVALID_ARGUMENT] key requires key.')
-        details = target
-          ? target.pressKey(request.key, options)
-          : await this.desktop.pressKey(request.key, processName, false, false)
+        const input = encodeKeyboardInput(request.key, request.modifiers, request.repeat)
+        // Explicit targets may change focus, but must never cause an implicit click.
+        // The global native path also avoids element.pressKey's Enter preprocessing.
+        if (target) target.focus()
+        else await this.requireForegroundProcess(processName)
+        for (let index = 0; index < input.repeat; index++) {
+          details = await this.desktop.pressKey(input.sequence, undefined, false, false)
+        }
         break
       }
       case 'scroll': {
+        if (request.x !== undefined && request.y !== undefined) this.desktop.root().mouseMove(request.x, request.y)
         const element = target || this.desktop.focusedElement()
-        details = element.scroll(request.direction || 'down', request.amount ?? 3, options)
+        details = element.scroll(request.direction || 'down', request.amount ?? 3, {
+          ...options, tryClickBefore: false, tryFocusBefore: !!target
+        })
         break
       }
       case 'focus':
@@ -235,6 +244,14 @@ export class WindowsTerminatorAdapter implements DesktopAdapter {
       process: processName,
       targetRef: request.targetRef,
       details
+    }
+  }
+
+  private async requireForegroundProcess(processName?: string): Promise<void> {
+    if (!processName) return
+    const active = await this.getActiveApplication()
+    if (active?.process.toLowerCase() !== processName.toLowerCase()) {
+      throw new Error('[FOCUS_REQUIRED] Observe and focus a target_ref in the intended app before keyboard input.')
     }
   }
 

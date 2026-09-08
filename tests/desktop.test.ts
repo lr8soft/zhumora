@@ -1,4 +1,5 @@
 import { DesktopFrameStore } from '../src/main/desktop/frameStore.ts'
+import './desktopInput.test.ts'
 import { screenshotPointToScreen } from '../src/main/desktop/coordinates.ts'
 import {
   TerminatorProcessAdapter,

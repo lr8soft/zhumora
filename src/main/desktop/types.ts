@@ -77,6 +77,8 @@ export interface DesktopActionRequest {
   endY?: number
   text?: string
   key?: string
+  modifiers?: string[]
+  repeat?: number
   direction?: 'up' | 'down' | 'left' | 'right'
   amount?: number
   clearBeforeTyping?: boolean

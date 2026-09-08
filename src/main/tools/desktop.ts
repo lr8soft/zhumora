@@ -10,6 +10,8 @@ import type {
   DesktopObserveMode
 } from '../desktop/types'
 import type { ToolHandler } from './registry'
+import { createDesktopInputTools, desktopInputDefinitions } from './desktopInput'
+import type { DesktopControlCoordinator } from '../desktop/controlCoordinator'
 
 export const DESKTOP_OBSERVE_TOOL_NAME = 'desktop_observe'
 export const DESKTOP_ACTION_TOOL_NAME = 'desktop_action'
@@ -104,49 +106,8 @@ export const desktopObserveTool: ToolHandler = {
   }
 }
 
-export const desktopActionTool: ToolHandler = {
-  definition: {
-    type: 'function',
-    function: {
-      name: DESKTOP_ACTION_TOOL_NAME,
-      description:
-        'Control the Windows desktop through the Terminator adapter. Prefer target_ref from desktop_observe over coordinates. Coordinate actions use screenshot pixels when frame_id is supplied; without it x/y are physical desktop coordinates. This tool can click, type, press keys, scroll, drag, focus, invoke, and set controls.',
-      parameters: {
-        type: 'object',
-        properties: {
-          action: {
-            type: 'string',
-            enum: [
-              'click', 'double_click', 'right_click', 'move', 'type', 'key', 'scroll', 'drag',
-              'focus', 'invoke', 'set_value', 'select_option', 'set_toggled'
-            ]
-          },
-          target_ref: { type: 'string', description: 'Preferred target reference returned by desktop_observe.' },
-          process: { type: 'string', description: 'Process name required with selector.' },
-          selector: { type: 'string', description: 'Raw Terminator selector; use only when target_ref is unavailable.' },
-          frame_id: { type: 'string', description: 'Screenshot frame id used to translate x/y and end_x/end_y.' },
-          x: { type: 'number', description: 'Target x coordinate.' },
-          y: { type: 'number', description: 'Target y coordinate.' },
-          end_x: { type: 'number', description: 'Drag destination x coordinate.' },
-          end_y: { type: 'number', description: 'Drag destination y coordinate.' },
-          text: { type: 'string', description: 'Text/value/option for type, set_value, or select_option.' },
-          key: { type: 'string', description: 'Key or key chord for key, for example CTRL+S.' },
-          direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
-          amount: { type: 'number', description: 'Scroll amount. Default 3.' },
-          clear_before_typing: { type: 'boolean' },
-          toggled: { type: 'boolean' },
-          timeout_ms: { type: 'number', description: 'Element lookup timeout, 250-30000ms.' },
-          after: {
-            type: 'string',
-            enum: ['none', 'screenshot', 'observe'],
-            description: 'Evidence returned after the action. Default screenshot; observe also refreshes semantic state.'
-          },
-          display_id: { type: 'string', description: 'Display to capture after the action.' }
-        },
-        required: ['action']
-      }
-    }
-  },
+const desktopActionTool: ToolHandler = {
+  definition: desktopInputDefinitions[3],
   permission: 'dangerous',
   async execute(args, ctx) {
     const adapter = await getDesktopAdapter()
@@ -161,6 +122,8 @@ export const desktopActionTool: ToolHandler = {
       endY: optionalNumber(args.end_y),
       text: typeof args.text === 'string' ? args.text : undefined,
       key: optionalString(args.key),
+      modifiers: args.modifiers as string[] | undefined,
+      repeat: args.repeat as number | undefined,
       direction: args.direction as DesktopActionRequest['direction'],
       amount: optionalNumber(args.amount),
       clearBeforeTyping: optionalBoolean(args.clear_before_typing),
@@ -420,7 +383,9 @@ function optionalBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
-export const desktopTools: { name: string; handler: ToolHandler }[] = [
-  { name: DESKTOP_OBSERVE_TOOL_NAME, handler: desktopObserveTool },
-  { name: DESKTOP_ACTION_TOOL_NAME, handler: desktopActionTool }
-]
+export function createDesktopTools(control: DesktopControlCoordinator) {
+  return [
+    { name: DESKTOP_OBSERVE_TOOL_NAME, handler: desktopObserveTool },
+    ...createDesktopInputTools(desktopActionTool.execute, control)
+  ]
+}

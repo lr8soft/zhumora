@@ -3,7 +3,9 @@
 import { builtinTools } from './tools/builtin'
 import { browserTools } from './tools/browser'
 import { memoryTools } from './tools/memory'
-import { desktopTools } from './tools/desktop'
+import { createDesktopTools } from './tools/desktop'
+import { DesktopControlCoordinator } from './desktop/controlCoordinator'
+import { DesktopControlOverlay } from './desktop/controlOverlay'
 import { officeTools } from './tools/officeTool'
 import { mcpManagerTools } from './mcp/managerTools'
 import { toolRegistry, type ToolHandler, type ToolRegistry } from './tools/registry'
@@ -26,7 +28,6 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
   builtinTools,
   browserTools,
   memoryTools,
-  desktopTools,
   mcpManagerTools,
   officeTools
 ]
@@ -37,11 +38,13 @@ export interface ApplicationServices {
   bots: BotPlatformManager
   avatar: AvatarWindowManager
   tts: TtsManager
+  desktopControl: DesktopControlCoordinator
 }
 
 export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
   toolRegistry.clear()
-  for (const group of [...builtinGroups, createAvatarTools(avatar)]) {
+  const desktopControl = new DesktopControlCoordinator(new DesktopControlOverlay(id => db.getSession(id)?.title || '当前会话'))
+  for (const group of [...builtinGroups, createAvatarTools(avatar), createDesktopTools(desktopControl)]) {
     for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
   }
   const permissions = new PermissionBroker()
@@ -72,5 +75,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, bots, avatar, tts }
+  return { tools: toolRegistry, permissions, bots, avatar, tts, desktopControl }
 }

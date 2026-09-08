@@ -91,7 +91,7 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
   },
   {
     label: 'Desktop Control',
-    tools: ['desktop_observe', 'desktop_action']
+    tools: ['desktop_observe', 'desktop_key', 'desktop_type', 'desktop_mouse', 'desktop_action']
   },
   {
     label: 'Office Documents',

@@ -32,7 +32,10 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   services.tts.attachRenderer(win.webContents)
   const runtime = new AgentIpcRuntime((channel, payload) => {
     if (!win.isDestroyed()) win.webContents.send(channel, payload)
-  }, (sessionId, running) => services.avatar.setActivity(sessionId, running ? 'thinking' : 'idle'))
+  }, (sessionId, running) => {
+    services.avatar.setActivity(sessionId, running ? 'thinking' : 'idle')
+    if (!running) services.desktopControl.release(sessionId)
+  })
   services.permissions.addPresenter(createIpcPermissionPresenter(win.webContents))
   const avatarEventSink = createAvatarAgentEventSink(services.avatar)
   const ttsEventSink = createTtsAgentEventSink(services.tts)
