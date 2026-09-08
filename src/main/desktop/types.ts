@@ -66,6 +66,14 @@ export type DesktopActionName =
   | 'select_option'
   | 'set_toggled'
 
+export type DesktopMouseEasing = 'linear' | 'ease_out' | 'ease_in_out'
+export type DesktopTargetAnchor = 'center' | 'top' | 'bottom' | 'left' | 'right'
+
+export interface DesktopPoint {
+  x: number
+  y: number
+}
+
 export interface DesktopActionRequest {
   action: DesktopActionName
   targetRef?: string
@@ -81,6 +89,11 @@ export interface DesktopActionRequest {
   repeat?: number
   direction?: 'up' | 'down' | 'left' | 'right'
   amount?: number
+  durationMs?: number
+  easing?: DesktopMouseEasing
+  anchor?: DesktopTargetAnchor
+  /** Captured by the main process so the isolated worker can interpolate a move. */
+  cursorStart?: DesktopPoint
   clearBeforeTyping?: boolean
   toggled?: boolean
   timeoutMs?: number

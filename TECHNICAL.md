@@ -224,6 +224,14 @@ map image pixels back to the selected display's physical coordinate space,
 including mixed-DPI and negative-origin multi-monitor layouts. Semantic
 `target_ref` values are preferred because they are less brittle than pixels.
 
+`desktop_mouse` resolves a `target_ref` again immediately before moving, so it
+uses the element's current accessibility bounds rather than the bounds cached by
+the preceding observation. Optional `duration_ms`, `easing`, and `anchor`
+parameters are executed wholly inside the isolated desktop process; the model
+selects one destination and never emits intermediate points. A plain move does
+not capture a follow-up screenshot unless `after` requests one, while actions
+that can change application state retain screenshot verification by default.
+
 ### 6.4 Office artifacts
 
 Office support is exposed as four format-specific tools instead of one generic

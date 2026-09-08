@@ -1,7 +1,7 @@
 import assert from 'node:assert/strict'
 import { encodeKeyboardInput } from '../src/main/desktop/keyboard.ts'
 import { DesktopControlCoordinator } from '../src/main/desktop/controlCoordinator.ts'
-import { createDesktopInputTools } from '../src/main/tools/desktopInput.ts'
+import { createDesktopInputTools, desktopAfterAction } from '../src/main/tools/desktopInput.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
 
 for (const key of ['ArrowDown', 'DOWN', 'arrow_down']) {
@@ -15,6 +15,9 @@ for (const key of ['{CTRL}a', 'hello', 'Ctrl', 'Ctrl+', 'F25']) assert.throws(()
 for (const repeat of [0, 21, 1.5, '3', NaN]) assert.throws(() => encodeKeyboardInput('Enter', [], repeat))
 assert.throws(() => encodeKeyboardInput('Enter', 'Ctrl'))
 assert.throws(() => encodeKeyboardInput('Enter', ['unknown']))
+assert.equal(desktopAfterAction('move'), 'none')
+assert.equal(desktopAfterAction('click'), 'screenshot')
+assert.equal(desktopAfterAction('move', 'observe'), 'observe')
 
 let visible = false
 let disposed = false
@@ -68,8 +71,16 @@ assert.equal(typeof invalid !== 'string' && invalid.isError, true)
 assert.equal(calls.length, 1)
 await mouse.execute({ action: 'drag', x: 1, y: 2, end_x: 4, end_y: 5 }, ctx)
 assert.equal(calls[1].end_x, 4)
+await mouse.execute({ action: 'move', target_ref: 'frame:u1', duration_ms: 180, easing: 'ease_out', anchor: 'left' }, ctx)
+assert.equal(calls[2].duration_ms, 180)
+assert.equal(calls[2].anchor, 'left')
+const invalidDuration = await mouse.execute({ action: 'click', x: 1, y: 2, duration_ms: 100 }, ctx)
+assert.equal(typeof invalidDuration !== 'string' && invalidDuration.isError, true)
+const invalidAnchor = await mouse.execute({ action: 'move', x: 1, y: 2, anchor: 'left' }, ctx)
+assert.equal(typeof invalidAnchor !== 'string' && invalidAnchor.isError, true)
+assert.equal(calls.length, 3)
 const legacy = registry.get('desktop_action')!.handler
 await legacy.execute({ action: 'key', key: 'CTRL+S' }, ctx)
-assert.equal(calls[2].key, 'CTRL+S')
+assert.equal(calls[3].key, 'CTRL+S')
 inputControl.dispose()
 console.log('Desktop tool routing and boundary validation tests passed.')

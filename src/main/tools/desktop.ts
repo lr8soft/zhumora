@@ -1,7 +1,7 @@
 import { desktopCapturer, screen as electronScreen } from 'electron'
 import type { Display } from 'electron'
 import { getDesktopAdapter } from '../desktop/adapter'
-import { screenshotPointToScreen, type ScreenshotCoordinateFrame } from '../desktop/coordinates'
+import { displayPointToPhysical, screenshotPointToScreen, type ScreenshotCoordinateFrame } from '../desktop/coordinates'
 import type {
   DesktopActionName,
   DesktopActionRequest,
@@ -10,7 +10,7 @@ import type {
   DesktopObserveMode
 } from '../desktop/types'
 import type { ToolHandler } from './registry'
-import { createDesktopInputTools, desktopInputDefinitions } from './desktopInput'
+import { createDesktopInputTools, desktopAfterAction, desktopInputDefinitions } from './desktopInput'
 import type { DesktopControlCoordinator } from '../desktop/controlCoordinator'
 
 export const DESKTOP_OBSERVE_TOOL_NAME = 'desktop_observe'
@@ -126,13 +126,21 @@ const desktopActionTool: ToolHandler = {
       repeat: args.repeat as number | undefined,
       direction: args.direction as DesktopActionRequest['direction'],
       amount: optionalNumber(args.amount),
+      durationMs: optionalNumber(args.duration_ms),
+      easing: args.easing as DesktopActionRequest['easing'],
+      anchor: args.anchor as DesktopActionRequest['anchor'],
       clearBeforeTyping: optionalBoolean(args.clear_before_typing),
       toggled: optionalBoolean(args.toggled),
       timeoutMs: optionalNumber(args.timeout_ms)
     }
     translateScreenshotCoordinates(request, optionalString(args.frame_id))
+    if (request.action === 'move' && request.durationMs && request.durationMs > 0) {
+      const cursor = electronScreen.getCursorScreenPoint()
+      const display = electronScreen.getDisplayNearestPoint(cursor)
+      request.cursorStart = displayPointToPhysical(display, cursor)
+    }
     const result = await adapter.action(request, ctx.signal)
-    const after = optionalString(args.after) || 'screenshot'
+    const after = desktopAfterAction(request.action, optionalString(args.after))
     if (after === 'none') return JSON.stringify(result, null, 2)
 
     let observation: DesktopObservation | undefined

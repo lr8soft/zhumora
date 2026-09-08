@@ -1,10 +1,12 @@
 import { DesktopFrameStore } from '../src/main/desktop/frameStore.ts'
 import './desktopInput.test.ts'
-import { screenshotPointToScreen } from '../src/main/desktop/coordinates.ts'
+import { displayPointToPhysical, screenshotPointToScreen } from '../src/main/desktop/coordinates.ts'
+import { buildMousePath, pointInBounds } from '../src/main/desktop/mouseMotion.ts'
 import {
   TerminatorProcessAdapter,
   type DesktopWorkerProcess
 } from '../src/main/desktop/processAdapter.ts'
+import { WindowsTerminatorAdapter } from '../src/main/desktop/windowsTerminatorAdapter.ts'
 import type { DesktopProcessRequest } from '../src/main/desktop/processProtocol.ts'
 
 let passed = 0
@@ -36,6 +38,12 @@ async function asyncTest(name: string, fn: () => Promise<void>) {
 
 function assertEqual(actual: unknown, expected: unknown): void {
   if (actual !== expected) {
+    throw new Error(`got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`)
+  }
+}
+
+function assertDeepEqual(actual: unknown, expected: unknown): void {
+  if (JSON.stringify(actual) !== JSON.stringify(expected)) {
     throw new Error(`got ${JSON.stringify(actual)}, expected ${JSON.stringify(expected)}`)
   }
 }
@@ -144,6 +152,61 @@ test('screenshot coordinate validation rejects out-of-frame points', () => {
     message = (error as Error).message
   }
   if (!message.includes('[INVALID_COORDINATES]')) throw new Error(`unexpected error: ${message}`)
+})
+
+test('DIP cursor coordinates map to a mixed-DPI physical display', () => {
+  const point = displayPointToPhysical({
+    bounds: { x: -1280, y: 100, width: 1280, height: 720 },
+    scaleFactor: 1.5
+  }, { x: -640, y: 460 })
+  assertEqual(point.x, -960)
+  assertEqual(point.y, 690)
+})
+
+test('target anchors stay inside the latest control bounds', () => {
+  const bounds = { x: 100, y: 200, width: 100, height: 50 }
+  assertDeepEqual(pointInBounds(bounds, 'center'), { x: 150, y: 225 })
+  assertDeepEqual(pointInBounds(bounds, 'left'), { x: 120, y: 225 })
+  assertDeepEqual(pointInBounds(bounds, 'bottom'), { x: 150, y: 240 })
+})
+
+test('mouse paths are locally interpolated and end at the exact target', () => {
+  const linear = buildMousePath({ x: 0, y: 0 }, { x: 160, y: 80 }, 160, 'linear')
+  const eased = buildMousePath({ x: 0, y: 0 }, { x: 160, y: 80 }, 160, 'ease_out')
+  assertDeepEqual(linear.at(-1), { x: 160, y: 80 })
+  assertDeepEqual(eased.at(-1), { x: 160, y: 80 })
+  if (linear.length < 2 || eased.length < 2) throw new Error('expected an interpolated path')
+  if (eased[0].x <= linear[0].x) throw new Error('ease_out should cover more distance in the first frame')
+})
+
+await asyncTest('target_ref movement uses the element latest bounds', async () => {
+  const moves: Array<{ x: number; y: number }> = []
+  const app = { name: () => 'Demo', processName: () => 'demo.exe', processId: () => 42 }
+  const fakeDesktop = {
+    listMonitors: async () => [],
+    getActiveMonitor: async () => { throw new Error('no monitor') },
+    getCurrentApplication: async () => app,
+    getWindowTreeResultAsync: async () => ({
+      tree: { attributes: { role: 'Window', properties: {} }, children: [] },
+      formatted: '- Button: Save #1',
+      indexToBounds: {
+        '1': {
+          role: 'Button', name: 'Save', selector: 'role:Button&&name:Save',
+          bounds: { x: 10, y: 20, width: 40, height: 20 }
+        }
+      },
+      elementCount: 1
+    }),
+    locatorForProcess: () => ({
+      first: async () => ({ bounds: () => ({ x: 300, y: 400, width: 100, height: 40 }) })
+    }),
+    root: () => ({ mouseMove: (x: number, y: number) => moves.push({ x, y }) })
+  }
+  const Adapter = WindowsTerminatorAdapter as unknown as new (desktop: unknown) => WindowsTerminatorAdapter
+  const adapter = new Adapter(fakeDesktop)
+  const observation = await adapter.observe({ mode: 'window', process: 'demo.exe' })
+  await adapter.action({ action: 'move', targetRef: observation.targets?.[0].ref })
+  assertDeepEqual(moves, [{ x: 350, y: 420 }])
 })
 
 await asyncTest('stuck Terminator process is killed and the next call uses a fresh process', async () => {

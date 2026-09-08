@@ -44,9 +44,9 @@ Open **Settings → Chat Bots** and connect a Telegram bot or a QQ bot, then tal
 
 Zhumora can operate the Windows desktop directly:
 
-- **Observe** — list running applications, capture screens, and read the UI accessibility tree of any window (with stable element targets)
+- **Observe** — list running applications, capture screens, and read the UI accessibility tree of any window (with short-lived semantic element targets)
 - **Act** — click, double-click, right-click, type, press keys, scroll, drag, focus, and toggle controls, targeting elements by accessibility reference or screenshot coordinates
-- **Verify** — attach a screenshot after each action so the agent can confirm the result before continuing
+- **Verify** — attach a screenshot after state-changing actions so the agent can confirm the result; plain pointer moves skip capture unless requested
 
 This lets Zhumora drive native Windows apps that have no API or CLI — not just files, shell, and the browser.
 

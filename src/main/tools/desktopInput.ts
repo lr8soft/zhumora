@@ -1,14 +1,15 @@
 import type { ToolDefinition } from '../../shared/types'
+import type { DesktopActionName } from '../desktop/types'
 import type { ToolHandler } from './registry'
 import type { DesktopControlCoordinator } from '../desktop/controlCoordinator'
 import { encodeKeyboardInput } from '../desktop/keyboard.ts'
 
 const evidence = {
-  after: { type: 'string', enum: ['none', 'screenshot', 'observe'], description: 'Default screenshot.' },
+  after: { type: 'string', enum: ['none', 'screenshot', 'observe'], description: 'Default none for mouse move; screenshot for other actions.' },
   display_id: { type: 'string' }
 }
 const target = {
-  target_ref: { type: 'string', description: 'Optional observed target to focus. Omit to keep current focus.' }
+  target_ref: { type: 'string', description: 'Optional short-lived UI target from desktop_observe. It is resolved again immediately before the action.' }
 }
 export const desktopInputDefinitions: ToolDefinition[] = [
   define('desktop_key', 'Press a keyboard key in the focused app. Do not use UI component actions for arrow keys. Examples: {"key":"ArrowDown","repeat":3}, {"key":"s","modifiers":["Ctrl"]}. Observe/focus the intended app first.', {
@@ -20,11 +21,14 @@ export const desktopInputDefinitions: ToolDefinition[] = [
   define('desktop_type', 'Type literal text into the focused field. Use desktop_key for shortcuts or navigation. No implicit mouse click.', {
     ...target, ...evidence, text: { type: 'string' }, clear_before_typing: { type: 'boolean' }
   }, ['text']),
-  define('desktop_mouse', 'Move, click, scroll or drag the mouse. With frame_id, coordinates are screenshot pixels; otherwise physical desktop pixels. Drag requires x,y (start) and end_x,end_y (destination).', {
+  define('desktop_mouse', 'Move, click, scroll or drag the mouse. Prefer one move call with target_ref; never approximate a path with repeated tool calls. The local executor can animate the path with duration_ms. With frame_id, coordinates are screenshot pixels; otherwise physical desktop pixels. Drag requires x,y (start) and end_x,end_y (destination).', {
     ...target, ...evidence,
     action: { type: 'string', enum: ['click', 'double_click', 'right_click', 'move', 'scroll', 'drag'] },
     frame_id: { type: 'string' }, x: { type: 'number' }, y: { type: 'number' },
     end_x: { type: 'number' }, end_y: { type: 'number' },
+    duration_ms: { type: 'integer', minimum: 0, maximum: 2000, description: 'For move only. Local animation duration; 0 moves immediately. Default 0.' },
+    easing: { type: 'string', enum: ['linear', 'ease_out', 'ease_in_out'], description: 'For move only. Default ease_out.' },
+    anchor: { type: 'string', enum: ['center', 'top', 'bottom', 'left', 'right'], description: 'Point inside a target_ref. Default center.' },
     direction: { type: 'string', enum: ['up', 'down', 'left', 'right'] },
     amount: { type: 'integer', minimum: 1, maximum: 100 }
   }, ['action']),
@@ -35,6 +39,16 @@ export const desktopInputDefinitions: ToolDefinition[] = [
     toggled: { type: 'boolean' }, timeout_ms: { type: 'integer', minimum: 250, maximum: 30000 }
   }, ['action'])
 ]
+
+export type DesktopAfterAction = 'none' | 'screenshot' | 'observe'
+
+export function desktopAfterAction(
+  action: DesktopActionName,
+  requested?: string
+): DesktopAfterAction {
+  if (requested === 'none' || requested === 'screenshot' || requested === 'observe') return requested
+  return action === 'move' ? 'none' : 'screenshot'
+}
 
 function define(name: string, description: string, properties: Record<string, unknown>, required: string[]): ToolDefinition {
   return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } }
@@ -80,6 +94,13 @@ function validateInput(action: unknown, args: Record<string, unknown>): void {
   if ((args.x === undefined) !== (args.y === undefined)) throw new Error('Provide both x and y.')
   if (action === 'drag' && (args.end_x === undefined || args.end_y === undefined)) throw new Error('drag requires end_x and end_y.')
   if (args.amount !== undefined && (!Number.isInteger(args.amount) || Number(args.amount) < 1 || Number(args.amount) > 100)) throw new Error('amount must be an integer from 1 to 100.')
+  if (args.duration_ms !== undefined && (!Number.isInteger(args.duration_ms) || Number(args.duration_ms) < 0 || Number(args.duration_ms) > 2000)) throw new Error('duration_ms must be an integer from 0 to 2000.')
+  if (args.duration_ms !== undefined && action !== 'move') throw new Error('duration_ms is only supported for move.')
+  if (args.easing !== undefined && !['linear', 'ease_out', 'ease_in_out'].includes(String(args.easing))) throw new Error('Invalid mouse easing.')
+  if (args.easing !== undefined && action !== 'move') throw new Error('easing is only supported for move.')
+  if (args.anchor !== undefined && !['center', 'top', 'bottom', 'left', 'right'].includes(String(args.anchor))) throw new Error('Invalid target anchor.')
+  if (args.anchor !== undefined && action !== 'move') throw new Error('anchor is only supported for move.')
+  if (args.anchor !== undefined && args.target_ref === undefined) throw new Error('anchor requires target_ref.')
   if (args.direction !== undefined && !['up', 'down', 'left', 'right'].includes(String(args.direction))) throw new Error('Invalid scroll direction.')
   if (args.after !== undefined && !['none', 'screenshot', 'observe'].includes(String(args.after))) throw new Error('after must be none, screenshot or observe.')
 }

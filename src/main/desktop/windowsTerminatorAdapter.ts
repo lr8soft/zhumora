@@ -5,8 +5,9 @@ import type {
   TreeBuildConfig,
   UINode
 } from '@mediar-ai/terminator'
-import { DesktopFrameStore, type StoredDesktopTarget } from './frameStore'
-import { encodeKeyboardInput } from './keyboard'
+import { DesktopFrameStore, type StoredDesktopTarget } from './frameStore.ts'
+import { encodeKeyboardInput } from './keyboard.ts'
+import { moveMouse, pointInBounds } from './mouseMotion.ts'
 import type {
   DesktopActionRequest,
   DesktopActionResult,
@@ -27,8 +28,11 @@ export class WindowsTerminatorAdapter implements DesktopAdapter {
 
   private readonly frames = new DesktopFrameStore()
   private operationQueue: Promise<void> = Promise.resolve()
+  private readonly desktop: TerminatorDesktop
 
-  private constructor(private readonly desktop: TerminatorDesktop) {}
+  private constructor(desktop: TerminatorDesktop) {
+    this.desktop = desktop
+  }
 
   static async create(): Promise<WindowsTerminatorAdapter> {
     if (process.platform !== 'win32') {
@@ -169,12 +173,18 @@ export class WindowsTerminatorAdapter implements DesktopAdapter {
         break
       }
       case 'move': {
-        const point = actionPoint(request, storedTarget)
-        this.desktop.root().mouseMove(point.x, point.y)
+        const point = actionPoint(request, storedTarget, target)
+        await moveMouse(
+          (x, y) => this.desktop.root().mouseMove(x, y),
+          request.cursorStart,
+          point,
+          request.durationMs,
+          request.easing
+        )
         break
       }
       case 'drag': {
-        const point = actionPoint(request, storedTarget)
+        const point = actionPoint(request, storedTarget, target)
         if (request.endX === undefined || request.endY === undefined) {
           throw new Error('[INVALID_ARGUMENT] drag requires end_x and end_y.')
         }
@@ -350,14 +360,13 @@ function requirePoint(request: DesktopActionRequest): { x: number; y: number } {
 
 function actionPoint(
   request: DesktopActionRequest,
-  storedTarget: StoredDesktopTarget | undefined
+  storedTarget: StoredDesktopTarget | undefined,
+  resolvedTarget?: Element
 ): { x: number; y: number } {
   if (request.x !== undefined && request.y !== undefined) return { x: request.x, y: request.y }
+  if (resolvedTarget) return pointInBounds(resolvedTarget.bounds(), request.anchor)
   if (storedTarget) {
-    return {
-      x: Math.round(storedTarget.bounds.x + storedTarget.bounds.width / 2),
-      y: Math.round(storedTarget.bounds.y + storedTarget.bounds.height / 2)
-    }
+    return pointInBounds(storedTarget.bounds, request.anchor)
   }
   return requirePoint(request)
 }
