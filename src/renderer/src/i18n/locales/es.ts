@@ -204,19 +204,18 @@ export default {
       intentNone: "Solo reproducción directa",
       intentNames: {"idle":"Espera","thinking":"Pensar","explain":"Explicar","acknowledge":"Asentir","disagree":"Negar","greet":"Saludar con la cabeza","celebrate":"Celebrar","sad":"Triste"},
       windowSize: "Tamaño de ventana Avatar",
-      windowSizeHint: "Al guardar se aplica a todas las ventanas Avatar. Arrastra el personaje, el mensaje o el asa superior; las zonas vacías dejan pasar los clics.",
       windowWidth: "Ancho (240–960)",
       windowHeight: "Alto (320–1440)",
       windowReset: "Restablecer tamaño",
-      library: 'Biblioteca de avatares', hint: 'Importa modelos VRM aquí una vez. Las sesiones están desactivadas por defecto.',
+      library: 'Biblioteca de avatares',
       importModel: 'Importar modelo .vrm', empty: 'Aún no hay modelos VRM.', modelName: 'Nombre del personaje', default: 'Predeterminado', defaultAnimation: 'Animación de espera inicial (clic de nuevo para quitar)',
-      animations: 'Animaciones disponibles', animationsHint: 'Los clips integrados se detectan al cargar; también puedes nombrar un clip o importar VRMA.',
+      animations: 'Animaciones disponibles',
       addEmbedded: 'Añadir clip', importVrma: 'Importar .vrma', embedded: 'Integrado', animationName: 'Nombre para el LLM', clipName: 'Nombre del clip integrado', newAnimation: 'Nueva animación'
     },
     tts: {
-      library: 'Biblioteca de modelos TTS', hint: 'Importa una carpeta de modelo VITS o Kokoro de sherpa-onnx. Se activa por sesión y está desactivado por defecto.',
+      library: 'Biblioteca de modelos TTS',
       importModel: 'Importar carpeta', empty: 'Aún no hay modelos TTS.', modelName: 'Nombre de voz', default: 'Predeterminado',
-      speakerId: 'ID de hablante', speed: 'Velocidad (0,5–2)', modelLicense: 'Comprueba la licencia del modelo y los derechos de uso de la voz.'
+      speakerId: 'ID de hablante', speed: 'Velocidad (0,5–2)'
     },
     memory: {
       hint: 'Entradas de memoria a largo plazo capturadas automáticamente de conversaciones. El agente las usa para personalizar respuestas.',

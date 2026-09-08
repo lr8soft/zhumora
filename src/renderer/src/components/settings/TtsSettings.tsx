@@ -34,7 +34,7 @@ export function TtsSettings({ models, defaultModelId, onChange }: Props) {
     <div className="settings-section">
       <div className="settings-section-title">
         <Volume2 size={17} />
-        <div><h3>{t('settings.tts.library')}</h3><p>{t('settings.tts.hint')}</p></div>
+        <h3>{t('settings.tts.library')}</h3>
       </div>
       <button className="btn-primary" onClick={() => void importModel()}><Plus size={14} />{t('settings.tts.importModel')}</button>
     </div>
@@ -64,7 +64,6 @@ export function TtsSettings({ models, defaultModelId, onChange }: Props) {
           <input className="input-field" type="number" min={0.5} max={2} step={0.05} value={model.speed} onChange={event => update(model.id, { speed: Math.min(2, Math.max(0.5, Number(event.target.value) || 1)) })} />
         </div>
       </div>
-      <p className="form-hint">{t('settings.tts.modelLicense')}</p>
     </div>)}
   </div>
 }

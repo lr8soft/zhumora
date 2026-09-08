@@ -204,19 +204,18 @@ export default {
       intentNone: "Lecture directe uniquement",
       intentNames: {"idle":"Repos","thinking":"Réfléchir","explain":"Expliquer","acknowledge":"Acquiescer","disagree":"Désapprouver","greet":"Saluer de la tête","celebrate":"Célébrer","sad":"Triste"},
       windowSize: "Taille de la fenêtre Avatar",
-      windowSizeHint: "Enregistrer applique la taille à tous les avatars. Déplacez le personnage, la bulle ou la poignée ; les zones vides laissent passer les clics.",
       windowWidth: "Largeur (240–960)",
       windowHeight: "Hauteur (320–1440)",
       windowReset: "Réinitialiser la taille",
-      library: "Bibliothèque d'avatars", hint: 'Importez les modèles VRM une fois ici. Les sessions restent désactivées par défaut.',
+      library: "Bibliothèque d'avatars",
       importModel: 'Importer un modèle .vrm', empty: 'Aucun modèle VRM importé.', modelName: 'Nom du personnage', default: 'Par défaut', defaultAnimation: "Animation d'attente au démarrage (recliquer pour retirer)",
-      animations: 'Animations disponibles', animationsHint: 'Les clips intégrés sont détectés au chargement ; vous pouvez aussi nommer un clip ou importer un VRMA.',
+      animations: 'Animations disponibles',
       addEmbedded: 'Ajouter un clip', importVrma: 'Importer .vrma', embedded: 'Intégré', animationName: 'Nom pour le LLM', clipName: 'Nom du clip intégré', newAnimation: 'Nouvelle animation'
     },
     tts: {
-      library: 'Bibliothèque de modèles TTS', hint: 'Importez un dossier de modèle VITS ou Kokoro sherpa-onnx. Activation par session, désactivée par défaut.',
+      library: 'Bibliothèque de modèles TTS',
       importModel: 'Importer un dossier', empty: 'Aucun modèle TTS importé.', modelName: 'Nom de la voix', default: 'Par défaut',
-      speakerId: 'ID du locuteur', speed: 'Vitesse (0,5–2)', modelLicense: "Vérifiez la licence du modèle et les droits d'utilisation de la voix."
+      speakerId: 'ID du locuteur', speed: 'Vitesse (0,5–2)'
     },
     memory: {
       hint: "Entrées de mémoire à long terme capturées automatiquement des conversations. L'agent les utilise pour personnaliser ses réponses.",

@@ -204,19 +204,18 @@ export default {
       intentNone: "直接再生のみ",
       intentNames: {"idle":"待機","thinking":"思考","explain":"説明","acknowledge":"うなずく","disagree":"首を振る","greet":"会釈","celebrate":"喜ぶ","sad":"悲しみ"},
       windowSize: "Avatar ウィンドウサイズ",
-      windowSizeHint: "保存すると全 Avatar に適用されます。キャラクター、吹き出し、上部のハンドルをドラッグして移動できます。透明な余白はクリックを通します。",
       windowWidth: "幅（240–960）",
       windowHeight: "高さ（320–1440）",
       windowReset: "サイズをリセット",
-      library: 'Avatar モデルライブラリ', hint: 'ここで VRM を一度インポートします。セッションはデフォルトでオフです。',
+      library: 'Avatar モデルライブラリ',
       importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定', defaultAnimation: '起動時の待機アニメーション（再クリックで解除）',
-      animations: '利用可能なアニメーション', animationsHint: '埋め込み clip は読み込み時に検出されます。clip 名や VRMA も追加できます。',
+      animations: '利用可能なアニメーション',
       addEmbedded: 'clip を追加', importVrma: '.vrma をインポート', embedded: '埋め込み', animationName: 'LLM 用の名前', clipName: '埋め込み clip 名', newAnimation: '新規アニメーション'
     },
     tts: {
-      library: 'TTS モデルライブラリ', hint: 'sherpa-onnx の VITS または Kokoro モデルフォルダーを読み込みます。会話ごとに有効化し、初期状態はオフです。',
+      library: 'TTS モデルライブラリ',
       importModel: 'モデルフォルダーを読み込む', empty: 'TTS モデルはまだありません。', modelName: '音声名', default: 'デフォルトに設定',
-      speakerId: '話者 ID', speed: '速度（0.5～2）', modelLicense: 'モデルのライセンスと音声の使用許可を確認してください。'
+      speakerId: '話者 ID', speed: '速度（0.5～2）'
     },
     memory: {
       hint: '会話から自動的にキャプチャされた長期メモリ。エージェントはこれらを使用して応答を個別化します。',

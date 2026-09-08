@@ -70,7 +70,6 @@ export function AvatarSettings({ models, defaultModelId, onChange, windowSize, o
           <UserRound size={17} />
           <div>
             <h3>{t('settings.avatar.library')}</h3>
-            <p>{t('settings.avatar.hint')}</p>
           </div>
         </div>
         <button className="btn-primary" onClick={() => void importModel()}>
@@ -109,7 +108,6 @@ export function AvatarSettings({ models, defaultModelId, onChange, windowSize, o
           <div className="avatar-animation-head">
             <div>
               <strong>{t('settings.avatar.animations')}</strong>
-              <p className="form-hint">{t('settings.avatar.animationsHint')}</p>
             </div>
             <div className="avatar-animation-actions">
               <button className="btn-ghost btn-sm" onClick={() => addEmbeddedAnimation(model)}>

@@ -8,7 +8,6 @@ export function AvatarWindowSettings({ size, onChange }: {
   const { t } = useTranslation()
   return <div className="settings-section">
     <h3>{t('settings.avatar.windowSize')}</h3>
-    <p className="form-hint">{t('settings.avatar.windowSizeHint')}</p>
     <div className="avatar-window-size-fields">
       <label className="form-field">
         <span className="form-label">{t('settings.avatar.windowWidth')}</span>

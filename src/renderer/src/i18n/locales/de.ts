@@ -204,19 +204,18 @@ export default {
       intentNone: "Nur direkt abspielen",
       intentNames: {"idle":"Leerlauf","thinking":"Nachdenken","explain":"Erklären","acknowledge":"Nicken","disagree":"Kopfschütteln","greet":"Begrüßend nicken","celebrate":"Feiern","sad":"Traurig"},
       windowSize: "Avatar-Fenstergröße",
-      windowSizeHint: "Nach dem Speichern für alle Avatar-Fenster. Figur, Sprechblase oder oberen Griff ziehen; leere Bereiche lassen Klicks durch.",
       windowWidth: "Breite (240–960)",
       windowHeight: "Höhe (320–1440)",
       windowReset: "Größe zurücksetzen",
-      library: 'Avatar-Modellbibliothek', hint: 'VRM-Modelle einmal hier importieren. Sitzungen sind standardmäßig deaktiviert.',
+      library: 'Avatar-Modellbibliothek',
       importModel: '.vrm-Modell importieren', empty: 'Noch keine VRM-Modelle importiert.', modelName: 'Charaktername', default: 'Als Standard', defaultAnimation: 'Start-Leerlaufanimation (erneut klicken zum Löschen)',
-      animations: 'Verfügbare Animationen', animationsHint: 'Eingebettete Clips werden beim Laden erkannt; alternativ Clip benennen oder VRMA importieren.',
+      animations: 'Verfügbare Animationen',
       addEmbedded: 'Clip hinzufügen', importVrma: '.vrma importieren', embedded: 'Eingebettet', animationName: 'Animationsname für LLM', clipName: 'Eingebetteter Clipname', newAnimation: 'Neue Animation'
     },
     tts: {
-      library: 'TTS-Modellbibliothek', hint: 'Einen sherpa-onnx-VITS- oder Kokoro-Modellordner importieren. Pro Sitzung optional und standardmäßig aus.',
+      library: 'TTS-Modellbibliothek',
       importModel: 'Modellordner importieren', empty: 'Noch keine TTS-Modelle importiert.', modelName: 'Stimmenname', default: 'Als Standard',
-      speakerId: 'Sprecher-ID', speed: 'Tempo (0,5–2)', modelLicense: 'Modelllizenzen und Nutzungsrechte der Stimme müssen beachtet werden.'
+      speakerId: 'Sprecher-ID', speed: 'Tempo (0,5–2)'
     },
     memory: {
       hint: 'Langzeitgedächtnis-Einträge, die automatisch aus Konversationen erfasst wurden. Der Agent verwendet diese, um Antworten zu personalisieren.',
