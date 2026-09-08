@@ -49,6 +49,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     } else if (state === 'complete') {
       runtime.setRunning(sessionId, false)
     } else if (state === 'aborted') {
+      services.tts.stop(sessionId)
       runtime.setRunning(sessionId, false)
       if (!win.isDestroyed()) win.webContents.send('agent:aborted', { sessionId })
     } else {
@@ -211,10 +212,12 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   ipcMain.handle('agent:abort', (_e, sessionId: string) => {
     const ctrl = runtime.abortControllers.get(sessionId)
     if (ctrl) {
+      services.tts.stop(sessionId)
       runtime.abort(sessionId)
       // 立即通知前端该会话已停止（runAgent 的 finally 也会清理一次，幂等）
       win.webContents.send('agent:aborted', { sessionId })
     } else {
+      services.tts.stop(sessionId)
       services.bots.abortSession(sessionId)
     }
     // 只清理该会话的悬挂权限请求（以 false resolve，避免内存泄漏；

@@ -1,9 +1,13 @@
 import type { AgentEventSink } from '../agent/persistedCallbacks.ts'
-import type { TtsManager } from './manager.ts'
+interface TtsAgentTarget {
+  enqueue(sessionId: string, messageId: string, content: string): void
+  stop(sessionId?: string): void
+}
 
-export function createTtsAgentEventSink(tts: TtsManager): AgentEventSink {
+export function createTtsAgentEventSink(tts: TtsAgentTarget): AgentEventSink {
   return {
     userMessage: message => tts.stop(message.sessionId),
-    complete: (sessionId, messageId, content) => tts.complete(sessionId, messageId, content)
+    assistantEnd: (sessionId, messageId, content) => tts.enqueue(sessionId, messageId, content),
+    error: sessionId => tts.stop(sessionId)
   }
 }

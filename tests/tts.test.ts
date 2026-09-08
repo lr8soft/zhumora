@@ -2,9 +2,11 @@ import assert from 'node:assert/strict'
 import { mkdtemp, mkdir, rm, writeFile } from 'node:fs/promises'
 import { join } from 'node:path'
 import { tmpdir } from 'node:os'
-import { equivalentTtsModels, normalizeTtsModels, prepareSpeechText, resolveDefaultTtsModelId, type TtsModelConfig } from '../src/shared/tts.ts'
+import { equivalentTtsModels, normalizeTtsModels, prepareSpeechText, resolveDefaultTtsModelId, splitSpeechText, type TtsModelConfig } from '../src/shared/tts.ts'
 import { inspectTtsModelDirectory, validateTtsModel } from '../src/main/tts/sherpaProvider.ts'
 import { TtsManager, type TtsProvider } from '../src/main/tts/manager.ts'
+import { createTtsAgentEventSink } from '../src/main/tts/agentEvents.ts'
+import { TtsPlaybackQueue, type QueuedAudio } from '../src/renderer/src/tts/playbackQueue.ts'
 import type { AppSettings, Session } from '../src/shared/types.ts'
 
 const base: TtsModelConfig = {
@@ -17,6 +19,9 @@ assert.equal(resolveDefaultTtsModelId([base], 'missing'), 'voice-1')
 assert.equal(equivalentTtsModels([base, { ...base, id: 'voice-2' }], [{ ...base, id: 'voice-2' }, base]), true)
 assert.equal(prepareSpeechText('## Hello [world](https://example.com)\n```ts\nsecret()\n```'), 'Hello world')
 assert.equal(prepareSpeechText(null), '')
+const speechParts = splitSpeechText(`${'甲'.repeat(60)}。${'乙'.repeat(60)}`, 70)
+assert.equal(speechParts.length, 2)
+assert.ok(speechParts.every(part => part.length <= 70))
 
 const directory = await mkdtemp(join(tmpdir(), 'zhumora-tts-'))
 try {
@@ -75,22 +80,34 @@ const session: Session = {
 }
 const settings = { ttsModels: [base], defaultTtsModelId: base.id } as AppSettings
 const calls: string[] = []
-let release: (() => void) | undefined
+const releases: Array<() => void> = []
 const provider: TtsProvider = {
   reset() { calls.push('reset') },
   async synthesize(text, _model, signal) {
     calls.push(text)
-    await new Promise<void>(resolve => { release = resolve })
+    await new Promise<void>(resolve => { releases.push(resolve) })
     if (signal.aborted) throw new DOMException('Aborted', 'AbortError')
     return { samples: new Float32Array([0, 0.1]), sampleRate: 24000 }
   }
 }
 const manager = new TtsManager({ getSession: () => session, getSettings: () => settings }, provider)
-manager.complete('s1', 'm1', '**Hello**')
+const sent: Array<{ channel: string; payload: unknown }> = []
+manager.attachRenderer({
+  isDestroyed: () => false,
+  send: (channel: string, payload: unknown) => { sent.push({ channel, payload }) }
+} as never)
+manager.enqueue('s1', 'm1', '**Hello**')
+manager.enqueue('s1', 'm2', 'World')
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.deepEqual(calls, ['Hello'])
+releases.shift()?.()
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.deepEqual(calls, ['Hello', 'World'])
+assert.equal(sent.filter(event => event.channel === 'tts:audio').length, 1)
 manager.stop('s1')
-release?.()
+releases.shift()?.()
+await new Promise(resolve => setTimeout(resolve, 0))
+assert.equal(sent.some(event => event.channel === 'tts:stop'), true)
 manager.dispose()
 
 const disabledCalls: string[] = []
@@ -102,9 +119,39 @@ const disabledManager = new TtsManager({
   getSession: () => ({ ...session, ttsEnabled: false }),
   getSettings: () => settings
 }, disabledProvider)
-disabledManager.complete('s1', 'm2', 'Must remain silent')
+disabledManager.enqueue('s1', 'm2', 'Must remain silent')
 await new Promise(resolve => setTimeout(resolve, 0))
 assert.deepEqual(disabledCalls, [])
 disabledManager.dispose()
+
+const eventCalls: string[] = []
+const sink = createTtsAgentEventSink({
+  enqueue: (_sessionId, _messageId, content) => eventCalls.push(`speak:${content}`),
+  stop: sessionId => eventCalls.push(`stop:${sessionId}`)
+})
+sink.reasoning?.('s1', 'm1', 'private thought')
+sink.toolCall?.('s1', 'm1', { id: 't1', type: 'function', function: { name: 'bash', arguments: '{}' } })
+sink.assistantEnd?.('s1', 'm1', 'Before tool', [])
+sink.complete?.('s1', 'm1', 'Before tool')
+assert.deepEqual(eventCalls, ['speak:Before tool'])
+sink.error?.('s1', new Error('failed'))
+assert.deepEqual(eventCalls, ['speak:Before tool', 'stop:s1'])
+
+const playback = new TtsPlaybackQueue()
+const playbackEvents: string[] = []
+const endings = new Map<string, () => void>()
+const audio = (id: string, sessionId: string): QueuedAudio => ({
+  sessionId,
+  start: ended => { playbackEvents.push(`start:${id}`); endings.set(id, ended) },
+  stop: () => playbackEvents.push(`stop:${id}`)
+})
+playback.enqueue(audio('a', 's1'))
+playback.enqueue(audio('b', 's2'))
+playback.enqueue(audio('c', 's1'))
+assert.deepEqual(playbackEvents, ['start:a'])
+playback.stop('s1')
+assert.deepEqual(playbackEvents, ['start:a', 'stop:a', 'stop:c', 'start:b'])
+endings.get('b')?.()
+assert.deepEqual(playbackEvents, ['start:a', 'stop:a', 'stop:c', 'start:b'])
 
 console.log('TTS config, import and lifecycle tests passed')

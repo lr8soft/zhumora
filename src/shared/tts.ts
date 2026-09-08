@@ -77,7 +77,7 @@ export function equivalentTtsModels(left: TtsModelConfig[], right: TtsModelConfi
   return JSON.stringify(canonical(left)) === JSON.stringify(canonical(right))
 }
 
-/** Convert final Markdown into bounded prose suitable for speech. */
+/** Convert assistant Markdown into prose suitable for speech. */
 export function prepareSpeechText(input: unknown): string {
   if (typeof input !== 'string') return ''
   return input
@@ -89,5 +89,27 @@ export function prepareSpeechText(input: unknown): string {
     .replace(/[*_~`]/g, '')
     .replace(/\s+/g, ' ')
     .trim()
-    .slice(0, 5000)
+}
+
+export function splitSpeechText(input: unknown, maxLength = 500): string[] {
+  const text = prepareSpeechText(input)
+  if (!text) return []
+  const limit = Math.max(50, Math.floor(maxLength))
+  const result: string[] = []
+  let remaining = text
+  while (remaining.length > limit) {
+    const window = remaining.slice(0, limit + 1)
+    const punctuation = Math.max(
+      window.lastIndexOf('。'), window.lastIndexOf('！'), window.lastIndexOf('？'), window.lastIndexOf('；'),
+      window.lastIndexOf('. '), window.lastIndexOf('! '), window.lastIndexOf('? '), window.lastIndexOf('; ')
+    )
+    const whitespace = window.lastIndexOf(' ')
+    const splitAt = punctuation >= Math.floor(limit * 0.4)
+      ? punctuation + 1
+      : whitespace >= Math.floor(limit * 0.6) ? whitespace : limit
+    result.push(remaining.slice(0, splitAt).trim())
+    remaining = remaining.slice(splitAt).trim()
+  }
+  if (remaining) result.push(remaining)
+  return result.filter(Boolean)
 }

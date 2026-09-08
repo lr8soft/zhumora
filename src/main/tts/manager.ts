@@ -1,6 +1,6 @@
 import type { WebContents } from 'electron'
 import type { AppSettings, Session } from '../../shared/types.ts'
-import { equivalentTtsModels, prepareSpeechText, type TtsModelConfig } from '../../shared/tts.ts'
+import { equivalentTtsModels, splitSpeechText, type TtsModelConfig } from '../../shared/tts.ts'
 import { generateId } from '../id.ts'
 import { inspectTtsModelDirectory, SherpaOnnxTtsProvider } from './sherpaProvider.ts'
 
@@ -14,12 +14,22 @@ interface TtsStore {
   getSettings(): AppSettings
 }
 
+interface SpeechJob {
+  sessionId: string
+  messageId: string
+  text: string
+  model: TtsModelConfig
+}
+
 export class TtsManager {
   private readonly provider: TtsProvider
   private readonly store: TtsStore
   private renderer: WebContents | undefined
-  private current: { sessionId: string; abort: AbortController } | undefined
-  private outputSessionId: string | undefined
+  private queue: SpeechJob[] = []
+  private current: { job: SpeechJob; abort: AbortController } | undefined
+  private readonly outputSessions = new Set<string>()
+  private resetPending = false
+  private disposed = false
 
   constructor(store: TtsStore, provider: TtsProvider = new SherpaOnnxTtsProvider()) {
     this.store = store
@@ -32,56 +42,81 @@ export class TtsManager {
     return inspectTtsModelDirectory(directory, generateId())
   }
 
-  complete(sessionId: string, messageId: string, content: string): void {
-    const session = this.store.getSession(sessionId)
-    if (!session?.ttsEnabled) return
+  enqueue(sessionId: string, messageId: string, content: string): void {
+    if (this.disposed || !this.store.getSession(sessionId)?.ttsEnabled) return
     const settings = this.store.getSettings()
     const model = settings.ttsModels.find(item => item.id === settings.defaultTtsModelId)
-    const text = prepareSpeechText(content)
-    if (!model || !text) return
-    this.abortCurrent()
-    this.stopOutput()
-    const abort = new AbortController()
-    this.current = { sessionId, abort }
-    void this.provider.synthesize(text, model, abort.signal).then(audio => {
-      if (abort.signal.aborted || this.current?.abort !== abort) return
-      this.outputSessionId = sessionId
-      this.send('tts:audio', { sessionId, messageId, samples: audio.samples, sampleRate: audio.sampleRate })
-    }).catch(error => {
-      if (abort.signal.aborted) return
-      this.send('tts:error', { sessionId, error: error instanceof Error ? error.message : String(error) })
-    }).finally(() => {
-      if (this.current?.abort === abort) this.current = undefined
-    })
+    if (!model) return
+    for (const text of splitSpeechText(content)) this.queue.push({ sessionId, messageId, text, model })
+    this.pump()
   }
 
   stop(sessionId?: string): void {
-    if (!sessionId || this.current?.sessionId === sessionId) this.abortCurrent()
+    this.queue = sessionId ? this.queue.filter(job => job.sessionId !== sessionId) : []
+    if (this.current && (!sessionId || this.current.job.sessionId === sessionId)) this.current.abort.abort()
     this.stopOutput(sessionId)
   }
 
   applySettings(next: AppSettings, previous: AppSettings): void {
     if (equivalentTtsModels(next.ttsModels, previous.ttsModels)
       && next.defaultTtsModelId === previous.defaultTtsModelId) return
-    this.abortCurrent()
-    this.stopOutput()
+    this.stop()
+    this.resetPending = true
+    this.flushReset()
+  }
+
+  dispose(): void {
+    this.disposed = true
+    this.stop()
+    this.renderer = undefined
+    this.resetPending = true
+    this.flushReset()
+  }
+
+  private pump(): void {
+    if (this.disposed || this.current || this.resetPending) return
+    const job = this.queue.shift()
+    if (!job) return
+    if (!this.store.getSession(job.sessionId)?.ttsEnabled) {
+      this.pump()
+      return
+    }
+    const abort = new AbortController()
+    this.current = { job, abort }
+    void this.provider.synthesize(job.text, job.model, abort.signal).then(audio => {
+      if (abort.signal.aborted || this.current?.abort !== abort) return
+      this.outputSessions.add(job.sessionId)
+      this.send('tts:audio', {
+        sessionId: job.sessionId,
+        messageId: job.messageId,
+        samples: audio.samples,
+        sampleRate: audio.sampleRate
+      })
+    }).catch(error => {
+      if (!abort.signal.aborted) {
+        this.send('tts:error', { sessionId: job.sessionId, error: error instanceof Error ? error.message : String(error) })
+      }
+    }).finally(() => {
+      if (this.current?.abort === abort) this.current = undefined
+      this.flushReset()
+      this.pump()
+    })
+  }
+
+  private flushReset(): void {
+    if (!this.resetPending || this.current) return
+    this.resetPending = false
     this.provider.reset()
   }
 
-  dispose(): void { this.abortCurrent(); this.stopOutput(); this.renderer = undefined; this.provider.reset() }
-
-  private abortCurrent(): void {
-    const current = this.current
-    if (!current) return
-    current.abort.abort()
-    this.current = undefined
-  }
-
   private stopOutput(sessionId?: string): void {
-    if (!this.outputSessionId || (sessionId && this.outputSessionId !== sessionId)) return
-    const stoppedSessionId = this.outputSessionId
-    this.outputSessionId = undefined
-    this.send('tts:stop', { sessionId: stoppedSessionId })
+    const sessions = sessionId
+      ? this.outputSessions.has(sessionId) ? [sessionId] : []
+      : [...this.outputSessions]
+    for (const stoppedSessionId of sessions) {
+      this.outputSessions.delete(stoppedSessionId)
+      this.send('tts:stop', { sessionId: stoppedSessionId })
+    }
   }
 
   private send(channel: string, payload: object): void {
