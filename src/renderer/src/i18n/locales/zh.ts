@@ -233,6 +233,7 @@ export default {
     },
     tts: {
       library: 'TTS 模型库',
+      folderHint: 'VITS：一个 .onnx 模型和 tokens.txt；Kokoro：另需 voices.bin。请保留模型附带的 espeak-ng-data 目录。',
       importModel: '导入模型目录',
       empty: '尚未导入 TTS 模型。',
       modelName: '声音名称',

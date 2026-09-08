@@ -214,6 +214,7 @@ export default {
     },
     tts: {
       library: 'Biblioteca de modelos TTS',
+      folderHint: 'VITS: un modelo .onnx y tokens.txt. Kokoro también requiere voices.bin. Conserva la carpeta espeak-ng-data incluida.',
       importModel: 'Importar carpeta', empty: 'Aún no hay modelos TTS.', modelName: 'Nombre de voz', default: 'Predeterminado',
       speakerId: 'ID de hablante', speed: 'Velocidad (0,5–2)'
     },

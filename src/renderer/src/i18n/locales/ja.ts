@@ -214,6 +214,7 @@ export default {
     },
     tts: {
       library: 'TTS モデルライブラリ',
+      folderHint: 'VITS：1 つの .onnx モデルと tokens.txt。Kokoro には voices.bin も必要です。付属の espeak-ng-data フォルダーは保持してください。',
       importModel: 'モデルフォルダーを読み込む', empty: 'TTS モデルはまだありません。', modelName: '音声名', default: 'デフォルトに設定',
       speakerId: '話者 ID', speed: '速度（0.5～2）'
     },

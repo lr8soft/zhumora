@@ -34,7 +34,10 @@ export function TtsSettings({ models, defaultModelId, onChange }: Props) {
     <div className="settings-section">
       <div className="settings-section-title">
         <Volume2 size={17} />
-        <h3>{t('settings.tts.library')}</h3>
+        <div>
+          <h3>{t('settings.tts.library')}</h3>
+          <p>{t('settings.tts.folderHint')}</p>
+        </div>
       </div>
       <button className="btn-primary" onClick={() => void importModel()}><Plus size={14} />{t('settings.tts.importModel')}</button>
     </div>
