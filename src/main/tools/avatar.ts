@@ -11,6 +11,7 @@ export function createAvatarTools(controller: AvatarController): Array<{ name: s
         name: 'avatar_control',
         description: [
           'Control the optional VRM Avatar attached to this session.',
+          'When the Session Avatar system section is present, proactively use action=perform for each new user request; the user does not need to ask for a gesture.',
           'Prefer action=perform: choose an intent and optional emotion in one call. Idle, blinking and activity gestures run automatically.',
           'Use only exact animation/expression names listed in the Session Avatar system section.',
           'This is presentation-only: never use it instead of completing the user task.'
