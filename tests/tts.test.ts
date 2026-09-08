@@ -7,6 +7,7 @@ import { inspectTtsModelDirectory, validateTtsModel } from '../src/main/tts/sher
 import { TtsManager, type TtsProvider } from '../src/main/tts/manager.ts'
 import { createTtsAgentEventSink } from '../src/main/tts/agentEvents.ts'
 import { TtsPlaybackQueue, type QueuedAudio } from '../src/renderer/src/tts/playbackQueue.ts'
+import { TtsPlaybackController } from '../src/renderer/src/tts/playback.ts'
 import type { AppSettings, Session } from '../src/shared/types.ts'
 
 const base: TtsModelConfig = {
@@ -153,5 +154,31 @@ playback.stop('s1')
 assert.deepEqual(playbackEvents, ['start:a', 'stop:a', 'stop:c', 'start:b'])
 endings.get('b')?.()
 assert.deepEqual(playbackEvents, ['start:a', 'stop:a', 'stop:c', 'start:b'])
+
+let createdContexts = 0
+let startedSources = 0
+const playbackController = new TtsPlaybackController(() => {
+  createdContexts++
+  return {
+    state: 'running',
+    resume: async () => {},
+    close: async () => {},
+    destination: {},
+    createBuffer: () => ({ copyToChannel: () => {} }),
+    createBufferSource: () => ({
+      buffer: null,
+      onended: null,
+      connect: () => {},
+      disconnect: () => {},
+      start: () => { startedSources++ },
+      stop: () => {}
+    })
+  } as unknown as AudioContext
+})
+playbackController.dispose()
+await playbackController.play({ sessionId: 's1', messageId: 'm1', samples: new Float32Array([0.1]), sampleRate: 24000 })
+assert.equal(createdContexts, 1, 'StrictMode remount must create a fresh audio context')
+assert.equal(startedSources, 1, 'StrictMode cleanup must not permanently disable playback')
+playbackController.dispose()
 
 console.log('TTS config, import and lifecycle tests passed')

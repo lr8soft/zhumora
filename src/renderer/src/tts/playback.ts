@@ -1,23 +1,29 @@
 import type { TtsAudioPayload } from '@shared/tts'
-import { TtsPlaybackQueue } from './playbackQueue'
+import { TtsPlaybackQueue } from './playbackQueue.ts'
 
-class TtsPlaybackController {
+export class TtsPlaybackController {
   private context: AudioContext | undefined
   private readonly queue = new TtsPlaybackQueue()
   private readonly versions = new Map<string, number>()
   private preparation: Promise<void> = Promise.resolve()
-  private disposed = false
+  private generation = 0
+  private readonly createContext: () => AudioContext
+
+  constructor(createContext: () => AudioContext = () => new AudioContext()) {
+    this.createContext = createContext
+  }
 
   async unlock(): Promise<void> {
-    this.context ??= new AudioContext()
+    this.context ??= this.createContext()
     if (this.context.state === 'suspended') await this.context.resume()
   }
 
   play(payload: TtsAudioPayload): Promise<void> {
     const version = this.versions.get(payload.sessionId) || 0
+    const generation = this.generation
     const scheduled = this.preparation.then(async () => {
       await this.unlock()
-      if (this.disposed || version !== (this.versions.get(payload.sessionId) || 0)) return
+      if (generation !== this.generation || version !== (this.versions.get(payload.sessionId) || 0)) return
       const incoming = payload.samples instanceof Float32Array ? payload.samples : new Float32Array(payload.samples)
       const samples = new Float32Array(incoming.length)
       samples.set(incoming)
@@ -53,7 +59,7 @@ class TtsPlaybackController {
   }
 
   dispose(): void {
-    this.disposed = true
+    this.generation++
     this.stop()
     void this.context?.close()
     this.context = undefined
