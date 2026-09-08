@@ -21,12 +21,13 @@ assert.equal(prepareSpeechText(null), '')
 const directory = await mkdtemp(join(tmpdir(), 'zhumora-tts-'))
 try {
   await Promise.all([
-    writeFile(join(directory, 'model.onnx'), ''), writeFile(join(directory, 'tokens.txt'), ''),
+    writeFile(join(directory, 'en_US-voice.onnx'), ''), writeFile(join(directory, 'tokens.txt'), ''),
     writeFile(join(directory, 'lexicon-zh.txt'), ''), writeFile(join(directory, 'number.fst'), ''),
     mkdir(join(directory, 'espeak-ng-data'))
   ])
   const inspected = await inspectTtsModelDirectory(directory, 'imported')
   assert.equal(inspected.type, 'vits')
+  assert.equal(inspected.modelPath, join(directory, 'en_US-voice.onnx'))
   assert.deepEqual(inspected.lexiconPaths, [join(directory, 'lexicon-zh.txt')])
   assert.deepEqual(inspected.ruleFsts, [join(directory, 'number.fst')])
 } finally { await rm(directory, { recursive: true, force: true }) }
@@ -42,6 +43,16 @@ try {
   assert.equal(inspected.type, 'kokoro')
   assert.equal(inspected.voicesPath, join(kokoroDirectory, 'voices.bin'))
 } finally { await rm(kokoroDirectory, { recursive: true, force: true }) }
+
+const ambiguousDirectory = await mkdtemp(join(tmpdir(), 'zhumora-tts-ambiguous-'))
+try {
+  await Promise.all([
+    writeFile(join(ambiguousDirectory, 'acoustic.onnx'), ''),
+    writeFile(join(ambiguousDirectory, 'vocoder.onnx'), ''),
+    writeFile(join(ambiguousDirectory, 'tokens.txt'), '')
+  ])
+  await assert.rejects(inspectTtsModelDirectory(ambiguousDirectory, 'ambiguous'), /unambiguous ONNX model/)
+} finally { await rm(ambiguousDirectory, { recursive: true, force: true }) }
 
 const guardedDirectory = await mkdtemp(join(tmpdir(), 'zhumora-tts-guard-'))
 const outsideModel = join(tmpdir(), `zhumora-outside-${Date.now()}.onnx`)

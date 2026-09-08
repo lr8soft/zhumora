@@ -12,10 +12,13 @@ export function registerTtsIpc(win: BrowserWindow, tts: TtsManager): void {
     return result.canceled ? null : tts.importModel(result.filePaths[0])
   })
 
-  ipcMain.handle('tts:session-set', (_event, sessionId: unknown, requested: TtsSessionUpdate) => {
+  ipcMain.handle('tts:session-set', (_event, sessionId: unknown, requested: unknown) => {
     if (typeof sessionId !== 'string' || !sessionId) throw new Error('Invalid session id.')
     if (!db.getSession(sessionId)) throw new Error('Session not found.')
-    const enabled = requested?.enabled === true
+    if (!requested || typeof requested !== 'object' || typeof (requested as TtsSessionUpdate).enabled !== 'boolean') {
+      throw new Error('Invalid TTS session update.')
+    }
+    const enabled = (requested as TtsSessionUpdate).enabled
     const settings = db.getSettings()
     if (enabled && !settings.ttsModels.some(model => model.id === settings.defaultTtsModelId)) {
       throw new Error('Import and select a default TTS model first.')
