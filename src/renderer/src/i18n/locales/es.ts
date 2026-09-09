@@ -66,6 +66,8 @@ export default {
     imageErrorDecode: "No se pudo decodificar la imagen. Prueba con otra",
     truncatedTool: "La salida alcanzó el límite de tokens del modelo: la llamada a la herramienta fue truncada. Se pidió al modelo reintentar con una salida más pequeña.",
     truncatedText: "La salida alcanzó el límite de tokens del modelo: continuando automáticamente.",
+    streamInterruptedText: "La conexión con el modelo se interrumpió a mitad de la respuesta: continuando automáticamente.",
+    streamInterruptedTool: "La conexión con el modelo se interrumpió a mitad de la respuesta: la llamada a la herramienta fue truncada. Se pidió al modelo reintentar con una salida más pequeña.",
     inputResizeHint: "Arrastra para cambiar la altura del área de entrada (clic para restablecer)",
     reasoningEffortHint: "Elige la intensidad de razonamiento (activado para el proveedor actual)",
     reasoningEffort: { off: 'Predeterminado', low: 'Baja', medium: 'Media', high: 'Alta' },

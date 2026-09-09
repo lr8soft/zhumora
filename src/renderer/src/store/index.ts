@@ -128,10 +128,12 @@ interface CompactNotice {
   error?: string
 }
 
-/** 单轮输出被 max_tokens 截断的通知（按会话，展示后自动消失） */
+/** 单轮输出不完整的通知（按会话，展示后自动消失） */
 interface TruncatedNotice {
-  /** 'tool' = 工具调用参数被截断（已要求模型拆小步重发）；'text' = 纯文本回答被截断（已自动续写） */
+  /** 'tool' = 工具调用参数被截断（已要求模型拆小步重发）；'text' = 纯文本被截断（已自动续写） */
   kind: 'tool' | 'text'
+  /** 'length' = 达到 max_tokens 上限；'stream' = 流式响应中途被网络断开 */
+  reason: 'length' | 'stream'
 }
 
 /** 会话的上下文压缩标记（LLM 上下文中已折叠的边界；消息表不变，完整历史仍可见） */

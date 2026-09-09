@@ -29,12 +29,14 @@ export interface AgentEventCallbacks {
   /** 上下文压缩完成（通知前端展示提示 + 更新压缩标记位置） */
   onCompact?: (info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }) => void
   /**
-   * 单轮输出达到 max_tokens 上限被截断（finish_reason = length）。
-   * 通知前端展示"输出被截断"提示条 —— 这是"工作没做完却无报错停止"
+   * 单轮输出不完整（达到 max_tokens 上限 / 流中途网络断开）。
+   * 通知前端展示提示条 —— 这是"工作没做完却无报错停止"
    * 的根因场景，必须让用户可见（对齐 opencode / Cline 的 finish_reason 处理）。
-   * 截断的文本/工具调用已按原样保留，runner 会自动引导模型续写或重试工具调用。
+   * 部分内容已按原样保留，runner 会自动引导模型续写或重试工具调用。
+   * @param kind   'tool' = 本轮含工具调用（参数残缺）；'text' = 纯文本
+   * @param reason 'length' = 达到 max_tokens 上限；'stream' = 流中途网络断开
    */
-  onTruncated?: (kind: 'tool' | 'text') => void
+  onTruncated?: (kind: 'tool' | 'text', reason: 'length' | 'stream') => void
 }
 
 /** streamChat 一次调用的结果 + 本轮思考内容（思考内容不进入模型上下文） */
@@ -44,4 +46,11 @@ export interface RoundResult {
   usage: TokenUsage | null | undefined
   finishReason: string | undefined
   reasoning: string
+  /**
+   * 流式响应中途被网络断开（已输出部分内容后连接失败）。
+   * 与 finish_reason=length 的"输出上限截断"是两种不同的中断，
+   * 但恢复策略同构：保留部分文本、引导模型续写/重发工具调用。
+   * 详见 provider.streamChat 与 turnDecision。
+   */
+  streamInterrupted?: boolean
 }

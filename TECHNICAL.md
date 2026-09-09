@@ -119,6 +119,32 @@ agent loop must distinguish "the model genuinely finished the turn" from
 "the response was cut off at the per-response output limit", which the
 protocol reports as `finish_reason: "length"`.
 
+### Stream interruption (mid-response network drop)
+
+A third incomplete-turn cause is the SSE connection dying mid-response
+(`net::ERR_HTTP2_PROTOCOL_ERROR`, `net::ERR_INCOMPLETE_CHUNKED_ENCODING`,
+connection reset, or a 120s idle stall). The provider layer
+(`src/main/llm/provider.ts`) handles it by whether anything was already
+emitted:
+
+- **nothing emitted** → transparent retry, same policy as request-level
+  failures (settings `maxRetries`, exponential backoff). Error classification
+  lives in the pure module `src/main/net/retryCore.ts`: it recognizes
+  Chromium `net::ERR_*` codes (Electron `net.fetch`) in addition to undici
+  codes; explicit offline errors (`ERR_INTERNET_DISCONNECTED`) fail fast
+  instead of burning the retry budget.
+- **partial output already shown** → re-sending would duplicate content in
+  the UI, so the provider returns the partial round with a
+  `streamInterrupted` flag instead of throwing. The agent loop treats it
+  exactly like a `finish_reason: "length"` turn (shared recovery budget of 2):
+  the partial text is kept and a "continue from where you stopped" notice is
+  injected; if the interrupted turn carried incomplete `tool_calls`, they get
+  placeholder error results instead of being executed. Exceeding the budget
+  finalizes the run with a visible notice.
+
+The renderer notice bar distinguishes the cause (`reason: 'length' | 'stream'`)
+so the user sees "connection dropped" rather than "token limit".
+
 ## 5. Agent execution
 
 The core agent follows a ReAct-style tool loop:

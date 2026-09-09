@@ -13,7 +13,7 @@ export interface AgentEventSink {
   complete?(sessionId: string, messageId: string, content: string): void
   error?(sessionId: string, error: Error): void
   retry?(sessionId: string, failedAttempt: number, maxRetries: number, error: Error): void
-  truncated?(sessionId: string, kind: 'tool' | 'text'): void
+  truncated?(sessionId: string, kind: 'tool' | 'text', reason: 'length' | 'stream'): void
   compact?(sessionId: string, info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }): void
 }
 
@@ -37,7 +37,7 @@ export function combineAgentEventSinks(...sinks: AgentEventSink[]): AgentEventSi
     error: (sessionId, error) => sinks.forEach(sink => sink.error?.(sessionId, error)),
     retry: (sessionId, failedAttempt, maxRetries, error) =>
       sinks.forEach(sink => sink.retry?.(sessionId, failedAttempt, maxRetries, error)),
-    truncated: (sessionId, kind) => sinks.forEach(sink => sink.truncated?.(sessionId, kind)),
+    truncated: (sessionId, kind, reason) => sinks.forEach(sink => sink.truncated?.(sessionId, kind, reason)),
     compact: (sessionId, info) => sinks.forEach(sink => sink.compact?.(sessionId, info))
   }
 }
@@ -159,7 +159,7 @@ export function createPersistedAgentCallbacks(
     onRetry: (failedAttempt, maxRetries, error) => {
       events.retry?.(sessionId, failedAttempt, maxRetries, error)
     },
-    onTruncated: kind => events.truncated?.(sessionId, kind),
+    onTruncated: (kind, reason) => events.truncated?.(sessionId, kind, reason),
     onCompact: info => events.compact?.(sessionId, info)
   }
 }

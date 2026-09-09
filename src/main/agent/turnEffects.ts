@@ -15,6 +15,8 @@ import {
   MAX_EMPTY_CONTINUATIONS,
   MAX_TRUNCATION_CONTINUATIONS,
   RecoveryBudget,
+  STREAM_INTERRUPTED_CONTINUE_PROMPT,
+  STREAM_INTERRUPTED_TOOL_ERROR,
   TRUNCATION_CONTINUE_PROMPT,
   TRUNCATION_TOOL_ERROR
 } from './recoveryPolicy'
@@ -37,26 +39,30 @@ export function applyRecoveryDecision(
   cb: AgentEventCallbacks
 ): void {
   if (decision.kind === 'recover_truncated_tool') {
-    // 截断发生在工具轮：tool_calls 参数 JSON 多半不完整，不能执行。
-    // 把截断的 assistant 消息作为真实上下文保留（模型能看到自己写到哪里），
+    // 不完整（length 截断 / 流中断）发生在工具轮：tool_calls 参数 JSON 多半不完整，不能执行。
+    // 把本轮 assistant 消息作为真实上下文保留（模型能看到自己写到哪里），
     // 给每个调用补一条解释性 tool 结果 → 下一轮引导模型拆小步重发。
+    const isStream = decision.cause === 'stream'
+    const toolError = isStream ? STREAM_INTERRUPTED_TOOL_ERROR : TRUNCATION_TOOL_ERROR
     const assistantMsg: ChatMessage = { role: 'assistant', content: result.content || null, tool_calls: result.toolCalls }
     const truncatedAssistantId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined) ?? null
     conversation.append(assistantMsg, truncatedAssistantId)
     allAssistantMessages.push(assistantMsg)
 
-    cb.onTruncated?.('tool')
+    cb.onTruncated?.('tool', decision.cause || 'length')
     const continuation = recovery.recordTruncation()
-    log('warn', `Round ${round}: output truncated at token limit (finish_reason=length) — tool call(s) incomplete, asking model to retry with smaller output (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
+    log('warn', `Round ${round}: incomplete tool round (${isStream ? 'stream interrupted mid-response' : 'output truncated at token limit (finish_reason=length)'}) — tool call(s) incomplete, asking model to retry with smaller output (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
     for (const tc of result.toolCalls) {
       cb.onToolCall?.(tc, truncatedAssistantId)
-      const persistId = cb.onToolResult?.(tc.id, tc.function.name, TRUNCATION_TOOL_ERROR, true, 0) ?? null
-      conversation.append({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: TRUNCATION_TOOL_ERROR }, persistId)
+      const persistId = cb.onToolResult?.(tc.id, tc.function.name, toolError, true, 0) ?? null
+      conversation.append({ role: 'tool', tool_call_id: tc.id, name: tc.function.name, content: toolError }, persistId)
     }
     return
   }
 
   if (decision.kind === 'recover_truncated_text') {
+    const isStream = decision.cause === 'stream'
+    const continuePrompt = isStream ? STREAM_INTERRUPTED_CONTINUE_PROMPT : TRUNCATION_CONTINUE_PROMPT
     // content 为空时不推空 assistant 消息（部分严格后端会拒绝），直接续写
     if (result.content) {
       conversation.append(
@@ -67,10 +73,10 @@ export function applyRecoveryDecision(
     } else {
       cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
     }
-    cb.onTruncated?.('text')
+    cb.onTruncated?.('text', decision.cause || 'length')
     const continuation = recovery.recordTruncation()
-    log('warn', `Round ${round}: text output truncated at token limit (finish_reason=length) — continuing (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
-    conversation.appendSyntheticUser(TRUNCATION_CONTINUE_PROMPT)
+    log('warn', `Round ${round}: incomplete text round (${isStream ? 'stream interrupted mid-response' : 'text output truncated at token limit (finish_reason=length)'}) — continuing (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
+    conversation.appendSyntheticUser(continuePrompt)
     return
   }
 

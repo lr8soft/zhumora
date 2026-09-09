@@ -137,8 +137,10 @@ const api = {
       ipcRenderer.on('agent:retry', handler)
       return () => ipcRenderer.removeListener('agent:retry', handler)
     },
-    /** 单轮输出被 max_tokens 上限截断（kind: 'tool' = 工具调用被截断，'text' = 纯文本被截断） */
-    onTruncated: (cb: (data: { sessionId: string; kind: 'tool' | 'text' }) => void) => {
+    /** 单轮输出不完整（达到 max_tokens 上限 / 流中途网络断开）
+     *  kind: 'tool' = 工具调用被截断，'text' = 纯文本被截断
+     *  reason: 'length' = token 上限，'stream' = 流中途断开 */
+    onTruncated: (cb: (data: { sessionId: string; kind: 'tool' | 'text'; reason: 'length' | 'stream' }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:truncated', handler)
       return () => ipcRenderer.removeListener('agent:truncated', handler)

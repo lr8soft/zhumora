@@ -66,6 +66,8 @@ export default {
     imageErrorDecode: "Échec de la décodification de l'image. Essayez-en une autre",
     truncatedTool: "La réponse a atteint la limite de jetons du modèle : l'appel d'outil a été tronqué. Le modèle est invité à réessayer avec une sortie plus petite.",
     truncatedText: "La réponse a atteint la limite de jetons du modèle — continuation automatique.",
+    streamInterruptedText: "La connexion au modèle a été interrompue en cours de réponse — continuation automatique.",
+    streamInterruptedTool: "La connexion au modèle a été interrompue en cours de réponse : l'appel d'outil a été tronqué. Le modèle est invité à réessayer avec une sortie plus petite.",
     inputResizeHint: "Glisser pour redimensionner la zone de saisie (clic pour réinitialiser)",
     reasoningEffortHint: "Choisir l'intensité de raisonnement (activé pour le fournisseur actuel)",
     reasoningEffort: { off: 'Par défaut', low: 'Faible', medium: 'Moyen', high: 'Élevé' },

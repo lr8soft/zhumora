@@ -66,6 +66,8 @@ export default {
     imageErrorDecode: "Bild konnte nicht decodiert werden. Bitte anderes Bild versuchen",
     truncatedTool: "Die Ausgabe hat das Token-Limit des Modells erreicht — der Tool-Aufruf wurde abgeschnitten. Das Modell wird um einen Wiederholungsversuch mit kleinerer Ausgabe gebeten.",
     truncatedText: "Die Ausgabe hat das Token-Limit des Modells erreicht — wird automatisch fortgesetzt.",
+    streamInterruptedText: "Die Verbindung zum Modell ist während der Antwort abgebrochen — wird automatisch fortgesetzt.",
+    streamInterruptedTool: "Die Verbindung zum Modell ist während der Antwort abgebrochen — der Tool-Aufruf wurde abgeschnitten. Das Modell wird um einen Wiederholungsversuch mit kleinerer Ausgabe gebeten.",
     inputResizeHint: "Ziehen, um die Eingabehöhe zu ändern (Klicken zum Zurücksetzen)",
     reasoningEffortHint: "Begründungsintensität wählen (für aktuellen Anbieter aktiviert)",
     reasoningEffort: { off: 'Standard', low: 'Niedrig', medium: 'Mittel', high: 'Hoch' },

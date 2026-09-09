@@ -66,6 +66,8 @@ export default {
     imageErrorDecode: "画像のデコードに失敗しました。別の画像をお試しください",
     truncatedTool: "出力がモデルのトークン上限に達しました — ツール呼び出しが途中までになりました。小さな出力で再試行するようモデルに依頼しています。",
     truncatedText: "出力がモデルのトークン上限に達しました — 自動で続行します。",
+    streamInterruptedText: "モデルへの接続が応答中に切断されました — 自動で続行します。",
+    streamInterruptedTool: "モデルへの接続が応答中に切断されました — ツール呼び出しが途中までになりました。小さな出力で再試行するようモデルに依頼しています。",
     inputResizeHint: "ドラッグで入力欄の高さを調整（クリックでリセット）",
     reasoningEffortHint: "思考強度を選択（現在のプロバイダーで有効）",
     reasoningEffort: { off: '既定', low: '低', medium: '中', high: '高' },

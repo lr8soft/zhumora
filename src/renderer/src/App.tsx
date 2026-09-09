@@ -286,10 +286,10 @@ export default function App() {
         useAppStore.getState().setRetryStatus(sessionId, { failedAttempt, maxRetries })
       }),
 
-      // 单轮输出被 max_tokens 截断（按会话）→ 展示提示条，8 秒后自动消失
-      window.api.agent.onTruncated(({ sessionId, kind }) => {
+      // 单轮输出不完整（token 上限截断 / 流中途网络断开）→ 展示提示条，8 秒后自动消失
+      window.api.agent.onTruncated(({ sessionId, kind, reason }) => {
         useAppStore.setState((s) => ({
-          truncatedNotices: { ...s.truncatedNotices, [sessionId]: { kind } }
+          truncatedNotices: { ...s.truncatedNotices, [sessionId]: { kind, reason: reason || 'length' } }
         }))
         setTimeout(() => {
           useAppStore.setState((s) => {

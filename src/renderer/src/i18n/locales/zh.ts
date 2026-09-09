@@ -66,6 +66,8 @@ export default {
     imageErrorDecode: "图片解析失败，请更换图片",
     truncatedTool: "单轮输出达到模型 token 上限，工具调用被截断——已要求模型拆小步重试。",
     truncatedText: "单轮输出达到模型 token 上限——正在自动续写。",
+    streamInterruptedText: "与模型连接在响应中途断开——正在自动续写。",
+    streamInterruptedTool: "与模型连接在响应中途断开，工具调用被截断——已要求模型拆小步重试。",
     inputResizeHint: "拖拽调整输入区高度（单击恢复自适应）",
     reasoningEffortHint: "选择思考强度（当前 Provider 已开启该功能）",
     reasoningEffort: {

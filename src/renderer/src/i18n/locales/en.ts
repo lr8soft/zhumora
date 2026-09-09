@@ -66,6 +66,8 @@ export default {
     imageErrorDecode: "Failed to decode image, please try another one",
     truncatedTool: "Output hit the model's token limit — the tool call was cut off, asking the model to retry with smaller output.",
     truncatedText: "Output hit the model's token limit — continuing automatically.",
+    streamInterruptedText: "Connection to the model dropped mid-response — continuing automatically.",
+    streamInterruptedTool: "Connection to the model dropped mid-response — the tool call was cut off, asking the model to retry with smaller output.",
     inputResizeHint: "Drag to resize the input area (click to reset)",
     reasoningEffortHint: "Choose reasoning effort (enabled for the current provider)",
     reasoningEffort: { off: 'Default', low: 'Low', medium: 'Medium', high: 'High' },

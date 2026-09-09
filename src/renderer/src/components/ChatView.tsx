@@ -363,11 +363,15 @@ export default function ChatView() {
         </div>
       )}
 
-      {/* 输出截断通知条（单轮达到 max_tokens 上限；自动消失） */}
+      {/* 输出不完整通知条（token 上限截断 / 流中途网络断开；自动消失） */}
       {truncatedNotice && (
         <div className="truncated-notice">
           <Scissors size={14} />
-          <span>{t(truncatedNotice.kind === 'tool' ? 'chat.truncatedTool' : 'chat.truncatedText')}</span>
+          <span>{t(
+            truncatedNotice.kind === 'tool'
+              ? (truncatedNotice.reason === 'stream' ? 'chat.streamInterruptedTool' : 'chat.truncatedTool')
+              : (truncatedNotice.reason === 'stream' ? 'chat.streamInterruptedText' : 'chat.truncatedText')
+          )}</span>
         </div>
       )}
 

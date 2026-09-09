@@ -39,7 +39,7 @@ export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEven
     retry: (sessionId, failedAttempt, maxRetries) => {
       sender.send('agent:retry', { sessionId, failedAttempt, maxRetries })
     },
-    truncated: (sessionId, kind) => sender.send('agent:truncated', { sessionId, kind }),
+    truncated: (sessionId, kind, reason) => sender.send('agent:truncated', { sessionId, kind, reason }),
     compact: (sessionId, info) => sender.send('agent:compact', { sessionId, source: 'auto', ...info })
   }
 }

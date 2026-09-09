@@ -149,12 +149,13 @@ export async function runAgent(
       throw new AgentAbortedError()
     }
 
-    // finish_reason=length / 空响应 / 工具轮 / 正常完成的分支决策是纯状态机
+    // finish_reason=length / 流中断 / 空响应 / 工具轮 / 正常完成的分支决策是纯状态机
     // （turnDecision），这里只执行决策的副作用。
     const decision = decideTurnOutcome({
       finishReason: result.finishReason,
       toolCallCount: result.toolCalls.length,
       contentEmpty: !result.content.trim(),
+      streamInterrupted: result.streamInterrupted,
       canRecoverTruncation: recovery.canRecoverTruncation(),
       canRecoverEmptyResponse: recovery.canRecoverEmptyResponse()
     })
@@ -170,8 +171,8 @@ export async function runAgent(
 
     if (decision.kind === 'complete') {
       if (decision.truncatedNotice) {
-        log('warn', `Round ${round}: output truncated and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
-        cb.onTruncated?.('text')
+        log('warn', `Round ${round}: incomplete output (${decision.cause === 'stream' ? 'stream interrupted' : 'truncated at token limit'}) and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
+        cb.onTruncated?.('text', decision.cause || 'length')
       }
       log('info', `Agent completed after ${round} round(s)`)
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
@@ -275,7 +276,7 @@ async function streamRound(
 ): Promise<RoundResult> {
   let roundReasoning = ''
   const model = modelOverride || provider.defaultModel
-  const { content, toolCalls, usage, finishReason } = await streamChat(provider, {
+  const { content, toolCalls, usage, finishReason, streamInterrupted } = await streamChat(provider, {
     messages: conversation.messages,
     tools: tools.length > 0 ? tools : undefined,
     toolChoice: 'auto',
@@ -292,7 +293,7 @@ async function streamRound(
     onError: cb.onError,
     onRetry: cb.onRetry
   })
-  return { content, toolCalls, usage, finishReason, reasoning: roundReasoning }
+  return { content, toolCalls, usage, finishReason, reasoning: roundReasoning, streamInterrupted }
 }
 
 /**
