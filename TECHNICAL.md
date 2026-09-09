@@ -242,17 +242,15 @@ multi-format schema:
 - `powerpoint_presentation`
 - `pdf_document`
 
-When the latest request directly reads, creates, or changes an Office artifact,
-the runner selects the matching route, removes unrelated execution tools such as
-`bash`, `write`, and `edit` from that run, and requires a tool call until the
-matching Office tool has been attempted. Explicit requests to write source code
-or scripts are excluded from artifact routing. Recent conversation context keeps
-the route active for follow-ups such as "make the colors brighter."
+The four tools are registered as ordinary built-ins in the composition root and
+are additive: they never remove, hide, or otherwise affect other tools
+(`officeTools.test.ts` asserts this explicitly). Each tool validates the file
+extension and is classified `safe` for reads and `normal` for writes/edits. The
+implementation lives in `src/main/tools/office.ts`, which exposes a single
+`executeOffice` entry point consumed by the four thin format-specific handlers.
 
 The format-specific schemas use `create_or_replace` for complete artifact writes.
-Internally it maps to the Office implementation's `create` action. The legacy
-generic `office` handler remains available to direct callers and tests but is not
-registered as a model-facing tool.
+Internally it maps to the Office implementation's `create` action.
 
 Word, PowerPoint, and PDF creation accept the same five high-level visual
 templates (`modern_blue`, `dark_tech`, `warm_minimal`, `forest`, or `corporate`)
@@ -315,19 +313,28 @@ This mechanism is intended for reusable instructions and workflows rather than e
 
 Before a request is sent to the model, Zhumora estimates context usage.
 
-The current compact threshold is 60% of the configured or detected context window.
+Auto compaction triggers at 81% of the detected context window
+(`0.9 usable input × 0.9 trigger ratio`). Compaction only rewrites the
+effective conversation sent to the LLM — the `messages` table is never
+touched, and only a successful summary is persisted as
+`{ upToMessageId, summary }`.
 
-When compaction is required:
+When compaction runs:
 
 1. the system message is preserved
-2. the most recent 8 messages are preserved
+2. the most recent messages within a token budget are preserved
+   (`min(20,000, 30% of context window)`)
 3. older messages are summarized by the LLM
-4. the old message range is replaced with the summary
+4. the old message range is replaced with the summary in the effective context
 5. execution continues with the compacted history
 
-The split point is aligned to complete tool-call rounds so an assistant `tool_calls` message is not separated from its tool results.
+The split point is aligned to complete tool-call rounds so an assistant
+`tool_calls` message is not separated from its tool results. If the summary
+call fails, the current run degrades to truncation and no compaction state is
+persisted (the old summary is never lost).
 
-Current token estimation uses an approximate character-based calculation.
+Current token estimation is an approximate, CJK-aware character-based
+calculation that also accounts for tool-call payloads and base64 images.
 
 ## 11. Long-term memory
 
