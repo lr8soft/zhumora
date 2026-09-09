@@ -1,6 +1,7 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import ReactMarkdown from 'react-markdown'
+import remarkGfm from 'remark-gfm'
 import { ChevronDown, ChevronRight, ChevronUp, Brain, Terminal, Wrench, XCircle, Archive } from 'lucide-react'
 import type { UIMessage, ToolCall } from '@shared/types'
 import { COMPACT_SUMMARY_PREFIX } from '@shared/types'
@@ -15,6 +16,11 @@ interface Props {
   toolRevision?: string
   /** 当前会话的重试状态（按会话传入，避免后台并行会话的状态串到前台） */
   retryStatus?: { failedAttempt: number; maxRetries: number }
+}
+
+/** 统一 Markdown 渲染：挂载 remark-gfm，支持 GFM 表格/任务列表/删除线（对齐 Cline/opencode）。 */
+function Markdown({ content }: { content: string }) {
+  return <ReactMarkdown remarkPlugins={[remarkGfm]}>{content}</ReactMarkdown>
 }
 
 function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Props) {
@@ -79,7 +85,7 @@ function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Prop
       {/* 正文内容 */}
       {message.content ? (
         <div className="markdown-body">
-          <ReactMarkdown>{message.content}</ReactMarkdown>
+          <Markdown content={message.content} />
         </div>
       ) : null}
 
@@ -177,7 +183,7 @@ function ThinkingBlock({ reasoning, streaming }: { reasoning: string; streaming:
       </button>
       {expanded && (
         <div className="thinking-block-body" ref={bodyRef}>
-          <ReactMarkdown>{reasoning}</ReactMarkdown>
+          <Markdown content={reasoning} />
         </div>
       )}
     </div>
@@ -264,7 +270,7 @@ function CompactSummaryBlock({ summary }: { summary: string }) {
         </button>
         {expanded && (
           <div className="compact-summary-body">
-            <ReactMarkdown>{summary}</ReactMarkdown>
+            <Markdown content={summary} />
           </div>
         )}
       </div>
