@@ -2,10 +2,9 @@ import type { TelegramBotConfig } from '../../shared/types'
 import { AgentAbortedError } from '../../shared/types'
 import { normalizeTelegramBotConfig } from '../../shared/telegram'
 import type { PermissionBroker } from '../agent/permissionBroker'
-import { combineAgentEventSinks, type AgentEventSink } from '../agent/persistedCallbacks'
-import type { BotActivity, BotPlatformService } from '../bot/contracts'
-import type { BotAgentBridge } from '../bot/agentBridge'
-import { BotRunCoordinator, type BotRunContext } from '../bot/runCoordinator'
+import type { BotPlatformService } from '../bot/contracts'
+import type { BotSessionAdapter } from '../bot/sessionAdapter'
+import { BotMessageQueue } from '../bot/messageQueue'
 import { log } from '../llm/logger'
 import { getFetch } from '../net/fetch'
 import {
@@ -33,28 +32,15 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
   private bot: TelegramUser | null = null
   private config = normalizeTelegramBotConfig(undefined)
   private generation = 0
-  private agentEvents: AgentEventSink = {}
   private readonly permissionRoutes = new Map<string, TelegramPermissionRoute>()
-  private readonly agent: BotAgentBridge
+  private readonly agent: BotSessionAdapter
   private readonly permissions: PermissionBroker
-  private readonly runs: BotRunCoordinator
+  private readonly runs: BotMessageQueue
 
-  constructor(agent: BotAgentBridge, permissions: PermissionBroker) {
+  constructor(agent: BotSessionAdapter, permissions: PermissionBroker) {
     this.agent = agent
     this.permissions = permissions
-    this.runs = new BotRunCoordinator(permissions)
-  }
-
-  setActivityListener(listener: (activity: BotActivity) => boolean | void): void {
-    this.runs.setActivityListener(listener)
-  }
-
-  setAgentEventSink(sink: AgentEventSink): void {
-    this.agentEvents = sink
-  }
-
-  abortSession(sessionId: string): boolean {
-    return this.runs.abortSession(sessionId)
+    this.runs = new BotMessageQueue()
   }
 
   async test(input: TelegramBotConfig): Promise<{ name: string; username?: string }> {
@@ -176,7 +162,7 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     const generation = this.generation
     void this.runs.enqueue(
       conversationId,
-      context => this.processMessage(conversationId, message, text, photos, generation, context)
+      signal => this.processMessage(conversationId, message, text, photos, generation, signal)
     ).catch(() => {})
   }
 
@@ -208,7 +194,7 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     text: string,
     photos: TelegramPhotoSize[],
     generation: number,
-    run: BotRunContext
+    signal: AbortSignal
   ): Promise<void> {
     if (generation !== this.generation || !this.client || !this.bot || this.controller?.signal.aborted) return
     const response = new TelegramResponseStream(this.client, message, this.controller?.signal)
@@ -224,7 +210,7 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
       // 会话按发送者隔离，群聊历史里用名字标注发言人，模型才能区分是谁说的
       const senderName = displayName(message.from!)
       const conversationLabel = message.chat.type === 'private' ? undefined : `${senderName}:`
-      const images = await this.downloadPhotos(photos, run.signal)
+      const images = await this.downloadPhotos(photos, signal)
       await this.agent.handle({
         channel: this.channel,
         accountId: String(this.bot.id),
@@ -235,11 +221,10 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
         text: conversationLabel ? `${conversationLabel} ${text}`.trim() : text,
         images: images.length > 0 ? images : undefined,
         approveMode: this.config.approveMode,
-        signal: run.signal,
-        events: combineAgentEventSinks(this.agentEvents, response.events),
+        signal,
+        events: response.events,
         permissionPresenters: [permissionPresenter],
-        permissionTimeoutMs: 10 * 60 * 1000,
-        onSessionReady: run.onSessionReady
+        permissionTimeoutMs: 10 * 60 * 1000
       })
       await response.flush()
     } catch (error) {

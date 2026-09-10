@@ -1,5 +1,5 @@
 import type { ChatMessage, UIMessage } from '../../shared/types'
-import { buildUserContent } from '../../shared/multimodal'
+import { buildUserContent } from '../../shared/multimodal.ts'
 
 /** Translate persisted/UI records into the provider-facing message contract. */
 export function mapPersistedHistory(history: UIMessage[]): { messages: ChatMessage[]; ids: string[] } {

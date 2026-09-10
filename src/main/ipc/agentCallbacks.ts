@@ -1,15 +1,15 @@
-import type { AgentEventCallbacks } from '../agent/runner'
 import type { AgentEventSink } from '../agent/persistedCallbacks'
-import { createPersistedAgentCallbacks } from '../agent/persistedCallbacks'
-import { combineAgentEventSinks } from '../agent/persistedCallbacks'
 import type { PermissionPresenter } from '../agent/permissionBroker'
-import * as db from '../store/db'
-import { generateId } from '../id'
 
 /** Maps platform-neutral Agent events onto the renderer IPC contract. */
 export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEventSink {
   return {
-    userMessage: message => sender.send('agent:user_message', { sessionId: message.sessionId, message }),
+    running: (sessionId, running) => sender.send('agent:running', { sessionId, running }),
+    aborted: sessionId => sender.send('agent:aborted', { sessionId }),
+    titleUpdated: (sessionId, title) => sender.send('session:title_updated', { sessionId, title }),
+    userMessage: (message, source) => {
+      if (source === 'external') sender.send('agent:user_message', { sessionId: message.sessionId, message })
+    },
     assistantStart: (sessionId, messageId) => {
       sender.send('agent:assistant_message', { sessionId, messageId, content: '', toolCalls: [], phase: 'start' })
     },
@@ -40,7 +40,7 @@ export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEven
       sender.send('agent:retry', { sessionId, failedAttempt, maxRetries })
     },
     truncated: (sessionId, kind, reason) => sender.send('agent:truncated', { sessionId, kind, reason }),
-    compact: (sessionId, info) => sender.send('agent:compact', { sessionId, source: 'auto', ...info })
+    compact: (sessionId, info) => sender.send('agent:compact', { sessionId, ...info })
   }
 }
 
@@ -64,21 +64,5 @@ export function createIpcPermissionPresenter(sender: Electron.WebContents): Perm
         resolution
       })
     }
-  }
-}
-
-export function buildAgentCallbacks(
-  sessionId: string,
-  sender: Electron.WebContents,
-  additionalSink?: AgentEventSink
-): { callbacks: AgentEventCallbacks } {
-  const rendererSink = createIpcAgentEventSink(sender)
-  return {
-    callbacks: createPersistedAgentCallbacks(
-      sessionId,
-      db,
-      generateId,
-      additionalSink ? combineAgentEventSinks(rendererSink, additionalSink) : rendererSink
-    )
   }
 }

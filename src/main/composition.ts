@@ -13,7 +13,12 @@ import * as db from './store/db'
 import { getMcpConnectionStatus } from './mcp/client'
 import { getSkillsSystemPrompt } from './skill/manager'
 import { PermissionBroker } from './agent/permissionBroker'
-import { BotAgentBridge } from './bot/agentBridge'
+import { SessionService } from './agent/sessionService'
+import { runAgent } from './agent/runner'
+import { fetchContextWindow, planAutoCompact } from './agent/context'
+import { complete } from './llm/provider'
+import { log } from './llm/logger'
+import { BotSessionAdapter } from './bot/sessionAdapter'
 import { BotPlatformManager, defineBotPlatform } from './bot/platformManager'
 import { TelegramBotService } from './telegram/service'
 import { equivalentTelegramBotConfig, normalizeTelegramBotConfig } from '../shared/telegram'
@@ -35,6 +40,7 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
 export interface ApplicationServices {
   tools: ToolRegistry
   permissions: PermissionBroker
+  sessions: SessionService
   bots: BotPlatformManager
   avatar: AvatarWindowManager
   tts: TtsManager
@@ -49,16 +55,22 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
   }
   const permissions = new PermissionBroker()
   const tts = new TtsManager(db)
-  const botAgent = new BotAgentBridge({
+  const sessions = new SessionService({
     tools: toolRegistry,
     permissions,
     store: db,
     getSkillsPrompt: getSkillsSystemPrompt,
     getMcpStatus: getMcpConnectionStatus,
-    getSystemPromptExtra: sessionId => avatar.buildSystemPrompt(sessionId)
+    getSystemPromptExtra: sessionId => avatar.buildSystemPrompt(sessionId),
+    executeAgent: runAgent,
+    fetchContextWindow,
+    planAutoCompact,
+    completeText: complete,
+    log
   })
-  const telegram = new TelegramBotService(botAgent, permissions)
-  const qq = new QQBotService(botAgent, permissions, { getFetch })
+  const botSessions = new BotSessionAdapter({ sessions })
+  const telegram = new TelegramBotService(botSessions, permissions)
+  const qq = new QQBotService(botSessions, permissions, { getFetch })
   const bots = new BotPlatformManager([
     defineBotPlatform({
       service: telegram,
@@ -75,5 +87,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, bots, avatar, tts, desktopControl }
+  return { tools: toolRegistry, permissions, sessions, bots, avatar, tts, desktopControl }
 }

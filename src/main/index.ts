@@ -128,6 +128,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void applicationServices?.bots.stopAll()
+  void applicationServices?.sessions.stopAll()
   applicationServices?.permissions.dispose()
   applicationServices?.avatar.dispose()
   applicationServices?.tts.dispose()

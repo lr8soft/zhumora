@@ -3,6 +3,8 @@ import type { AvatarMessageTarget } from './contracts'
 
 export function createAvatarAgentEventSink(target: AvatarMessageTarget): AgentEventSink {
   return {
+    running: (sessionId, running) => target.setActivity(sessionId, running ? 'thinking' : 'idle'),
+    aborted: sessionId => target.setActivity(sessionId, 'idle'),
     userMessage: message => target.setActivity(message.sessionId, 'thinking'),
     assistantStart: sessionId => target.setActivity(sessionId, 'thinking'),
     reasoning: sessionId => target.setActivity(sessionId, 'thinking'),

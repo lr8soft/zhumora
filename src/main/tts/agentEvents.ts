@@ -6,6 +6,7 @@ interface TtsAgentTarget {
 
 export function createTtsAgentEventSink(tts: TtsAgentTarget): AgentEventSink {
   return {
+    aborted: sessionId => tts.stop(sessionId),
     userMessage: message => tts.stop(message.sessionId),
     assistantEnd: (sessionId, messageId, content) => tts.enqueue(sessionId, messageId, content),
     error: sessionId => tts.stop(sessionId)

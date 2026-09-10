@@ -8,10 +8,9 @@ import { reloadSkills } from '../skill/manager'
 import { logCertModeChanged } from '../net/fetch'
 import { equivalentConfigList } from './settingsChange'
 import type { ApplicationServices } from '../composition'
-import type { AgentIpcRuntime } from './runtime'
 import { reconcileAvatarSessions } from './registerAvatarIpc'
 
-export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime, services: ApplicationServices): void {
+export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServices): void {
   ipcMain.handle('window:minimize', () => win.minimize())
   ipcMain.handle('window:toggle-maximize', () => {
     if (win.isMaximized()) win.unmaximize()
@@ -23,25 +22,23 @@ export function registerGeneralIpc(win: BrowserWindow, runtime: AgentIpcRuntime,
   win.on('maximize', () => win.webContents.send('window:maximized-change', true))
   win.on('unmaximize', () => win.webContents.send('window:maximized-change', false))
 
-  ipcMain.handle('session:create', (_event, title?: string) => db.createSession(title))
-  ipcMain.handle('session:list', () => db.getSessions())
-  ipcMain.handle('session:get', (_event, id: string) => db.getSession(id))
-  ipcMain.handle('session:delete', (_event, id: string) => {
-    services.permissions.cancelSession(id)
+  ipcMain.handle('session:create', (_event, title?: string) => services.sessions.createSession(title))
+  ipcMain.handle('session:list', () => services.sessions.listSessions())
+  ipcMain.handle('session:get', (_event, id: string) => services.sessions.getSession(id))
+  ipcMain.handle('session:delete', async (_event, id: string) => {
     services.avatar.hide(id)
     services.tts.stop(id)
-    db.deleteSession(id)
-    runtime.deleteSession(id)
+    await services.sessions.deleteSession(id)
     return true
   })
   ipcMain.handle('session:rename', (_event, id: string, title: string) => {
-    db.updateSessionTitle(id, title)
+    services.sessions.renameSession(id, title)
     return true
   })
-  ipcMain.handle('session:messages', (_event, id: string) => db.getMessages(id))
-  ipcMain.handle('session:compaction', (_event, id: string) => db.getSessionCompaction(id))
+  ipcMain.handle('session:messages', (_event, id: string) => services.sessions.getMessages(id))
+  ipcMain.handle('session:compaction', (_event, id: string) => services.sessions.getCompaction(id))
   ipcMain.handle('session:updateWorkspace', (_event, id: string, workspacePath: string) => {
-    db.updateSessionWorkspace(id, workspacePath)
+    services.sessions.updateWorkspace(id, workspacePath)
     return true
   })
 

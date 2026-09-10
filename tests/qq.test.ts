@@ -1,6 +1,6 @@
 import assert from 'node:assert/strict'
 import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
-import type { BotAgentMessage, BotAgentResult } from '../src/main/bot/contracts.ts'
+import type { BotSessionMessage, BotSessionResult } from '../src/main/bot/contracts.ts'
 import {
   splitQQText,
   type QQClient,
@@ -140,13 +140,12 @@ await assert.rejects(() => brokenPresenter.present({ ...permissionRequest, id: '
 assert.equal(registered, undefined)
 
 const serviceClient = new FakeQQClient()
-const handled: BotAgentMessage[] = []
+const handled: BotSessionMessage[] = []
 const permissions = new PermissionBroker()
 let permissionDecision: boolean | undefined
 const fakeAgent = {
-  async handle(message: BotAgentMessage): Promise<BotAgentResult> {
+  async handle(message: BotSessionMessage): Promise<BotSessionResult> {
     handled.push(message)
-    assert.equal(message.onSessionReady?.('qq-session'), true)
     if (message.text === 'needs permission') {
       permissionDecision = await permissions.request({
         sessionId: 'qq-session', toolName: 'write', args: { path: 'file.txt' }, level: 'normal'

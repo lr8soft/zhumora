@@ -2,10 +2,9 @@ import type { QQBotConfig } from '../../shared/types'
 import { AgentAbortedError } from '../../shared/types.ts'
 import { normalizeQQBotConfig } from '../../shared/qq.ts'
 import type { PermissionBroker } from '../agent/permissionBroker'
-import { combineAgentEventSinks, type AgentEventSink } from '../agent/persistedCallbacks.ts'
-import type { BotAgentBridge } from '../bot/agentBridge'
-import type { BotActivity, BotPlatformService } from '../bot/contracts'
-import { BotRunCoordinator, type BotRunContext } from '../bot/runCoordinator.ts'
+import type { BotSessionAdapter } from '../bot/sessionAdapter'
+import type { BotPlatformService } from '../bot/contracts'
+import { BotMessageQueue } from '../bot/messageQueue.ts'
 import { log } from '../llm/logger.ts'
 import {
   createQQClient,
@@ -36,16 +35,15 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
   private client: QQClient | null = null
   private config = normalizeQQBotConfig(undefined)
   private generation = 0
-  private agentEvents: AgentEventSink = {}
   private readonly permissionRoutes = new Map<string, QQPermissionRoute>()
-  private readonly runs: BotRunCoordinator
-  private readonly agent: BotAgentBridge
+  private readonly runs: BotMessageQueue
+  private readonly agent: BotSessionAdapter
   private readonly permissions: PermissionBroker
   private readonly clientFactory: QQClientFactory
   private readonly getFetch: () => typeof fetch
 
   constructor(
-    agent: BotAgentBridge,
+    agent: BotSessionAdapter,
     permissions: PermissionBroker,
     options: QQBotServiceOptions = {}
   ) {
@@ -53,19 +51,7 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     this.permissions = permissions
     this.clientFactory = options.clientFactory || createQQClient
     this.getFetch = options.getFetch || (() => fetch)
-    this.runs = new BotRunCoordinator(permissions)
-  }
-
-  setActivityListener(listener: (activity: BotActivity) => boolean | void): void {
-    this.runs.setActivityListener(listener)
-  }
-
-  setAgentEventSink(sink: AgentEventSink): void {
-    this.agentEvents = sink
-  }
-
-  abortSession(sessionId: string): boolean {
-    return this.runs.abortSession(sessionId)
+    this.runs = new BotMessageQueue()
   }
 
   async test(input: QQBotConfig): Promise<{ name: string; username?: string }> {
@@ -162,7 +148,7 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     const conversationId = qqConversationId(message)
 
     // 权限确认必须在入队之前拦截：Agent 正挂起等待批准时，同会话消息会被
-    // BotRunCoordinator 排在后面，走正常流程就永远读不到这条 y / n。
+    // BotMessageQueue 排在后面，走正常流程就永远读不到这条 y / n。
     const reply = parseQQPermissionReply(text)
     if (reply) {
       const route = this.findPermissionRoute(conversationId, message.senderId)
@@ -186,7 +172,7 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     const generation = this.generation
     void this.runs.enqueue(
       conversationId,
-      run => this.processMessage(message, text, imageAttachments, generation, run)
+      signal => this.processMessage(message, text, imageAttachments, generation, signal)
     ).catch(() => {})
   }
 
@@ -202,7 +188,7 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     text: string,
     imageAttachments: QQImageAttachment[],
     generation: number,
-    run: BotRunContext
+    signal: AbortSignal
   ): Promise<void> {
     const client = this.client
     if (!client || generation !== this.generation || this.controller?.signal.aborted) return
@@ -217,7 +203,7 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     )
     try {
       const senderName = message.senderName || message.senderId
-      const images = await this.downloadImages(imageAttachments, run.signal)
+      const images = await this.downloadImages(imageAttachments, signal)
       const conversationLabel = message.kind === 'group' ? `${senderName}:` : undefined
       await this.agent.handle({
         channel: this.channel,
@@ -229,11 +215,10 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
         text: conversationLabel ? `${conversationLabel} ${text}`.trim() : text,
         images: images.length > 0 ? images : undefined,
         approveMode: this.config.approveMode,
-        signal: run.signal,
-        events: combineAgentEventSinks(this.agentEvents, response.events),
+        signal,
+        events: response.events,
         permissionPresenters: [permissionPresenter],
-        permissionTimeoutMs: 10 * 60 * 1000,
-        onSessionReady: run.onSessionReady
+        permissionTimeoutMs: 10 * 60 * 1000
       })
       await response.flush()
     } catch (error) {

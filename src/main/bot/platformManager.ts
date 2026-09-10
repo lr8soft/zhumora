@@ -1,6 +1,5 @@
 import type { AppSettings } from '../../shared/types'
-import type { AgentEventSink } from '../agent/persistedCallbacks'
-import type { BotActivity, BotPlatformRuntime, BotPlatformService } from './contracts'
+import type { BotPlatformRuntime, BotPlatformService } from './contracts'
 
 export interface BotConnectionTestResult {
   name: string
@@ -63,21 +62,6 @@ export class BotPlatformManager {
     const platform = this.platforms.get(channel)
     if (!platform) throw new Error(`Unknown Bot platform: ${channel}`)
     return platform.test(input)
-  }
-
-  setAgentEventSink(sink: AgentEventSink): void {
-    for (const platform of this.platforms.values()) platform.runtime.setAgentEventSink(sink)
-  }
-
-  setActivityListener(listener: (activity: BotActivity) => boolean | void): void {
-    for (const platform of this.platforms.values()) platform.runtime.setActivityListener(listener)
-  }
-
-  abortSession(sessionId: string): boolean {
-    for (const platform of this.platforms.values()) {
-      if (platform.runtime.abortSession(sessionId)) return true
-    }
-    return false
   }
 
   async stopAll(): Promise<void> {

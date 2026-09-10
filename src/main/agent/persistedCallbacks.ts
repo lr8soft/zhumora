@@ -3,7 +3,10 @@ import type { TokenUsage } from '../llm/provider'
 import type { AgentEventCallbacks } from './eventCallbacks'
 
 export interface AgentEventSink {
-  userMessage?(message: UIMessage): void
+  running?(sessionId: string, running: boolean): void
+  aborted?(sessionId: string): void
+  titleUpdated?(sessionId: string, title: string): void
+  userMessage?(message: UIMessage, source: 'renderer' | 'external'): void
   assistantStart?(sessionId: string, messageId: string): void
   token?(sessionId: string, messageId: string, token: string): void
   reasoning?(sessionId: string, messageId: string, token: string): void
@@ -14,7 +17,7 @@ export interface AgentEventSink {
   error?(sessionId: string, error: Error): void
   retry?(sessionId: string, failedAttempt: number, maxRetries: number, error: Error): void
   truncated?(sessionId: string, kind: 'tool' | 'text', reason: 'length' | 'stream'): void
-  compact?(sessionId: string, info: { beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }): void
+  compact?(sessionId: string, info: { source: 'auto' | 'manual'; beforeTokens: number; afterTokens: number; compressedCount: number; keptCount: number; boundaryMessageId?: string }): void
 }
 
 export interface AgentPersistence {
@@ -24,7 +27,10 @@ export interface AgentPersistence {
 
 export function combineAgentEventSinks(...sinks: AgentEventSink[]): AgentEventSink {
   return {
-    userMessage: message => sinks.forEach(sink => sink.userMessage?.(message)),
+    running: (sessionId, running) => sinks.forEach(sink => sink.running?.(sessionId, running)),
+    aborted: sessionId => sinks.forEach(sink => sink.aborted?.(sessionId)),
+    titleUpdated: (sessionId, title) => sinks.forEach(sink => sink.titleUpdated?.(sessionId, title)),
+    userMessage: (message, source) => sinks.forEach(sink => sink.userMessage?.(message, source)),
     assistantStart: (sessionId, messageId) => sinks.forEach(sink => sink.assistantStart?.(sessionId, messageId)),
     token: (sessionId, messageId, token) => sinks.forEach(sink => sink.token?.(sessionId, messageId, token)),
     reasoning: (sessionId, messageId, token) => sinks.forEach(sink => sink.reasoning?.(sessionId, messageId, token)),
@@ -160,6 +166,6 @@ export function createPersistedAgentCallbacks(
       events.retry?.(sessionId, failedAttempt, maxRetries, error)
     },
     onTruncated: (kind, reason) => events.truncated?.(sessionId, kind, reason),
-    onCompact: info => events.compact?.(sessionId, info)
+    onCompact: info => events.compact?.(sessionId, { source: 'auto', ...info })
   }
 }
