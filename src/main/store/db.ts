@@ -6,13 +6,14 @@ import * as path from 'node:path'
 import { app } from 'electron'
 import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory } from '../../shared/types'
 import type {
+  JobForward,
   QuietHours,
   ScheduledJob,
   ScheduledRun,
   ScheduledRunStatus,
   Schedule
 } from '../../shared/scheduled'
-import { DEFAULT_JOB_TIMEOUT_MS, normalizeQuietHours, normalizeSchedule } from '../../shared/scheduled'
+import { DEFAULT_JOB_TIMEOUT_MS, normalizeForward, normalizeQuietHours, normalizeSchedule } from '../../shared/scheduled'
 import { normalizeQQBotConfig } from '../../shared/qq'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
@@ -514,6 +515,7 @@ interface ScheduledJobRow {
   quiet_hours: string | null
   catch_up: number
   timeout_ms: number
+  forward: string | null
   consecutive_errors: number
   next_run_at: number | null
   created_at: number
@@ -525,6 +527,9 @@ function mapScheduledJob(row: ScheduledJobRow): ScheduledJob | null {
   if (!schedule) return null
   const quietHours = row.quiet_hours
     ? normalizeQuietHours(safeJsonParse<QuietHours>(row.quiet_hours))
+    : null
+  const forward = row.forward
+    ? normalizeForward(safeJsonParse<Record<string, unknown>>(row.forward))
     : null
   return {
     id: row.id,
@@ -540,6 +545,7 @@ function mapScheduledJob(row: ScheduledJobRow): ScheduledJob | null {
     quietHours,
     catchUp: row.catch_up === 1,
     timeoutMs: row.timeout_ms,
+    forward,
     consecutiveErrors: row.consecutive_errors,
     nextRunAt: row.next_run_at,
     createdAt: row.created_at,
@@ -558,6 +564,7 @@ export interface NewScheduledJobInput {
   quietHours: QuietHours | null
   catchUp: boolean
   timeoutMs: number
+  forward: JobForward
   nextRunAt: number | null
 }
 
@@ -565,14 +572,16 @@ export function insertScheduledJob(id: string, input: NewScheduledJobInput): voi
   const now = Date.now()
   db!.prepare(`
     INSERT INTO scheduled_jobs (id, name, kind, schedule, prompt, session_id, enabled, approve_mode,
-      provider_id, max_rounds, quiet_hours, catch_up, timeout_ms, consecutive_errors, next_run_at,
-      created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+      provider_id, max_rounds, quiet_hours, catch_up, timeout_ms, forward, consecutive_errors,
+      next_run_at, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
   `).run(
     id, input.name, input.kind, JSON.stringify(input.schedule), input.prompt,
     input.approveMode, input.providerId, input.maxRounds,
     input.quietHours ? JSON.stringify(input.quietHours) : null,
-    input.catchUp ? 1 : 0, input.timeoutMs, input.nextRunAt, now, now
+    input.catchUp ? 1 : 0, input.timeoutMs,
+    input.forward ? JSON.stringify(input.forward) : null,
+    input.nextRunAt, now, now
   )
 }
 
@@ -596,6 +605,7 @@ export interface UpdateScheduledJobInput {
   quietHours?: QuietHours | null
   catchUp?: boolean
   timeoutMs?: number
+  forward?: JobForward
   enabled?: boolean
   nextRunAt?: number | null
 }
@@ -613,18 +623,21 @@ export function updateScheduledJob(id: string, patch: UpdateScheduledJobInput): 
     quietHours: patch.quietHours === undefined ? current.quietHours : patch.quietHours,
     catchUp: patch.catchUp ?? current.catchUp,
     timeoutMs: patch.timeoutMs ?? current.timeoutMs,
+    forward: patch.forward === undefined ? current.forward : patch.forward,
     enabled: patch.enabled ?? current.enabled,
     nextRunAt: patch.nextRunAt === undefined ? current.nextRunAt : patch.nextRunAt
   }
   db!.prepare(`
     UPDATE scheduled_jobs SET
       name = ?, schedule = ?, prompt = ?, approve_mode = ?, provider_id = ?, max_rounds = ?,
-      quiet_hours = ?, catch_up = ?, timeout_ms = ?, enabled = ?, next_run_at = ?, updated_at = ?
+      quiet_hours = ?, catch_up = ?, timeout_ms = ?, forward = ?, enabled = ?, next_run_at = ?,
+      updated_at = ?
     WHERE id = ?
   `).run(
     next.name, JSON.stringify(next.schedule), next.prompt, next.approveMode, next.providerId,
     next.maxRounds, next.quietHours ? JSON.stringify(next.quietHours) : null,
-    next.catchUp ? 1 : 0, next.timeoutMs, next.enabled ? 1 : 0, next.nextRunAt, Date.now(), id
+    next.catchUp ? 1 : 0, next.timeoutMs, next.forward ? JSON.stringify(next.forward) : null,
+    next.enabled ? 1 : 0, next.nextRunAt, Date.now(), id
   )
 }
 

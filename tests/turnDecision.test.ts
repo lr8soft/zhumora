@@ -16,6 +16,7 @@ import { decideTurnOutcome, type TurnSignals } from '../src/main/agent/turnDecis
 const base: TurnSignals = {
   finishReason: 'stop',
   toolCallCount: 0,
+  toolCallsValid: true,
   contentEmpty: false,
   canRecoverTruncation: true,
   canRecoverEmptyResponse: true
@@ -56,13 +57,11 @@ assert.deepEqual(
   'length 截断但预算耗尽 → 收尾并提示，防死循环'
 )
 
-// 6) 截断(length)带工具但预算耗尽：落入 execute_tools 之外的安全路径。
-//    关键：截断的工具轮即使预算耗尽，也不能走恢复（无预算）；
-//    这里确认它不会误判为可安全恢复的 complete。
+// 6) 截断(length)带工具但预算耗尽：安全结束，绝不执行残缺调用。
 assert.deepEqual(
   decideTurnOutcome({ ...base, finishReason: 'length', toolCallCount: 1, canRecoverTruncation: false }),
-  { kind: 'execute_tools' },
-  'length 截断带工具但预算耗尽：由 runner 的执行层再兜底（参数非法 JSON 会被拒）'
+  { kind: 'complete', truncatedNotice: true, cause: 'length' },
+  'length 截断带工具但预算耗尽：安全结束且不执行'
 )
 
 // 7) 空响应（无正文无工具、非截断）+ 有预算 → recover_empty_response
@@ -126,11 +125,11 @@ assert.deepEqual(
   '流中断优先：空正文的中断轮仍续写而非当空响应'
 )
 
-// 15) 流中断 + 预算耗尽 + 带工具 → execute_tools（同 length 的兜底语义）
+// 15) 流中断 + 预算耗尽 + 带工具 → 安全结束（不执行）
 assert.deepEqual(
   decideTurnOutcome({ ...base, streamInterrupted: true, toolCallCount: 1, canRecoverTruncation: false }),
-  { kind: 'execute_tools' },
-  '流中断带工具但预算耗尽：由 runner 执行层兜底（参数非法 JSON 会被拒）'
+  { kind: 'complete', truncatedNotice: true, cause: 'stream' },
+  '流中断带工具但预算耗尽：安全结束且不执行'
 )
 
 // 16) length 与 stream 同时出现（理论上不该发生）时 length 优先
@@ -145,6 +144,26 @@ assert.deepEqual(
   decideTurnOutcome({ ...base, finishReason: 'stop', contentEmpty: false }),
   { kind: 'complete' },
   '正常完成不携带 cause'
+)
+
+// 18) 后端没有正确给出 length，但 arguments 已损坏 → 按不完整工具轮恢复
+assert.deepEqual(
+  decideTurnOutcome({ ...base, finishReason: 'tool_calls', toolCallCount: 1, toolCallsValid: false }),
+  { kind: 'recover_truncated_tool', cause: 'malformed' },
+  'JSON 参数损坏时不信任 finish_reason，禁止执行'
+)
+
+// 19) malformed 恢复预算耗尽 → 安全结束，不能回落到执行路径
+assert.deepEqual(
+  decideTurnOutcome({
+    ...base,
+    finishReason: 'tool_calls',
+    toolCallCount: 1,
+    toolCallsValid: false,
+    canRecoverTruncation: false
+  }),
+  { kind: 'complete', truncatedNotice: true, cause: 'malformed' },
+  'JSON 参数损坏且恢复耗尽时安全结束'
 )
 
 console.log('turnDecision state machine tests passed')

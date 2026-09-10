@@ -22,11 +22,12 @@ import { buildEffectiveConversation, sanitizeHistoryWithIds, type CompactionStat
 import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
 import { AgentAbortedError } from '../../shared/types'
+import { isValidToolCall } from '../../shared/toolCalls'
 import { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS, RecoveryBudget } from './recoveryPolicy'
 import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
 import { decideTurnOutcome } from './turnDecision'
-import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
+import { applyRecoveryDecision, persistIncompleteToolRound, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
 import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
 
@@ -132,12 +133,13 @@ export async function runAgent(
 
     // 轮间中止检查优先于压缩：用户已中止时不再发起摘要 LLM 调用
     if (signal?.aborted) throw new AgentAbortedError()
-    // round=1 的检查即"发送前检查"，后续轮检查工具结果带来的膨胀
-    await compactor.applyIfOverThreshold(conversation, `at round ${round}`)
-
     // 每个工具只负责自身契约与执行。Runner 统一暴露注册表快照，
     // 不允许某个领域工具通过意图识别裁剪其他内置工具或 MCP。
     const tools = toolsRegistry.definitions()
+    // round=1 的检查即"发送前检查"，后续轮检查工具结果带来的膨胀。
+    // 工具 schema 同样占请求 token，必须纳入预算。
+    await compactor.applyIfOverThreshold(conversation, `at round ${round}`, tools)
+
     const result = await streamRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, signal, cb)
     if (result.usage) cb.onTokenUsage?.(result.usage, opts.modelOverride || provider.defaultModel)
 
@@ -154,6 +156,7 @@ export async function runAgent(
     const decision = decideTurnOutcome({
       finishReason: result.finishReason,
       toolCallCount: result.toolCalls.length,
+      toolCallsValid: result.toolCalls.every(isValidToolCall),
       contentEmpty: !result.content.trim(),
       streamInterrupted: result.streamInterrupted,
       canRecoverTruncation: recovery.canRecoverTruncation(),
@@ -166,19 +169,26 @@ export async function runAgent(
       continue
     }
 
-    // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
-    const assistantPersistId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined) ?? null
-
     if (decision.kind === 'complete') {
       if (decision.truncatedNotice) {
-        log('warn', `Round ${round}: incomplete output (${decision.cause === 'stream' ? 'stream interrupted' : 'truncated at token limit'}) and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
-        cb.onTruncated?.('text', decision.cause || 'length')
+        const cause = decision.cause || 'length'
+        log('warn', `Round ${round}: incomplete output (${cause === 'stream' ? 'stream interrupted' : cause === 'malformed' ? 'malformed tool arguments' : 'truncated at token limit'}) and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
+        if (result.toolCalls.length > 0) {
+          persistIncompleteToolRound(result, cause, allAssistantMessages, cb)
+        } else {
+          cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
+          cb.onTruncated?.('text', cause === 'stream' ? 'stream' : 'length')
+        }
+      } else {
+        cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined)
       }
       log('info', `Agent completed after ${round} round(s)`)
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 
     // decision.kind === 'execute_tools'
+    // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
+    const assistantPersistId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined) ?? null
     // 新的原始工具轮 → 重置截断恢复计数（上一轮截断已被正常消化）
     recovery.resetAfterToolRound()
 
@@ -252,7 +262,7 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
 
   const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)
   if (sanitized.length !== messages.length) {
-    log('info', `Sanitized history: removed ${messages.length - sanitized.length} dangling message(s)`)
+    log('info', `Sanitized history: excluded ${messages.length - sanitized.length} dangling or malformed message(s) from the LLM context`)
   }
   const built = buildEffectiveConversation(sanitized, sanitizedIds, compaction)
   const conversationIds: Array<string | null> = built.hasSummary

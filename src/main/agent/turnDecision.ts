@@ -15,6 +15,8 @@ export interface TurnSignals {
   finishReason: string | undefined
   /** 本轮 streamChat 解析出的工具调用数量 */
   toolCallCount: number
+  /** 所有工具调用均有 id/name，且 arguments 是 JSON 对象 */
+  toolCallsValid: boolean
   /** 本轮正文去除首尾空白后是否为空 */
   contentEmpty: boolean
   /** 流式响应中途被网络断开（已输出部分内容后连接失败）。与 finish_reason=length
@@ -26,8 +28,8 @@ export interface TurnSignals {
   canRecoverEmptyResponse: boolean
 }
 
-/** 不完整本轮的成因：length = 单轮输出达到 max_tokens 上限；stream = 流中途网络断开 */
-export type IncompleteCause = 'length' | 'stream'
+/** 不完整本轮的成因：输出上限、流中断，或工具 arguments 不是完整 JSON 对象。 */
+export type IncompleteCause = 'length' | 'stream' | 'malformed'
 
 export type TurnDecision =
   /** 不完整且带工具调用：参数多半残缺，补占位 tool 结果后引导模型拆小步重发 */
@@ -52,7 +54,7 @@ export type RecoveryDecision =
 /**
  * 决定 streamChat 返回后的下一步。纯函数：相同的信号必得相同的决策。
  * 决策优先级（不可随意调整，逐条对应已知失败模式）：
- *  1. 不完整本轮（length 截断 / 流中途断开）优先于一切 —— 带工具时工具
+ *  1. 不完整本轮（length 截断 / 流中途断开 / 参数 JSON 损坏）优先于一切 —— 带工具时工具
  *     参数不可信（可能是残缺 JSON），绝不能执行（否则用残缺 JSON 落库）；
  *  2. 不完整但预算耗尽 → 收尾，不再重试（防截断死循环烧 token）；
  *  3. 空响应仅在完整轮时恢复（不完整轮已在上文处理）；
@@ -63,19 +65,19 @@ export function decideTurnOutcome(signals: TurnSignals): TurnDecision {
   const incomplete: IncompleteCause | null =
     signals.finishReason === 'length' ? 'length'
     : signals.streamInterrupted ? 'stream'
+      : signals.toolCallCount > 0 && !signals.toolCallsValid ? 'malformed'
       : null
 
-  if (incomplete && signals.canRecoverTruncation && signals.toolCallCount > 0) {
-    return { kind: 'recover_truncated_tool', cause: incomplete }
+  if (incomplete) {
+    if (signals.canRecoverTruncation) {
+      return signals.toolCallCount > 0
+        ? { kind: 'recover_truncated_tool', cause: incomplete }
+        : { kind: 'recover_truncated_text', cause: incomplete }
+    }
+    return { kind: 'complete', truncatedNotice: true, cause: incomplete }
   }
 
   if (signals.toolCallCount === 0) {
-    if (incomplete && signals.canRecoverTruncation) {
-      return { kind: 'recover_truncated_text', cause: incomplete }
-    }
-    if (incomplete) {
-      return { kind: 'complete', truncatedNotice: true, cause: incomplete }
-    }
     if (signals.contentEmpty && signals.canRecoverEmptyResponse) {
       return { kind: 'recover_empty_response' }
     }

@@ -63,6 +63,8 @@ export interface ScheduledJob {
   /** 睡眠/重启错过窗口内是否补跑一次 */
   catchUp: boolean
   timeoutMs: number
+  /** 运行结果转发目标（null = 不转发） */
+  forward: JobForward
   consecutiveErrors: number
   nextRunAt: number | null
   createdAt: number
@@ -83,6 +85,32 @@ export interface ScheduledRun {
   error: string | null
 }
 
+// ============================================================
+// 运行结果转发（Telegram / QQ 已授权用户）
+// ============================================================
+
+/** 转发目标：null = 不转发；否则向该 bot 的指定用户发送运行结果 */
+export type JobForward =
+  | { channel: 'telegram'; targetId: string }
+  | { channel: 'qq'; targetId: string }
+  | null
+
+export function normalizeForward(input: unknown): JobForward {
+  if (!input || typeof input !== 'object') return null
+  const raw = input as Record<string, unknown>
+  if (typeof raw.targetId !== 'string' || raw.targetId.trim().length === 0) return null
+  const targetId = raw.targetId.trim()
+  if (raw.channel === 'telegram' && /^\d+$/.test(targetId)) return { channel: 'telegram', targetId }
+  if (raw.channel === 'qq' && targetId.length >= 4) return { channel: 'qq', targetId }
+  return null
+}
+
+/** 转发通道适配器（由组合根用 bot service 实现；scheduler 只依赖此契约） */
+export interface RunForwarder {
+  /** 校验目标合法（bot 已启用 + 用户在授权名单）并发送；失败抛错 */
+  send(forward: JobForward, text: string): Promise<void>
+}
+
 /** 管理页展示用的任务视图（main 组合 ScheduledJob + 运行态 + 最近一次运行） */
 export interface ScheduledJobView {
   id: string
@@ -97,6 +125,7 @@ export interface ScheduledJobView {
   quietHours: QuietHours | null
   catchUp: boolean
   timeoutMs: number
+  forward: JobForward
   consecutiveErrors: number
   nextRunAt: number | null
   sessionId: string | null
@@ -167,6 +196,9 @@ export function validateJobInput(input: unknown): string | null {
   if (raw.timeoutMs !== undefined && (!Number.isInteger(raw.timeoutMs) || (raw.timeoutMs as number) <= 0)) {
     return 'timeoutMs must be a positive integer.'
   }
+  if (raw.forward !== null && raw.forward !== undefined && !normalizeForward(raw.forward)) {
+    return 'Invalid forward target.'
+  }
   return null
 }
 
@@ -182,6 +214,7 @@ export interface NewScheduledJobInput {
   quietHours: QuietHours | null
   catchUp: boolean
   timeoutMs: number
+  forward: JobForward
 }
 
 /** 校验通过后把 raw 输入转成干净形状；非法字段回退默认值而非抛错 */
@@ -200,7 +233,8 @@ export function normalizeJobInput(input: unknown): NewScheduledJobInput {
     catchUp: raw.catchUp === true,
     timeoutMs: Number.isInteger(raw.timeoutMs) && (raw.timeoutMs as number) > 0
       ? (raw.timeoutMs as number)
-      : DEFAULT_JOB_TIMEOUT_MS
+      : DEFAULT_JOB_TIMEOUT_MS,
+    forward: raw.forward === null || raw.forward === undefined ? null : normalizeForward(raw.forward)
   }
 }
 

@@ -21,6 +21,12 @@ export const STREAM_INTERRUPTED_TOOL_ERROR =
 export const STREAM_INTERRUPTED_CONTINUE_PROMPT =
   '[System notice] The connection to the model dropped mid-response, so your previous output is incomplete. Continue exactly from where you stopped. Do not repeat what you already wrote. If you were about to call a tool, call it now with a smaller output (split large file writes into chunks).'
 
+export const MALFORMED_TOOL_ERROR =
+  '[Invalid tool call] The model returned tool arguments that were not a complete JSON object. The call was not executed. Re-issue it with valid JSON and use a smaller call if the arguments are large.'
+
+export const MALFORMED_TOOL_CONTINUE_PROMPT =
+  '[System notice] Your previous tool call was not executed because its arguments were not a complete JSON object. Re-issue the call with valid JSON. If the arguments are large, split the work into smaller tool calls.'
+
 /** 流空闲超时（120s 无任何数据，后端疑似挂起）耗尽重试后的续写提示。
  *  与流中断区分：这里连接没有断，是模型侧长时间无响应。 */
 export const STREAM_STALLED_TOOL_ERROR =

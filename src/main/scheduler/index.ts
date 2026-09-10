@@ -20,6 +20,7 @@ import {
   computeNextRun,
   isHeartbeatSilent,
   quietEndAfter,
+  type RunForwarder,
   type ScheduledJob,
   type ScheduledRunStatus
 } from '../../shared/scheduled.ts'
@@ -60,6 +61,8 @@ interface SchedulerDependencies {
   store: SchedulerStore
   agent: BotAgentBridge
   permissions: PermissionBroker
+  /** 运行结果转发器（组合根用 bot service 实现）；缺省则不转发 */
+  forwarder?: RunForwarder
   /** 时钟（可注入；测试用固定时间）。默认 Date.now */
   now?: () => number
 }
@@ -70,6 +73,8 @@ interface RunOutcome {
   error: string | null
   inputTokens: number
   outputTokens: number
+  /** 助手回复全文（转发用；summary 只是其截断） */
+  reply: string | null
 }
 
 /** 心跳检查清单文件名（位于全局 workspace 下；不存在时用内置清单） */
@@ -293,12 +298,12 @@ export class SchedulerService {
     })
     // handle 正常返回；若 signal 被超时 abort，runner 按部分内容完成（不抛错）
     if (ctx.signal.aborted) {
-      return { status: 'error', summary: null, error: `timeout after ${Math.round(job.timeoutMs / 60000)}m`, ...usage }
+      return { status: 'error', summary: null, error: `timeout after ${Math.round(job.timeoutMs / 60000)}m`, reply: lastComplete, ...usage }
     }
     if (job.kind === 'heartbeat' && isHeartbeatSilent(lastComplete)) {
-      return { status: 'silent', summary: HEARTBEAT_OK_SUMMARY, error: null, ...usage }
+      return { status: 'silent', summary: HEARTBEAT_OK_SUMMARY, error: null, reply: lastComplete, ...usage }
     }
-    return { status: 'ok', summary: summarize(lastComplete), error: null, ...usage }
+    return { status: 'ok', summary: summarize(lastComplete), error: null, reply: lastComplete, ...usage }
   }
 
   /** 落库一条运行结果 + 更新任务失败计数 + 日志（唯一 finalize 出口） */
@@ -325,13 +330,13 @@ export class SchedulerService {
   /** enqueue 抛错时的结果分类（busy=skip；abort=超时或用户停止；其余=error） */
   private classifyFailure(error: unknown): RunOutcome {
     if (error instanceof BotRunBusyError) {
-      return { status: 'skipped', summary: 'session busy', error: null, inputTokens: 0, outputTokens: 0 }
+      return { status: 'skipped', summary: 'session busy', error: null, reply: null, inputTokens: 0, outputTokens: 0 }
     }
     const message = error instanceof Error ? error.message : String(error)
     if (error instanceof AgentAbortedError) {
-      return { status: 'error', summary: null, error: 'aborted (timeout or user stop)', inputTokens: 0, outputTokens: 0 }
+      return { status: 'error', summary: null, error: 'aborted (timeout or user stop)', reply: null, inputTokens: 0, outputTokens: 0 }
     }
-    return { status: 'error', summary: null, error: message.slice(0, 500), inputTokens: 0, outputTokens: 0 }
+    return { status: 'error', summary: null, error: message.slice(0, 500), reply: null, inputTokens: 0, outputTokens: 0 }
   }
 
   private finishSkipped(job: ScheduledJob, reason: string, now: number): void {

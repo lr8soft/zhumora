@@ -3,12 +3,14 @@
 // 天然支持任意端点：OpenAI / Anthropic(兼容层) / Ollama / vLLM
 // ============================================================
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from '../../shared/types'
+import { hasValidToolCalls } from '../../shared/toolCalls'
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
 import { HttpError, getMaxRetries, isRetriableError, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
 import {
   createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer, type TokenUsage
 } from './sseAccumulator'
+import { isMalformedToolArgumentsError } from './errors'
 
 export type { TokenUsage }
 
@@ -76,6 +78,12 @@ export async function streamChat(
   params: CompletionParams,
   cb?: StreamCallbacks
 ): Promise<{ content: string; toolCalls: ToolCall[]; usage?: TokenUsage; finishReason?: string; streamInterrupted?: boolean }> {
+  const invalidHistoryIndex = params.messages.findIndex(message => !hasValidToolCalls(message))
+  if (invalidHistoryIndex >= 0) {
+    const error = new Error(`LLM request blocked: message ${invalidHistoryIndex} contains malformed tool call arguments`)
+    cb?.onError?.(error)
+    throw error
+  }
   const model = params.model || provider.defaultModel
   const body: Record<string, unknown> = {
     model,
@@ -116,7 +124,7 @@ export async function streamChat(
         maxRetries,
         label: `LLM ${provider.name || provider.baseUrl}`,
         // 仅在尚未向 UI 输出任何内容时才重试（否则聊天区会收到重复内容）
-        shouldRetry: (err) => !state.emitted && isRetriableError(err),
+        shouldRetry: (err) => !state.emitted && !isMalformedToolArgumentsError(err) && isRetriableError(err),
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
       }
     )
@@ -242,6 +250,10 @@ export async function complete(
   model?: string,
   maxTokens = 200
 ): Promise<string> {
+  const invalidHistoryIndex = messages.findIndex(message => !hasValidToolCalls(message))
+  if (invalidHistoryIndex >= 0) {
+    throw new Error(`LLM request blocked: message ${invalidHistoryIndex} contains malformed tool call arguments`)
+  }
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
   return withRetry(
     async () => {
@@ -272,6 +284,10 @@ export async function complete(
       const json: any = await resp.json()
       return json.choices?.[0]?.message?.content || ''
     },
-    { maxRetries: getMaxRetries(), label: `LLM complete ${provider.name || provider.baseUrl}` }
+    {
+      maxRetries: getMaxRetries(),
+      label: `LLM complete ${provider.name || provider.baseUrl}`,
+      shouldRetry: (err) => !isMalformedToolArgumentsError(err) && isRetriableError(err)
+    }
   )
 }

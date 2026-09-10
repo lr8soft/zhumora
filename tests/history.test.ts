@@ -397,6 +397,33 @@ test('完整合法序列 → ids 全保留', () => {
   for (let i = 0; i < ids.length; i++) assertEq(outIds[i], ids[i], `ids[${i}] 不变`)
 })
 
+test('参数 JSON 损坏但已有占位结果 → 整个工具组删除且 ids 仍对齐', () => {
+  const broken = tc('broken', 'edit')
+  broken.function.arguments = '{"path":"src/main.ts","content":"unterminated'
+  const msgs: ChatMessage[] = [
+    text('user', '修改文件'),
+    assistantWithCalls(broken),
+    toolResult('broken', 'edit', '[Output truncated]'),
+    text('user', '继续')
+  ]
+  const { messages, ids } = sanitizeHistoryWithIds(msgs, ['u1', 'a1', 't1', 'u2'])
+  assertEq(messages.length, 2, '损坏 assistant 及其 tool 结果均删除')
+  assertEq(ids.join(','), 'u1,u2', '保留消息 id 精确对齐')
+  assertEq(validateSequence(messages).length, 0, '清洗后序列合法')
+})
+
+test('arguments 必须是 JSON 对象，数组和 null 均不回放', () => {
+  for (const args of ['[]', 'null', '"text"', '']) {
+    const call = tc(`bad-${args}`, 'tool')
+    call.function.arguments = args
+    const out = sanitizeHistory([
+      assistantWithCalls(call),
+      toolResult(call.id, 'tool', 'not executed')
+    ])
+    assertEq(out.length, 0, `arguments=${JSON.stringify(args)} 的组被删除`)
+  }
+})
+
 // ============================================================
 console.log('\nbuildEffectiveConversation（压缩只影响 LLM 上下文，不动历史）')
 // ============================================================

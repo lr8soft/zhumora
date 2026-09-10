@@ -15,33 +15,19 @@ import { complete } from '../llm/provider'
 import { getFetch } from '../net/fetch'
 import { log } from '../llm/logger'
 import { planCompactByTokens } from './history'
+import {
+  estimateMessageTokens,
+  estimateTokens,
+  getPreserveTokenBudget
+} from './contextBudget'
 
 // 默认上下文窗口（API 未返回、启发式也未命中时的 fallback）
 const DEFAULT_CONTEXT_WINDOW = 32768
 
-// ===== Cline 对齐的压缩常量 =====
-/** 可用输入占比（当模型只报告 context window 时的保守输入比例） */
-const CONTEXT_WINDOW_INPUT_RATIO = 0.9
-/** 触发 auto compact 的比例（相对可用输入预算） */
-const COMPACTION_TRIGGER_RATIO = 0.9
-/** 压缩后保留的最近 token 预算（Cline: 20_000） */
-const DEFAULT_PRESERVE_RECENT_TOKENS = 20_000
 /** 摘要输入中工具结果的字符截断限制（Cline: 2_000） */
 const TOOL_RESULT_CHAR_LIMIT = 2_000
 /** 摘要输入中每条文本的最大字符（防止单条超长消息撑爆摘要 prompt） */
 const MAX_SINGLE_MSG_CHARS = 4_000
-
-// 计算触发阈值：contextWindow × INPUT_RATIO × TRIGGER_RATIO（= contextWindow × 0.81）
-export function getCompactThreshold(contextWindow: number): number {
-  const usableInput = contextWindow * CONTEXT_WINDOW_INPUT_RATIO
-  return Math.floor(usableInput * COMPACTION_TRIGGER_RATIO)
-}
-
-// 计算保留 token 预算：min(20k, contextWindow × 0.3)
-// 对大窗口（128k+）保留 20k，对小窗口（32k）按比例缩小避免保留过多
-export function getPreserveTokenBudget(contextWindow: number): number {
-  return Math.min(DEFAULT_PRESERVE_RECENT_TOKENS, Math.floor(contextWindow * 0.3))
-}
 
 // 缓存：provider+model → contextWindow
 const contextWindowCache = new Map<string, number>()
@@ -276,68 +262,6 @@ export function getContextWindow(provider: ProviderConfig, modelOverride?: strin
   const cached = contextWindowCache.get(cacheKey)
   if (cached) return cached
   return heuristicContextWindow(model) ?? DEFAULT_CONTEXT_WINDOW
-}
-
-// CJK（中日韩）字符范围：这些字符约 1 token/字，而拉丁字符约 4 字符/token。
-// 用正则计数 CJK 字符，其余按 4 字符/token，避免中文被低估 3-4 倍。
-const CJK_REGEX = /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\u3000-\u303f]/g
-
-/** 估算一段纯文本的 token 数（CJK 感知） */
-function estimateTextTokens(text: string): number {
-  const cjkCount = text.match(CJK_REGEX)?.length ?? 0
-  const nonCjkChars = text.length - cjkCount
-  return cjkCount + Math.ceil(nonCjkChars / 4)
-}
-
-/** 估算单条消息的 token 数（CJK 感知） */
-export function estimateMessageTokens(msg: ChatMessage): number {
-  let tokens = 4 // 元数据开销（role/name/分隔符等，约 16 字符 ≈ 4 tokens）
-  if (msg.content) {
-    if (Array.isArray(msg.content)) {
-      for (const part of msg.content) {
-        if (part.type === 'text') {
-          tokens += estimateTextTokens(part.text)
-        } else if (part.type === 'image_url') {
-          const url = part.image_url?.url || ''
-          const b64Start = url.indexOf('base64,')
-          const b64 = b64Start >= 0 ? url.length - b64Start - 7 : url.length
-          tokens += Math.ceil(b64 / 24)
-        }
-      }
-    } else {
-      tokens += estimateTextTokens(msg.content)
-    }
-  }
-  if (msg.tool_calls) {
-    for (const tc of msg.tool_calls) {
-      tokens += estimateTextTokens(tc.function.name) + estimateTextTokens(tc.function.arguments) + 5
-    }
-  }
-  if (msg.name) {
-    tokens += estimateTextTokens(msg.name)
-  }
-  return tokens
-}
-
-/** 估算消息列表的 token 数（CJK 感知） */
-export function estimateTokens(messages: ChatMessage[]): number {
-  let total = 0
-  for (const m of messages) total += estimateMessageTokens(m)
-  return total
-}
-
-/**
- * 检查是否需要触发 auto compact
- * 阈值 = contextWindow × INPUT_RATIO(0.9) × TRIGGER_RATIO(0.9) = 81%
- */
-export function needsCompact(
-  messages: ChatMessage[],
-  contextWindow: number
-): boolean {
-  const used = estimateTokens(messages)
-  const threshold = getCompactThreshold(contextWindow)
-  log('info', `Context check: ${used} / ${threshold} tokens (threshold=${threshold}, window=${contextWindow})`)
-  return used >= threshold
 }
 
 // ============================================================

@@ -181,6 +181,15 @@ const migrations: Migration[] = [
         CREATE INDEX IF NOT EXISTS idx_scheduled_runs_job ON scheduled_runs(job_id, started_at DESC);
       `)
     }
+  },
+  {
+    version: 7,
+    up(database) {
+      const columns = database.prepare('PRAGMA table_info(scheduled_jobs)').all() as { name: string }[]
+      if (!columns.some(column => column.name === 'forward')) {
+        database.exec('ALTER TABLE scheduled_jobs ADD COLUMN forward TEXT')
+      }
+    }
   }
 ]
 

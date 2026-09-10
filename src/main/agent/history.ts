@@ -14,6 +14,7 @@
 // ============================================================
 import type { ChatMessage } from '../../shared/types'
 import { COMPACT_SUMMARY_PREFIX } from '../../shared/types.ts'
+import { hasValidToolCalls } from '../../shared/toolCalls.ts'
 
 /** 单条消息的 token 估算函数（由调用方注入，避免 history 依赖 context） */
 export type MessageTokenEstimator = (m: ChatMessage) => number
@@ -119,6 +120,7 @@ function hasContent(m: ChatMessage): boolean {
  * 把消息列表清洗为可直接发送的合法序列：
  * - 孤儿 tool 结果（前面没有对应的 assistant tool_call）→ 删除
  * - assistant(tool_calls) 缺任意结果（abort/崩溃残留）→ 整组删除（含已有结果）
+ * - assistant(tool_calls) 参数不是有效 JSON 对象（输出截断残留）→ 整组删除
  * - 无 content 且无 tool_calls 的空 assistant → 删除
  * system / user / 完整合法组原样保留，顺序不变
  */
@@ -150,9 +152,11 @@ export function sanitizeHistoryWithIds(
     const m = messages[i]
     if (m.role === 'assistant') {
       if (m.tool_calls && m.tool_calls.length > 0) {
-        // 任一结果缺失 → 整组丢弃（其已有结果因 openCallIds 未登记也会被当孤儿丢弃）
+        // 任一结果缺失或调用参数损坏 → 整组丢弃（其已有结果因
+        // openCallIds 未登记也会被当孤儿丢弃）。严格后端会在重放
+        // malformed arguments 时直接 500，且服务重启无法修复这段历史。
         const allPresent = m.tool_calls.every(tc => resultIds.has(tc.id))
-        if (!allPresent) continue
+        if (!allPresent || !hasValidToolCalls(m)) continue
         for (const tc of m.tool_calls) openCallIds.add(tc.id)
       } else if (!hasContent(m)) {
         continue // 空 assistant 消息无意义
