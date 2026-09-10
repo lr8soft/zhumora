@@ -23,7 +23,6 @@ import { getFetch } from './net/fetch'
 import type { AvatarWindowManager } from './avatar/windowManager'
 import { createAvatarTools } from './tools/avatar'
 import { TtsManager } from './tts/manager'
-import { SchedulerService } from './scheduler'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -40,7 +39,6 @@ export interface ApplicationServices {
   avatar: AvatarWindowManager
   tts: TtsManager
   desktopControl: DesktopControlCoordinator
-  scheduler: SchedulerService
 }
 
 export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
@@ -58,11 +56,6 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     getSkillsPrompt: getSkillsSystemPrompt,
     getMcpStatus: getMcpConnectionStatus,
     getSystemPromptExtra: sessionId => avatar.buildSystemPrompt(sessionId)
-  })
-  const scheduler = new SchedulerService({
-    store: db,
-    agent: botAgent,
-    permissions
   })
   const telegram = new TelegramBotService(botAgent, permissions)
   const qq = new QQBotService(botAgent, permissions, { getFetch })
@@ -82,5 +75,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, bots, avatar, tts, desktopControl, scheduler }
+  return { tools: toolRegistry, permissions, bots, avatar, tts, desktopControl }
 }

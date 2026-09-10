@@ -64,14 +64,6 @@ export class TelegramBotService implements BotPlatformService<TelegramBotConfig>
     return { name: bot.first_name, username: bot.username }
   }
 
-  /** 向指定用户推送通知（定时任务转发用）。目标非法或 bot 未启用时抛错。 */
-  async notify(userId: string, text: string): Promise<void> {
-    const client = this.client
-    if (!client) throw new Error('Telegram Bot is not running.')
-    if (!this.config.allowedUserIds.includes(userId)) throw new Error(`Telegram user ${userId} is not allowlisted.`)
-    await client.sendText(Number(userId), text)
-  }
-
   async configure(input: TelegramBotConfig): Promise<void> {
     await this.stop()
     this.config = normalizeTelegramBotConfig(input)

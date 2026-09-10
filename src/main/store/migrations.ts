@@ -190,6 +190,15 @@ const migrations: Migration[] = [
         database.exec('ALTER TABLE scheduled_jobs ADD COLUMN forward TEXT')
       }
     }
+  },
+  {
+    version: 8,
+    up(database) {
+      database.exec(`
+        DROP TABLE IF EXISTS scheduled_runs;
+        DROP TABLE IF EXISTS scheduled_jobs;
+      `)
+    }
   }
 ]
 

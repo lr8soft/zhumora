@@ -103,7 +103,6 @@ export default {
       tts: '音声',
       skills: 'スキル',
       memory: 'メモリ',
-      scheduled: 'スケジュール',
       usage: '使用量',
       general: '一般'
     },

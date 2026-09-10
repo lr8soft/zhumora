@@ -1,7 +1,7 @@
 // ============================================================
 // 主进程入口
 // ============================================================
-import { app, BrowserWindow, powerMonitor, shell } from 'electron'
+import { app, BrowserWindow, shell } from 'electron'
 import { electronApp, optimizer, is } from '@electron-toolkit/utils'
 import * as path from 'node:path'
 import { initDatabase, getSettings } from './store/db'
@@ -117,14 +117,6 @@ app.whenReady().then(async () => {
     log('error', `Failed to start Bot platform(s): ${err instanceof Error ? err.message : String(err)}`)
   })
 
-  // 定时任务调度器：从 DB 重建 timer（关机期间错过的不补跑）
-  services.scheduler.start()
-  // 系统从睡眠恢复：全量重算 timer，按 catch-up 策略补跑"睡眠错过"的任务
-  powerMonitor.on('resume', () => {
-    log('info', 'System resumed from sleep; reconciling scheduled tasks')
-    services.scheduler.reconcile(true)
-  })
-
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
   })
@@ -136,7 +128,6 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void applicationServices?.bots.stopAll()
-  void applicationServices?.scheduler.stop()
   applicationServices?.permissions.dispose()
   applicationServices?.avatar.dispose()
   applicationServices?.tts.dispose()

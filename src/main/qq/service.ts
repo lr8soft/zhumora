@@ -80,24 +80,6 @@ export class QQBotService implements BotPlatformService<QQBotConfig> {
     }
   }
 
-  /**
-   * 向指定目标推送通知（定时任务转发用）。
-   * target 为 c2c OpenID，或 'group:<群OpenID>' 前缀的群目标。
-   * 目标非法或 bot 未运行时抛错。
-   */
-  async notify(target: string, text: string): Promise<void> {
-    const client = this.client
-    if (!client) throw new Error('QQ Bot is not running.')
-    if (target.startsWith('group:')) {
-      const groupOpenid = target.slice('group:'.length)
-      if (!groupOpenid) throw new Error('Invalid QQ group target.')
-      await client.sendText({ scope: 'group', targetId: groupOpenid }, text)
-      return
-    }
-    if (!this.config.allowedUserIds.includes(target)) throw new Error(`QQ user ${target} is not allowlisted.`)
-    await client.sendText({ scope: 'c2c', targetId: target }, text)
-  }
-
   async configure(input: QQBotConfig): Promise<void> {
     await this.stop()
     this.config = normalizeQQBotConfig(input)

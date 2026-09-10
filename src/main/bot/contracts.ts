@@ -13,10 +13,6 @@ export interface BotAgentMessage {
   /** 用户消息附带的图片（base64 data URL），进入 LLM 多模态上下文 */
   images?: string[]
   approveMode: AutoApproveMode
-  /** 覆盖全局 activeProviderId（可选，如定时任务指定更便宜的模型） */
-  providerId?: string
-  /** 覆盖全局 maxRounds（可选；0 = 不限制） */
-  maxRounds?: number
   signal: AbortSignal
   events: AgentEventSink
   permissionPresenters?: PermissionPresenter[]
@@ -27,9 +23,6 @@ export interface BotAgentMessage {
 export interface BotAgentResult {
   sessionId: string
 }
-
-/** 目标会话已有运行中的 Agent 时由 bridge 抛出（调用方应视为"跳过"而非故障） */
-export class BotRunBusyError extends Error {}
 
 export interface BotActivity {
   sessionId: string
