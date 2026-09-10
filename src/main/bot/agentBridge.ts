@@ -5,6 +5,7 @@ import { createPersistedAgentCallbacks } from '../agent/persistedCallbacks'
 import type { PermissionBroker } from '../agent/permissionBroker'
 import { generateId } from '../id'
 import type { ToolRegistry } from '../tools/registry'
+import { BotRunBusyError } from './contracts'
 import type { BotAgentMessage, BotAgentResult, BotAgentStore } from './contracts'
 
 interface BotAgentBridgeDependencies {
@@ -26,7 +27,8 @@ export class BotAgentBridge {
 
   async handle(message: BotAgentMessage): Promise<BotAgentResult> {
     const settings = this.deps.store.getSettings()
-    const provider = settings.providers.find(item => item.id === settings.activeProviderId)
+    const providerId = message.providerId || settings.activeProviderId
+    const provider = settings.providers.find(item => item.id === providerId)
     if (!provider) throw new Error('No active LLM provider is configured.')
 
     const session = this.deps.store.getOrCreateBotSession(
@@ -36,7 +38,7 @@ export class BotAgentBridge {
       message.conversationTitle
     )
     if (message.onSessionReady?.(session.id) === false) {
-      throw new Error('This bot conversation already has a running Agent.')
+      throw new BotRunBusyError('This bot conversation already has a running Agent.')
     }
 
     const userMessage = {
@@ -70,7 +72,7 @@ export class BotAgentBridge {
         signal: message.signal,
         permissionCheck,
         memoryEnabled: settings.memoryEnabled !== false,
-        maxRounds: settings.maxRounds,
+        maxRounds: message.maxRounds ?? settings.maxRounds,
         skillsPrompt: this.deps.getSkillsPrompt(),
         systemPromptExtra: [
           `You are replying through ${message.channel} to ${message.senderName}. Use plain text and keep the response concise.`,

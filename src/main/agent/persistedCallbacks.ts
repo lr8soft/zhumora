@@ -11,6 +11,8 @@ export interface AgentEventSink {
   toolResult?(message: UIMessage, toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number): void
   assistantEnd?(sessionId: string, messageId: string, content: string, toolCalls: ToolCall[], reasoning?: string): void
   complete?(sessionId: string, messageId: string, content: string): void
+  /** 单次 LLM 请求的 token 用量（供调度器做每任务统计；不影响持久化） */
+  usage?(model: string, inputTokens: number, outputTokens: number): void
   error?(sessionId: string, error: Error): void
   retry?(sessionId: string, failedAttempt: number, maxRetries: number, error: Error): void
   truncated?(sessionId: string, kind: 'tool' | 'text', reason: 'length' | 'stream'): void
@@ -34,6 +36,7 @@ export function combineAgentEventSinks(...sinks: AgentEventSink[]): AgentEventSi
     assistantEnd: (sessionId, messageId, content, toolCalls, reasoning) =>
       sinks.forEach(sink => sink.assistantEnd?.(sessionId, messageId, content, toolCalls, reasoning)),
     complete: (sessionId, messageId, content) => sinks.forEach(sink => sink.complete?.(sessionId, messageId, content)),
+    usage: (model, inputTokens, outputTokens) => sinks.forEach(sink => sink.usage?.(model, inputTokens, outputTokens)),
     error: (sessionId, error) => sinks.forEach(sink => sink.error?.(sessionId, error)),
     retry: (sessionId, failedAttempt, maxRetries, error) =>
       sinks.forEach(sink => sink.retry?.(sessionId, failedAttempt, maxRetries, error)),
@@ -117,6 +120,7 @@ export function createPersistedAgentCallbacks(
     },
     onTokenUsage: (usage: TokenUsage, model: string) => {
       persistence.addTokenUsage(model, usage.prompt_tokens, usage.completion_tokens, Date.now())
+      events.usage?.(model, usage.prompt_tokens, usage.completion_tokens)
     },
     onComplete: () => {
       if (!streamingMsgId) {

@@ -37,12 +37,22 @@ export class BotRunCoordinator {
     this.onActivity = listener
   }
 
-  enqueue(conversationId: string, task: BotRunTask): Promise<void> {
+  /** 该会话是否有运行中的任务（队列中排队的不算；scheduler 用它在触发前跳过忙会话） */
+  isSessionActive(sessionId: string): boolean {
+    return this.activeSessions.has(sessionId)
+  }
+
+  /** 当前有运行中任务的会话（UI 角标用） */
+  activeSessionIds(): string[] {
+    return [...this.activeSessions.keys()]
+  }
+
+  enqueue(conversationId: string, task: BotRunTask, options?: { timeoutMs?: number }): Promise<void> {
     const previous = this.queues.get(conversationId) || Promise.resolve()
     const generation = this.generation
     const queued = previous.catch(() => {}).then(async () => {
       if (generation !== this.generation) return
-      await this.runNow(conversationId, task)
+      await this.runNow(conversationId, task, options?.timeoutMs)
     })
     this.queues.set(conversationId, queued)
     void queued.finally(() => {
@@ -80,9 +90,14 @@ export class BotRunCoordinator {
     this.activeSessions.clear()
   }
 
-  private async runNow(conversationId: string, task: BotRunTask): Promise<void> {
+  private async runNow(conversationId: string, task: BotRunTask, timeoutMs?: number): Promise<void> {
     const run: ActiveRun = { controller: new AbortController() }
     this.activeConversations.set(conversationId, run)
+    let timeoutTimer: ReturnType<typeof setTimeout> | undefined
+    if (timeoutMs && timeoutMs > 0) {
+      timeoutTimer = setTimeout(() => run.controller.abort(), timeoutMs)
+      timeoutTimer.unref?.()
+    }
     let terminalState: BotActivity['state'] = 'complete'
     try {
       await task({
@@ -101,6 +116,7 @@ export class BotRunCoordinator {
         if (this.activeSessions.get(run.sessionId) === run) this.activeSessions.delete(run.sessionId)
       }
       if (this.activeConversations.get(conversationId) === run) this.activeConversations.delete(conversationId)
+      if (timeoutTimer) clearTimeout(timeoutTimer)
     }
   }
 

@@ -141,6 +141,46 @@ const migrations: Migration[] = [
         database.exec('ALTER TABLE sessions ADD COLUMN tts_enabled INTEGER NOT NULL DEFAULT 0')
       }
     }
+  },
+  {
+    version: 6,
+    up(database) {
+      database.exec(`
+        CREATE TABLE IF NOT EXISTS scheduled_jobs (
+          id TEXT PRIMARY KEY,
+          name TEXT NOT NULL,
+          kind TEXT NOT NULL,
+          schedule TEXT NOT NULL,
+          prompt TEXT,
+          session_id TEXT,
+          enabled INTEGER NOT NULL DEFAULT 1,
+          approve_mode TEXT NOT NULL DEFAULT 'manual',
+          provider_id TEXT,
+          max_rounds INTEGER,
+          quiet_hours TEXT,
+          catch_up INTEGER NOT NULL DEFAULT 0,
+          timeout_ms INTEGER NOT NULL DEFAULT 1800000,
+          consecutive_errors INTEGER NOT NULL DEFAULT 0,
+          next_run_at INTEGER,
+          created_at INTEGER NOT NULL,
+          updated_at INTEGER NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_scheduled_jobs_next ON scheduled_jobs(enabled, next_run_at);
+        CREATE TABLE IF NOT EXISTS scheduled_runs (
+          id TEXT PRIMARY KEY,
+          job_id TEXT NOT NULL,
+          started_at INTEGER NOT NULL,
+          finished_at INTEGER,
+          status TEXT,
+          summary TEXT,
+          input_tokens INTEGER NOT NULL DEFAULT 0,
+          output_tokens INTEGER NOT NULL DEFAULT 0,
+          error TEXT,
+          FOREIGN KEY (job_id) REFERENCES scheduled_jobs(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_scheduled_runs_job ON scheduled_runs(job_id, started_at DESC);
+      `)
+    }
   }
 ]
 

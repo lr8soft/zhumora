@@ -1,11 +1,12 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Brain, Cable, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
+import { BarChart3, Brain, Cable, Clock, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
 import { useAppStore } from '../store'
 import { ProviderSettings } from './settings/ProviderSettings'
 import { McpSettings } from './settings/McpSettings'
 import { SkillSettings } from './settings/SkillSettings'
 import { MemorySettings } from './settings/MemorySettings'
+import { ScheduledSettings } from './settings/ScheduledSettings'
 import { UsageSettings } from './settings/UsageSettings'
 import { GeneralSettings } from './settings/GeneralSettings'
 import { TelegramSettings } from './settings/TelegramSettings'
@@ -13,7 +14,7 @@ import { QQSettings } from './settings/QQSettings'
 import { AvatarSettings } from './settings/AvatarSettings'
 import { TtsSettings } from './settings/TtsSettings'
 
-type Tab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
+type Tab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'scheduled' | 'usage' | 'general'
 
 const TAB_ICONS: Record<Tab, typeof Server> = {
   providers: Server,
@@ -23,6 +24,7 @@ const TAB_ICONS: Record<Tab, typeof Server> = {
   tts: Volume2,
   skills: Sparkles,
   memory: Brain,
+  scheduled: Clock,
   usage: BarChart3,
   general: Settings2
 }
@@ -38,7 +40,7 @@ export default function SettingsView() {
     openSettings()
   }, [openSettings])
 
-  const tabs: Tab[] = ['providers', 'mcp', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
+  const tabs: Tab[] = ['providers', 'mcp', 'bots', 'avatar', 'tts', 'skills', 'memory', 'scheduled', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -113,23 +115,26 @@ export default function SettingsView() {
           onChange={(skills) => useAppStore.getState().updateSettingsDraft({ skills })}
         />}
         {tab === 'memory' && <MemorySettings />}
+        {tab === 'scheduled' && <ScheduledSettings />}
         {tab === 'usage' && <UsageSettings />}
         {tab === 'general' && <GeneralSettings />}
 
-        {/* 保存 / 取消 */}
-        <div className="settings-footer">
-          {isSettingsDirty && <span className="settings-dirty-hint">{t('settings.unsaved')}</span>}
-          <button className="btn-ghost" onClick={handleCancel}>
-            {t('settings.cancel')}
-          </button>
-          <button
-            className="btn-primary"
-            onClick={handleSave}
-            disabled={!isSettingsDirty}
-          >
-            {t('settings.save')}
-          </button>
-        </div>
+        {/* 保存 / 取消（scheduled 任务直接入库，无草稿，故该 Tab 不显示） */}
+        {tab !== 'scheduled' && (
+          <div className="settings-footer">
+            {isSettingsDirty && <span className="settings-dirty-hint">{t('settings.unsaved')}</span>}
+            <button className="btn-ghost" onClick={handleCancel}>
+              {t('settings.cancel')}
+            </button>
+            <button
+              className="btn-primary"
+              onClick={handleSave}
+              disabled={!isSettingsDirty}
+            >
+              {t('settings.save')}
+            </button>
+          </div>
+        )}
       </div>
     </div>
   )

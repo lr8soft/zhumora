@@ -5,6 +5,14 @@ import Database from 'better-sqlite3'
 import * as path from 'node:path'
 import { app } from 'electron'
 import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory } from '../../shared/types'
+import type {
+  QuietHours,
+  ScheduledJob,
+  ScheduledRun,
+  ScheduledRunStatus,
+  Schedule
+} from '../../shared/scheduled'
+import { DEFAULT_JOB_TIMEOUT_MS, normalizeQuietHours, normalizeSchedule } from '../../shared/scheduled'
 import { normalizeQQBotConfig } from '../../shared/qq'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
@@ -486,4 +494,220 @@ export function getSessionCompaction(sessionId: string): CompactionRecord | null
     summary: row.summary,
     createdAt: row.created_at
   }
+}
+
+// ============================================================
+// 定时任务 — scheduled_jobs / scheduled_runs
+// ============================================================
+
+interface ScheduledJobRow {
+  id: string
+  name: string
+  kind: string
+  schedule: string
+  prompt: string | null
+  session_id: string | null
+  enabled: number
+  approve_mode: string
+  provider_id: string | null
+  max_rounds: number | null
+  quiet_hours: string | null
+  catch_up: number
+  timeout_ms: number
+  consecutive_errors: number
+  next_run_at: number | null
+  created_at: number
+  updated_at: number
+}
+
+function mapScheduledJob(row: ScheduledJobRow): ScheduledJob | null {
+  const schedule = normalizeSchedule(safeJsonParse<Schedule>(row.schedule))
+  if (!schedule) return null
+  const quietHours = row.quiet_hours
+    ? normalizeQuietHours(safeJsonParse<QuietHours>(row.quiet_hours))
+    : null
+  return {
+    id: row.id,
+    name: row.name,
+    kind: row.kind === 'heartbeat' ? 'heartbeat' : 'cron',
+    schedule,
+    prompt: row.prompt,
+    sessionId: row.session_id,
+    enabled: row.enabled === 1,
+    approveMode: row.approve_mode === 'auto' || row.approve_mode === 'full' ? row.approve_mode : 'manual',
+    providerId: row.provider_id,
+    maxRounds: row.max_rounds,
+    quietHours,
+    catchUp: row.catch_up === 1,
+    timeoutMs: row.timeout_ms,
+    consecutiveErrors: row.consecutive_errors,
+    nextRunAt: row.next_run_at,
+    createdAt: row.created_at,
+    updatedAt: row.updated_at
+  }
+}
+
+export interface NewScheduledJobInput {
+  name: string
+  kind: 'cron' | 'heartbeat'
+  schedule: Schedule
+  prompt: string | null
+  approveMode: ScheduledJob['approveMode']
+  providerId: string | null
+  maxRounds: number | null
+  quietHours: QuietHours | null
+  catchUp: boolean
+  timeoutMs: number
+  nextRunAt: number | null
+}
+
+export function insertScheduledJob(id: string, input: NewScheduledJobInput): void {
+  const now = Date.now()
+  db!.prepare(`
+    INSERT INTO scheduled_jobs (id, name, kind, schedule, prompt, session_id, enabled, approve_mode,
+      provider_id, max_rounds, quiet_hours, catch_up, timeout_ms, consecutive_errors, next_run_at,
+      created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, NULL, 1, ?, ?, ?, ?, ?, ?, 0, ?, ?, ?)
+  `).run(
+    id, input.name, input.kind, JSON.stringify(input.schedule), input.prompt,
+    input.approveMode, input.providerId, input.maxRounds,
+    input.quietHours ? JSON.stringify(input.quietHours) : null,
+    input.catchUp ? 1 : 0, input.timeoutMs, input.nextRunAt, now, now
+  )
+}
+
+export function getScheduledJobs(): ScheduledJob[] {
+  const rows = db!.prepare('SELECT * FROM scheduled_jobs ORDER BY created_at ASC').all() as ScheduledJobRow[]
+  return rows.map(mapScheduledJob).filter((job): job is ScheduledJob => job !== null)
+}
+
+export function getScheduledJob(id: string): ScheduledJob | null {
+  const row = db!.prepare('SELECT * FROM scheduled_jobs WHERE id = ?').get(id) as ScheduledJobRow | undefined
+  return row ? (mapScheduledJob(row) ?? null) : null
+}
+
+export interface UpdateScheduledJobInput {
+  name?: string
+  schedule?: Schedule
+  prompt?: string | null
+  approveMode?: ScheduledJob['approveMode']
+  providerId?: string | null
+  maxRounds?: number | null
+  quietHours?: QuietHours | null
+  catchUp?: boolean
+  timeoutMs?: number
+  enabled?: boolean
+  nextRunAt?: number | null
+}
+
+export function updateScheduledJob(id: string, patch: UpdateScheduledJobInput): void {
+  const current = getScheduledJob(id)
+  if (!current) return
+  const next = {
+    name: patch.name ?? current.name,
+    schedule: patch.schedule ?? current.schedule,
+    prompt: patch.prompt === undefined ? current.prompt : patch.prompt,
+    approveMode: patch.approveMode ?? current.approveMode,
+    providerId: patch.providerId === undefined ? current.providerId : patch.providerId,
+    maxRounds: patch.maxRounds === undefined ? current.maxRounds : patch.maxRounds,
+    quietHours: patch.quietHours === undefined ? current.quietHours : patch.quietHours,
+    catchUp: patch.catchUp ?? current.catchUp,
+    timeoutMs: patch.timeoutMs ?? current.timeoutMs,
+    enabled: patch.enabled ?? current.enabled,
+    nextRunAt: patch.nextRunAt === undefined ? current.nextRunAt : patch.nextRunAt
+  }
+  db!.prepare(`
+    UPDATE scheduled_jobs SET
+      name = ?, schedule = ?, prompt = ?, approve_mode = ?, provider_id = ?, max_rounds = ?,
+      quiet_hours = ?, catch_up = ?, timeout_ms = ?, enabled = ?, next_run_at = ?, updated_at = ?
+    WHERE id = ?
+  `).run(
+    next.name, JSON.stringify(next.schedule), next.prompt, next.approveMode, next.providerId,
+    next.maxRounds, next.quietHours ? JSON.stringify(next.quietHours) : null,
+    next.catchUp ? 1 : 0, next.timeoutMs, next.enabled ? 1 : 0, next.nextRunAt, Date.now(), id
+  )
+}
+
+export function deleteScheduledJob(id: string): void {
+  db!.prepare('DELETE FROM scheduled_jobs WHERE id = ?').run(id)
+}
+
+export function setJobSession(id: string, sessionId: string): void {
+  db!.prepare('UPDATE scheduled_jobs SET session_id = ?, updated_at = ? WHERE id = ?')
+    .run(sessionId, Date.now(), id)
+}
+
+/** 成功一次 → 清零失败计数（next_run_at 在触发时刻已排好，这里不动） */
+export function recordJobSuccess(id: string): void {
+  db!.prepare('UPDATE scheduled_jobs SET consecutive_errors = 0, updated_at = ? WHERE id = ?')
+    .run(Date.now(), id)
+}
+
+/** 失败计数 +1；达到阈值时自动停用（防 token 暴走）。返回更新后的计数。 */
+export function recordJobError(id: string, threshold: number): number {
+  const result = db!.prepare(`
+    UPDATE scheduled_jobs
+    SET consecutive_errors = consecutive_errors + 1,
+        enabled = CASE WHEN consecutive_errors + 1 >= ? THEN 0 ELSE enabled END,
+        updated_at = ?
+    WHERE id = ?
+  `).run(threshold, Date.now(), id)
+  return result.changes > 0 ? (getScheduledJob(id)?.consecutiveErrors ?? 0) : 0
+}
+
+// --- scheduled_runs ---
+
+interface ScheduledRunRow {
+  id: string
+  job_id: string
+  started_at: number
+  finished_at: number | null
+  status: string | null
+  summary: string | null
+  input_tokens: number
+  output_tokens: number
+  error: string | null
+}
+
+function mapScheduledRun(row: ScheduledRunRow): ScheduledRun {
+  return {
+    id: row.id,
+    jobId: row.job_id,
+    startedAt: row.started_at,
+    finishedAt: row.finished_at,
+    status: (['running', 'ok', 'silent', 'skipped', 'error'].includes(row.status ?? '')
+      ? row.status
+      : 'error') as ScheduledRunStatus,
+    summary: row.summary,
+    inputTokens: row.input_tokens,
+    outputTokens: row.output_tokens,
+    error: row.error
+  }
+}
+
+export function insertScheduledRun(id: string, jobId: string, startedAt: number, status: ScheduledRunStatus): void {
+  db!.prepare('INSERT INTO scheduled_runs (id, job_id, started_at, status) VALUES (?, ?, ?, ?)')
+    .run(id, jobId, startedAt, status)
+}
+
+export function finishScheduledRun(id: string, status: ScheduledRunStatus, extra?: {
+  summary?: string | null
+  error?: string | null
+  inputTokens?: number
+  outputTokens?: number
+}): void {
+  db!.prepare(`
+    UPDATE scheduled_runs SET finished_at = ?, status = ?, summary = ?, error = ?,
+      input_tokens = ?, output_tokens = ?
+    WHERE id = ?
+  `).run(
+    Date.now(), status, extra?.summary ?? null, extra?.error ?? null,
+    extra?.inputTokens ?? 0, extra?.outputTokens ?? 0, id
+  )
+}
+
+export function getScheduledRuns(jobId: string, limit: number): ScheduledRun[] {
+  const rows = db!.prepare('SELECT * FROM scheduled_runs WHERE job_id = ? ORDER BY started_at DESC LIMIT ?')
+    .all(jobId, limit) as ScheduledRunRow[]
+  return rows.map(mapScheduledRun)
 }

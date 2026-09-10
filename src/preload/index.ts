@@ -6,6 +6,7 @@ import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningEffort } from '../shared/types'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
+import type { NewScheduledJobInput, ScheduledJobView, ScheduledRun } from '../shared/scheduled'
 
 const api = {
   // ============================================================
@@ -220,6 +221,26 @@ const api = {
       ipcRenderer.on('tts:error', handler)
       return () => ipcRenderer.removeListener('tts:error', handler)
     }
+  },
+
+  // ============================================================
+  // 定时任务（scheduler channel）
+  // ============================================================
+  scheduled: {
+    list: (): Promise<ScheduledJobView[]> =>
+      ipcRenderer.invoke('scheduled:list'),
+    create: (input: NewScheduledJobInput): Promise<{ ok?: boolean; id?: string; error?: string }> =>
+      ipcRenderer.invoke('scheduled:create', input),
+    update: (id: string, patch: Partial<NewScheduledJobInput> & { enabled?: boolean }): Promise<{ ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('scheduled:update', id, patch),
+    toggle: (id: string, enabled: boolean): Promise<{ ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('scheduled:toggle', id, enabled),
+    remove: (id: string): Promise<{ ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('scheduled:delete', id),
+    runNow: (id: string): Promise<{ ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('scheduled:runNow', id),
+    runs: (id: string, limit?: number): Promise<ScheduledRun[]> =>
+      ipcRenderer.invoke('scheduled:runs', id, limit)
   },
 
   // ============================================================

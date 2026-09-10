@@ -26,6 +26,7 @@ import { combineAgentEventSinks } from '../agent/persistedCallbacks'
 import { createAvatarAgentEventSink } from '../avatar/agentEvents'
 import { registerAvatarIpc } from './registerAvatarIpc'
 import { registerTtsIpc } from './registerTtsIpc'
+import { registerScheduledIpc } from './registerScheduledIpc'
 import { createTtsAgentEventSink } from '../tts/agentEvents'
 
 export function setupIpc(win: BrowserWindow, services: ApplicationServices): void {
@@ -41,8 +42,8 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
   const ttsEventSink = createTtsAgentEventSink(services.tts)
   const presentationEventSink = combineAgentEventSinks(avatarEventSink, ttsEventSink)
   const botEventSink = combineAgentEventSinks(createIpcAgentEventSink(win.webContents), presentationEventSink)
-  services.bots.setAgentEventSink(botEventSink)
-  services.bots.setActivityListener(({ sessionId, state }) => {
+  // 后台 Agent 运行状态归并到 runtime（侧边栏 spinner / running 集合），bot 与 scheduler 共用
+  const handleBackgroundActivity = ({ sessionId, state }: { sessionId: string; state: string }) => {
     if (state === 'running') {
       if (runtime.runningSessions.has(sessionId)) return false
       runtime.setRunning(sessionId, true)
@@ -55,10 +56,19 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     } else {
       runtime.setRunning(sessionId, false)
     }
-  })
+  }
+  services.bots.setAgentEventSink(botEventSink)
+  services.bots.setActivityListener(handleBackgroundActivity)
+  // 定时任务复用同一套 renderer 事件与运行状态接线
+  services.scheduler.setAgentEventSink(botEventSink)
+  services.scheduler.setActivityListener(handleBackgroundActivity)
+  // skip-if-busy 判定：runtime.runningSessions 是 UI/bot/scheduler 的统一运行态权威，
+  // 叠加本 coordinator 的在途运行，确保用户于 UI 手动跑同一会话时调度器跳过触发
+  services.scheduler.setBusyCheck(sessionId => runtime.runningSessions.has(sessionId) || services.scheduler.runs.isSessionActive(sessionId))
   registerGeneralIpc(win, runtime, services)
   registerAvatarIpc(win, services.avatar)
   registerTtsIpc(win, services.tts)
+  registerScheduledIpc(win, services.scheduler)
 
   // ============================================================
   // Agent 对话

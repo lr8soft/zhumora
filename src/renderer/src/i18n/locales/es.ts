@@ -103,6 +103,7 @@ export default {
       tts: 'Voz',
       skills: 'Skills',
       memory: 'Memoria',
+      scheduled: 'Tareas programadas',
       usage: 'Uso',
       general: 'General'
     },

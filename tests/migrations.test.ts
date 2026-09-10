@@ -10,6 +10,9 @@ assert.ok((fresh.prepare('PRAGMA table_info(bot_sessions)').all() as { name: str
 assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_enabled'))
 assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_model_id'))
 assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'tts_enabled'))
+assert.ok((fresh.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_jobs'").get()))
+assert.ok((fresh.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_runs'").get()))
+assert.ok((fresh.prepare('PRAGMA table_info(scheduled_jobs)').all() as { name: string }[]).some(column => column.name === 'next_run_at'))
 fresh.close()
 
 const legacy = new Database(':memory:')
@@ -51,5 +54,25 @@ assert.ok((previousVersion.prepare('PRAGMA table_info(bot_sessions)').all() as {
 assert.ok((previousVersion.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_enabled'))
 assert.ok((previousVersion.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'tts_enabled'))
 previousVersion.close()
+
+const v5 = new Database(':memory:')
+v5.exec(`
+  CREATE TABLE sessions (
+    id TEXT PRIMARY KEY,
+    title TEXT NOT NULL DEFAULT 'New Session',
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL,
+    workspace_path TEXT,
+    avatar_enabled INTEGER NOT NULL DEFAULT 0,
+    avatar_model_id TEXT,
+    tts_enabled INTEGER NOT NULL DEFAULT 0
+  );
+  PRAGMA user_version = 5;
+`)
+runDatabaseMigrations(v5)
+assert.equal(v5.pragma('user_version', { simple: true }), DATABASE_SCHEMA_VERSION)
+assert.ok((v5.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_jobs'").get()))
+assert.ok((v5.prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='scheduled_runs'").get()))
+v5.close()
 
 console.log('database migration tests passed')
