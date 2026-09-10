@@ -115,7 +115,7 @@ No character model is bundled. The `@pixiv/three-vrm` code is MIT-licensed, but 
 
 ## Documentation
 
-Implementation details, architecture, tool interfaces, context management, memory, MCP, and build notes are documented in [TECHNICAL.md](./TECHNICAL.md).
+The authoritative session/message architecture and contribution rules are documented in [ARCHITECTURE.md](./ARCHITECTURE.md) and [AGENTS.md](./AGENTS.md). Tool interfaces, context management, memory, MCP, and build notes are in [TECHNICAL.md](./TECHNICAL.md).
 
 ## License
 

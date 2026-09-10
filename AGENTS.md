@@ -2,6 +2,26 @@
 
 本项目是 Electron 桌面 AI Agent。所有改动首先保护以下行为：多会话可并行且隔离；ReAct 工具调用序列合法；权限不可绕过；上下文压缩不删除完整历史；用户中止能终止后续工具；main/preload/renderer 的安全边界不退化。
 
+## 必读架构文档
+
+修改会话、消息、Agent、Bot、权限、IPC、renderer 消息状态或数据库会话边界前，必须完整阅读 [`ARCHITECTURE.md`](./ARCHITECTURE.md)。该文档记录当前架构、业务时序、状态 owner 和禁止恢复的旧设计。
+
+代码与架构文档必须在同一次变更中保持一致。不得新增绕过架构但未记录的“临时入口”。
+
+## 统一会话系统强制约束
+
+- `SessionService` 是会话消息、核心会话 CRUD、外部会话映射和 Agent 运行的唯一应用 API。UI、Telegram、QQ 以及未来入口都只是它的适配器；Avatar/TTS 的按会话展示配置仍归各自适配器。
+- 只有 `SessionService` 可以调用注入的 Agent executor；`composition.ts` 只负责导入 `runAgent` 并注入。IPC、Bot、工具和展示模块不得直接调用 `runAgent`。
+- 活跃运行、AbortController 和 approve mode 只能由 `SessionService` 按 `sessionId` 持有。禁止在 IPC 或 Bot 中维护第二套 `activeSessions`、`runningSessions`、`abortControllers`。
+- 同一 session 必须互斥，不同 session 必须可并行。不得引入进程级 Agent 全局锁。
+- Bot 的 `BotMessageQueue` 只负责外部 conversation FIFO 和 transport AbortSignal，不拥有 session、权限、运行状态或活动展示状态。
+- Bot 输入必须通过 `BotSessionAdapter → SessionService`；Bot 不直接读写消息历史、不组装 provider/prompt/tools、不创建持久化消息 ID。
+- 全局运行输出通过 `SessionEventHub` 分发。平台 local sink 只负责把本次回复送回来源平台，不得成为另一套全局事件总线。
+- user message 必须标明 `renderer` 或 `external` 来源。renderer 输入靠 invoke 返回的权威消息替换 `pending-*`；只有 external 输入通过 `agent:user_message` 追加到 UI，禁止双写。
+- 删除活动会话必须先中止并等待 completion settle，再删数据库。应用退出必须停止新 Bot 输入并调用 `SessionService.stopAll()`。
+- 不得恢复已删除的 `BotAgentBridge`、`BotRunCoordinator`、`AgentIpcRuntime`，也不得用新名字重建相同职责。
+- 当前没有 scheduler、定时任务 runtime 或 scheduled-job 表。未来若明确重新引入，scheduler 只能作为 `SessionService` 输入适配器，并先更新 `ARCHITECTURE.md`、migration 和并发/取消测试。
+
 ## 架构与依赖方向
 
 代码按“领域核心 → 应用编排 → 适配器 → 组合根”组织：
@@ -9,7 +29,7 @@
 - `src/shared/`：跨进程契约和纯函数，不导入 Electron、数据库或 main/renderer 模块。
 - `src/main/agent/`：Agent 用例、状态机、历史和上下文策略。优先接收显式依赖，不直接读取 UI、IPC 或数据库状态。
 - `src/main/tools/`、`llm/`、`mcp/`、`store/`、`desktop/`：外部能力适配器。适配器可以维护自身生命周期状态，但不得把该状态泄漏为领域规则。
-- `src/main/ipc/`：传输层，只做输入校验、调用用例、持久化/事件适配；不注册工具，不实现 Agent 决策。
+- `src/main/ipc/`：传输层，只做输入校验、调用用例和事件适配；不持久化会话消息，不注册工具，不实现 Agent 决策。
 - `src/main/composition.ts` 和 `src/main/index.ts`：唯一组合根。进程级服务的构造、注册和启动顺序放在这里。
 - `src/preload/`：最小化、强类型的 IPC API。不得暴露通用 `ipcRenderer`。
 - `src/renderer/`：展示和交互。main 是持久化消息、运行状态和权限结果的权威来源。

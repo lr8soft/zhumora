@@ -36,36 +36,29 @@ Supported UI languages currently include Chinese, English, Japanese, Spanish, Fr
 
 ## 3. Runtime architecture
 
+The authoritative architecture, ownership rules, and UI/Bot message sequence diagrams live in [ARCHITECTURE.md](./ARCHITECTURE.md). Any change to session execution must update that document and the corresponding tests.
+
 ```text
-┌─────────────────────────────────────────────┐
-│                Electron Main                │
-│                                             │
-│  LLM Provider     Agent Runner     MCP      │
-│       │                │            │       │
-│       └──────────┬─────┴─────┬──────┘       │
-│                  │ Tool Registry            │
-│                  │                          │
-│       ┌──────────┴──────────┐               │
-│       │                     │               │
-│  SQLite Store        Context / Memory       │
-│                                             │
-│                 IPC handlers                │
-├─────────────────────────────────────────────┤
-│          Preload / contextBridge            │
-├─────────────────────────────────────────────┤
-│                React Renderer               │
-│                                             │
-│  Sidebar / Chat / Settings / Zustand        │
-└─────────────────────────────────────────────┘
+React UI ── IPC ───────────────┐
+                               │
+Telegram ─ BotMessageQueue ─┐  │
+                            ├──┴─► SessionService ─► Agent Runner
+QQ ─────── BotMessageQueue ─┘          │                │
+                                      │                ├─ LLM Provider
+                                      │                ├─ PermissionBroker
+                                      │                └─ Tool Registry ─ MCP / built-ins
+                                      │
+                                      ├─ SQLite history / compaction
+                                      └─ SessionEventHub ─► UI / Bot / Avatar / TTS
 ```
 
-The renderer does not receive unrestricted Electron IPC access. The preload layer exposes a limited application API through `contextBridge`.
+`SessionService` is the only persistent-session application use case and the only module allowed to invoke the injected Agent executor. IPC, Telegram, and QQ are transport adapters over that API. The renderer does not receive unrestricted Electron IPC access; preload exposes a limited application API through `contextBridge`.
 
 Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
 Each Avatar window owns an `AvatarWindowInteraction` instance for drag capture and mouse passthrough. Renderer hit-testing selects the character or explicit drag handles; typed IPC sends only start/move/end phases, and main calculates positions from Electron's DIP cursor coordinates. Blur/end releases capture. Global dimensions are normalized at the settings boundary (schema version 8), applied on save, and fitted to each monitor's work area; renderer framing retains stable model bounds when resized.
 
-Avatar presentation state belongs to each window. The event adapter projects session-tagged Agent events into idle/thinking/speaking, while the IPC runtime's generic running callback covers startup, completion and abort. The motion controller owns bounded semantic overrides, default idle, autonomous variation and interruptible weight blending. Original built-in quaternion clips pass through VRM0 coordinate conversion; imported VRMA uses the library retargeter. Expression fading/blinking has a separate owner. Semantic animation mappings persist at the normalized settings boundary; capability reports include validated clips and semantic intents before prompt construction. Animation/expressions never create conversation history or invoke other tools.
+Avatar presentation state belongs to each window. Its event adapter subscribes to `SessionEventHub` and projects session-tagged running/assistant/tool events into idle/thinking/speaking. The motion controller owns bounded semantic overrides, default idle, autonomous variation and interruptible weight blending. Original built-in quaternion clips pass through VRM0 coordinate conversion; imported VRMA uses the library retargeter. Expression fading/blinking has a separate owner. Semantic animation mappings persist at the normalized settings boundary; capability reports include validated clips and semantic intents before prompt construction. Animation/expressions never create conversation history or invoke other tools.
 
 TTS is another isolated presentation adapter. A session-persisted opt-in flag lets the TTS event sink consume only the final `complete` event. `TtsManager` owns cancellation and output ordering, `SherpaOnnxTtsProvider` owns the native model lifecycle, and the renderer owns Web Audio playback. Model paths are normalized in settings and validated to remain inside the selected directory before the native runtime sees them. TTS does not register a tool, change the Agent prompt, or write audio into conversation history.
 
@@ -146,6 +139,8 @@ The renderer notice bar distinguishes the cause (`reason: 'length' | 'stream'`)
 so the user sees "connection dropped" rather than "token limit".
 
 ## 5. Agent execution
+
+`SessionService` assembles each run from the selected provider, persisted history, compaction state, prompt extensions, complete tool-registry snapshot, permission check, and session-scoped AbortSignal. `runner.ts` receives those dependencies and owns only the single-run ReAct state machine; it does not read IPC, Bot state, renderer state, or the database.
 
 The core agent follows a ReAct-style tool loop:
 
@@ -426,15 +421,18 @@ This separation is important for:
 
 ## 14. Concurrent sessions
 
-Multiple sessions can run the agent at the same time. Session isolation follows the
-pattern used by Cline and opencode:
+Multiple sessions can run the agent at the same time. `SessionService` owns the only
+process-local active-run map, keyed strictly by `sessionId`:
 
-- **Main process is the authority.** `agent:run` is fire-and-forget: it returns
-  `{ ok: true }` immediately and the agent loop runs in the background. One run per
-  session at a time (per-session guard), unlimited cross-session concurrency.
+- **Main process is the authority.** `agent:run` delegates to `SessionService` and returns
+  the main-assigned persisted user message once startup succeeds; the agent loop then runs
+  in the background. One run per session is allowed, while different sessions run concurrently.
   `agent:running` exposes the set of active session IDs so the renderer can restore
   state after a reload (running state is process-local, not persisted).
-- **Every event carries `sessionId` and is routed per session.** The renderer keeps a
+- **All inputs use one execution path.** UI requests and external Telegram/QQ messages
+  converge on `SessionService.sendMessage`. Bot queues provide only per-conversation FIFO;
+  they do not own Agent run state, permissions, history, or message IDs.
+- **Every event carries `sessionId` and is routed by `SessionEventHub`.** The renderer keeps a
   per-session message cache (`Record<sessionId, UIMessage[]>`); background sessions
   keep accumulating stream events even while another session is displayed, so switching
   back shows live progress. UI components subscribe only to the active session's slice.
@@ -450,6 +448,8 @@ pattern used by Cline and opencode:
 - **Abort semantics.** `agent:abort` cancels only that session's run. The agent loop
   checks the abort signal between rounds and after each LLM stream, persisting partial
   text and emitting `agent:aborted` so the renderer clears the session's running state.
+- **Deletion semantics.** Deleting an active session first aborts and awaits its completion,
+  then removes persisted state, preventing late callbacks from writing into a deleted session.
 
 ## 15. UI state and localization
 

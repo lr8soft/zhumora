@@ -104,7 +104,7 @@ npm run build:win
 
 ## 文档
 
-架构、工具系统、上下文管理、长期记忆、MCP 和构建细节见 [TECHNICAL.md](./TECHNICAL.md)。
+会话/消息系统的权威架构与开发约束见 [ARCHITECTURE.md](./ARCHITECTURE.md) 和 [AGENTS.md](./AGENTS.md)；工具系统、上下文管理、长期记忆、MCP 和构建细节见 [TECHNICAL.md](./TECHNICAL.md)。
 
 ## License
 
