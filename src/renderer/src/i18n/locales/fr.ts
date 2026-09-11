@@ -137,10 +137,10 @@ export default {
       active: 'Actif',
       activate: 'Cliquez pour activer',
       contextWindow: 'Fenêtre de Contexte',
-      contextWindowAuto: 'Auto',
+      contextWindowAuto: 'Redétecter',
       contextWindowDetect: 'Détecter la fenêtre de contexte',
       contextWindowDetected: 'Détecté',
-      contextWindowHint: "Tokens max du modèle. Détection auto lors de la saisie de l'URL de base (modifiable ; 0 = détecter à chaque fois)."
+      contextWindowHint: "Nombre maximal de tokens. Détection automatique avec une clé API ; les services locaux sans clé sont aussi testés après modification de l’URL de base. Valeur modifiable."
     },
     mcp: {
       hint: "Configurez les serveurs MCP (Model Context Protocol) pour des capacités d'outils étendues.",

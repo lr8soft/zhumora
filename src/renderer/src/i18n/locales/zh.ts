@@ -147,10 +147,10 @@ export default {
       active: '当前使用',
       activate: '点击切换为当前',
       contextWindow: '上下文窗口',
-      contextWindowAuto: '自动',
+      contextWindowAuto: '重新探测',
       contextWindowDetect: '探测上下文窗口',
       contextWindowDetected: '已识别',
-      contextWindowHint: '模型最大 token 数。填写 Base URL 后自动识别（可手动覆盖；0 = 每次自动检测）。'
+      contextWindowHint: '模型最大 token 数。有 API Key 时自动探测；本地无 Key 服务也会在 Base URL 失焦时尝试探测。仍可手动覆盖。'
     },
     mcp: {
       hint: '配置 MCP (Model Context Protocol) 服务器以扩展工具能力。',

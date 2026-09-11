@@ -146,10 +146,14 @@ interface CompactionMarker {
 /** loadMessages 进行中的去重（避免同一会话的并发拉取互相覆盖） */
 const loadingMessages = new Map<string, Promise<void>>()
 
+export type SettingsTab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
+
 interface AppState {
   // 视图
   view: 'chat' | 'settings'
   setView: (v: 'chat' | 'settings') => void
+  settingsTab: SettingsTab
+  setSettingsTab: (tab: SettingsTab) => void
 
   // 布局
   /** 侧边栏宽度（px）；collapsed 时不生效 */
@@ -256,6 +260,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   // ---- 视图 ----
   view: 'chat',
   setView: (v) => set({ view: v }),
+  settingsTab: 'providers',
+  setSettingsTab: (settingsTab) => set({ settingsTab }),
 
   // ---- 布局 ----
   sidebarWidth: getStoredSidebarWidth(),

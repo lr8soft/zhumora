@@ -1,7 +1,7 @@
-import { useEffect, useState } from 'react'
+import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
 import { BarChart3, Brain, Cable, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
-import { useAppStore } from '../store'
+import { useAppStore, type SettingsTab } from '../store'
 import { ProviderSettings } from './settings/ProviderSettings'
 import { McpSettings } from './settings/McpSettings'
 import { SkillSettings } from './settings/SkillSettings'
@@ -13,9 +13,7 @@ import { QQSettings } from './settings/QQSettings'
 import { AvatarSettings } from './settings/AvatarSettings'
 import { TtsSettings } from './settings/TtsSettings'
 
-type Tab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
-
-const TAB_ICONS: Record<Tab, typeof Server> = {
+const TAB_ICONS: Record<SettingsTab, typeof Server> = {
   providers: Server,
   mcp: Cable,
   bots: Send,
@@ -29,16 +27,15 @@ const TAB_ICONS: Record<Tab, typeof Server> = {
 
 export default function SettingsView() {
   const { t } = useTranslation()
-  const [tab, setTab] = useState<Tab>('providers')
   // 设置页只操作草稿；Save 写库、Cancel 丢弃（草稿模式，避免"改一个字就入库"）
-  const { settingsDraft, isSettingsDirty, openSettings, saveSettings, cancelSettings, setView } = useAppStore()
+  const { settingsDraft, isSettingsDirty, settingsTab, setSettingsTab, openSettings, saveSettings, cancelSettings, setView } = useAppStore()
 
   // 进入设置页时初始化草稿（每次 mount 都刷新一次，防止上次未保存的草稿残留）
   useEffect(() => {
     openSettings()
   }, [openSettings])
 
-  const tabs: Tab[] = ['providers', 'mcp', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
+  const tabs: SettingsTab[] = ['providers', 'mcp', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -63,10 +60,10 @@ export default function SettingsView() {
             return (
               <button
                 key={tb}
-                className={tab === tb ? 'active' : ''}
-                onClick={() => setTab(tb)}
+                className={settingsTab === tb ? 'active' : ''}
+                onClick={() => setSettingsTab(tb)}
                 role="tab"
-                aria-selected={tab === tb}
+                aria-selected={settingsTab === tb}
               >
                 <Icon size={14} />
                 {t(`settings.tabs.${tb}`)}
@@ -76,16 +73,16 @@ export default function SettingsView() {
         </div>
 
         {/* 内容（全部绑定草稿） */}
-        {tab === 'providers' && <ProviderSettings
+        {settingsTab === 'providers' && <ProviderSettings
           providers={settingsDraft.providers}
           activeId={settingsDraft.activeProviderId}
           onChange={(providers, activeId) => useAppStore.getState().updateSettingsDraft({ providers, activeProviderId: activeId })}
         />}
-        {tab === 'mcp' && <McpSettings
+        {settingsTab === 'mcp' && <McpSettings
           servers={settingsDraft.mcpServers}
           onChange={(mcpServers) => useAppStore.getState().updateSettingsDraft({ mcpServers })}
         />}
-        {tab === 'bots' && <div style={{ display: 'grid', gap: 18 }}>
+        {settingsTab === 'bots' && <div style={{ display: 'grid', gap: 18 }}>
           <TelegramSettings
             config={settingsDraft.telegramBot}
             onChange={(telegramBot) => useAppStore.getState().updateSettingsDraft({ telegramBot })}
@@ -95,7 +92,7 @@ export default function SettingsView() {
             onChange={(qqBot) => useAppStore.getState().updateSettingsDraft({ qqBot })}
           />
         </div>}
-        {tab === 'avatar' && <AvatarSettings
+        {settingsTab === 'avatar' && <AvatarSettings
           models={settingsDraft.avatarModels}
           defaultModelId={settingsDraft.defaultAvatarModelId}
           windowSize={settingsDraft.avatarWindowSize}
@@ -103,18 +100,18 @@ export default function SettingsView() {
           onChange={(avatarModels, defaultAvatarModelId) =>
             useAppStore.getState().updateSettingsDraft({ avatarModels, defaultAvatarModelId })}
         />}
-        {tab === 'tts' && <TtsSettings
+        {settingsTab === 'tts' && <TtsSettings
           models={settingsDraft.ttsModels}
           defaultModelId={settingsDraft.defaultTtsModelId}
           onChange={(ttsModels, defaultTtsModelId) => useAppStore.getState().updateSettingsDraft({ ttsModels, defaultTtsModelId })}
         />}
-        {tab === 'skills' && <SkillSettings
+        {settingsTab === 'skills' && <SkillSettings
           skills={settingsDraft.skills}
           onChange={(skills) => useAppStore.getState().updateSettingsDraft({ skills })}
         />}
-        {tab === 'memory' && <MemorySettings />}
-        {tab === 'usage' && <UsageSettings />}
-        {tab === 'general' && <GeneralSettings />}
+        {settingsTab === 'memory' && <MemorySettings />}
+        {settingsTab === 'usage' && <UsageSettings />}
+        {settingsTab === 'general' && <GeneralSettings />}
 
         {/* 保存 / 取消 */}
         <div className="settings-footer">

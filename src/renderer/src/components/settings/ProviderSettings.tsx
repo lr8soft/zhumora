@@ -2,6 +2,8 @@ import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Circle, CircleDot, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react'
 import type { ProviderConfig } from '@shared/types'
+import { useProviderContextDetection } from './useProviderContextDetection'
+import { TEMPERATURE_MAX, TEMPERATURE_MIN, TEMPERATURE_STEP, TemperatureInput } from './TemperatureInput'
 
 interface Props {
   providers: ProviderConfig[]
@@ -9,70 +11,14 @@ interface Props {
   onChange: (providers: ProviderConfig[], activeId: string | null) => void
 }
 
-const TEMP_MIN = 0
-const TEMP_MAX = 2
-const TEMP_STEP = 0.01
-
-/** 四舍五入到 0.01，消除浮点误差 */
-const roundTemp = (v: number) => Math.round(v * 100) / 100
-const clampTemp = (v: number) => Math.min(TEMP_MAX, Math.max(TEMP_MIN, roundTemp(v)))
-
-/**
- * 温度数字输入框。
- * 输入过程中不拦截用户输入（可以临时超出范围），只在失焦时收敛到 [min, max]。
- * 未聚焦时跟随外部值，保证拖动滑杆 / 重置后数字同步。
- */
-function TemperatureInput({
-  value,
-  disabled,
-  onCommit
-}: {
-  value: number
-  disabled?: boolean
-  onCommit: (v: number) => void
-}) {
-  const [focused, setFocused] = useState(false)
-  const [text, setText] = useState('')
-
-  const display = focused ? text : String(roundTemp(value))
-
-  return (
-    <input
-      type="number"
-      className="input-field temp-number"
-      min={TEMP_MIN}
-      max={TEMP_MAX}
-      step={TEMP_STEP}
-      value={display}
-      disabled={disabled}
-      onFocus={() => {
-        setFocused(true)
-        setText(String(roundTemp(value)))
-      }}
-      onChange={(e) => {
-        setText(e.target.value)
-        const v = parseFloat(e.target.value)
-        // 输入中：只做有效性校验，不夹范围，让用户能打 "1" → "0.75"
-        if (Number.isFinite(v)) onCommit(roundTemp(v))
-      }}
-      onBlur={() => {
-        setFocused(false)
-        const v = parseFloat(text)
-        onCommit(Number.isFinite(v) ? clampTemp(v) : roundTemp(value))
-      }}
-    />
-  )
-}
-
 export function ProviderSettings({ providers, activeId, onChange }: Props) {
   const { t } = useTranslation()
-  // 上下文窗口探测状态（按 provider id）：填/改 Base URL 时自动识别
-  const [detecting, setDetecting] = useState<Record<string, boolean>>({})
-  const [detected, setDetected] = useState<Record<string, number>>({})
+  const { detecting, detected, detectContextWindow } = useProviderContextDetection({ providers, activeId, onChange })
   // 模型列表状态：key = `${providerId}::${baseUrl}`（baseUrl 变了旧列表自动失效）
   const [modelLists, setModelLists] = useState<Record<string, { id: string; name?: string; ownedBy?: string }[]>>({})
   const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
   const [modelsError, setModelsError] = useState<Record<string, string>>({})
+  const [openModelList, setOpenModelList] = useState<string | null>(null)
 
   const listKey = (p: { id: string; baseUrl: string }) => `${p.id}::${p.baseUrl}`
 
@@ -106,30 +52,6 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
     }
   }
 
-  /** 探测上下文窗口（手动配置优先；否则 API 探测 → 启发式 → 默认值） */
-  const detectContextWindow = async (idx: number) => {
-    const p = providers[idx]
-    if (!p?.baseUrl || detecting[p.id]) return
-    setDetecting((s) => ({ ...s, [p.id]: true }))
-    try {
-      const res = await window.api.provider.detectContextWindow(p, p.defaultModel)
-      if (typeof res.detected === 'number') {
-        setDetected((s) => ({ ...s, [p.id]: res.detected! }))
-        // 用户未手动填写（0）→ 把探测值回填到输入框，让限制真实生效
-        if (!p.contextWindow || p.contextWindow <= 0) {
-          updateProvider(idx, { contextWindow: res.detected })
-        }
-      }
-    } catch {
-      // 探测失败：保持 0（自动），不阻塞用户
-    } finally {
-      setDetecting((s) => {
-        const next = { ...s }
-        delete next[p.id]
-        return next
-      })
-    }
-  }
   const addProvider = () => {
     const id = `prov-${Date.now()}`
     const newProv: ProviderConfig = {
@@ -137,7 +59,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
       name: 'New Provider',
       baseUrl: 'https://api.zhuminet.com/v1',
       apiKey: '',
-      defaultModel: 'gemma-4-26B-A4B-it-262K',
+      defaultModel: '',
       enabled: true,
       temperature: undefined,
       reasoningEnabled: false,
@@ -204,26 +126,52 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
             <div className="form-field">
               <label className="form-label">{t('settings.providers.defaultModel')}</label>
               <div className="model-combobox">
-                <input
-                  className="input-field"
-                  value={p.defaultModel}
-                  list={`model-datalist-${p.id}`}
-                  placeholder={t('settings.providers.modelPlaceholder')}
-                  onChange={(e) => updateProvider(i, { defaultModel: e.target.value })}
-                  onFocus={() => void loadModels(i, false)}
-                />
-                {/* 原生 combobox：可下拉选择，也可自由输入不在列表中的模型 id */}
-                <datalist id={`model-datalist-${p.id}`}>
-                  {(modelLists[listKey(p)] || []).map((m) => (
-                    <option key={m.id} value={m.id} label={m.ownedBy ? `${m.id} (${m.ownedBy})` : m.id} />
-                  ))}
-                </datalist>
+                <div className="model-picker">
+                  <input
+                    className="input-field"
+                    value={p.defaultModel}
+                    placeholder={t('settings.providers.modelPlaceholder')}
+                    onChange={(e) => updateProvider(i, { defaultModel: e.target.value })}
+                    onFocus={() => {
+                      setOpenModelList(p.id)
+                      void loadModels(i, false)
+                    }}
+                  />
+                  {openModelList === p.id && modelLists[listKey(p)]?.length > 0 && (
+                    <>
+                      <button className="model-list-backdrop" aria-label={t('settings.cancel')} onClick={() => setOpenModelList(null)} />
+                      <div className="model-list" role="listbox">
+                        {modelLists[listKey(p)].map((model) => (
+                          <button
+                            type="button"
+                            role="option"
+                            aria-selected={model.id === p.defaultModel}
+                            className={model.id === p.defaultModel ? 'model-list-item active' : 'model-list-item'}
+                            key={model.id}
+                            onClick={() => {
+                              updateProvider(i, { defaultModel: model.id })
+                              setOpenModelList(null)
+                              void detectContextWindow({ ...p, defaultModel: model.id })
+                            }}
+                          >
+                            <span>{model.name || model.id}</span>
+                            {model.name && <small>{model.id}</small>}
+                            {model.ownedBy && <small>{model.ownedBy}</small>}
+                          </button>
+                        ))}
+                      </div>
+                    </>
+                  )}
+                </div>
                 <button
                   className="icon-button"
                   style={{ flex: 'none' }}
                   title={t('settings.providers.modelRefresh')}
                   disabled={!!modelsLoading[listKey(p)]}
-                  onClick={() => void loadModels(i, true)}
+                  onClick={() => {
+                    setOpenModelList(p.id)
+                    void loadModels(i, true)
+                  }}
                 >
                   {modelsLoading[listKey(p)]
                     ? <Loader2 size={14} className="spin" />
@@ -242,7 +190,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
                 className="input-field mono"
                 value={p.baseUrl}
                 onChange={(e) => updateProvider(i, { baseUrl: e.target.value })}
-                onBlur={() => void detectContextWindow(i)}
+                onBlur={() => void detectContextWindow(p)}
               />
             </div>
             <div className="form-field span-2">
@@ -253,6 +201,10 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
                 value={p.apiKey || ''}
                 placeholder={t('settings.providers.apiKeyPlaceholder')}
                 onChange={(e) => updateProvider(i, { apiKey: e.target.value })}
+                onBlur={() => {
+                  const current = providers.find(provider => provider.id === p.id)
+                  if (current?.apiKey) void detectContextWindow(current)
+                }}
               />
             </div>
             <div className="form-field span-2">
@@ -275,9 +227,9 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
             <label className="form-label">{t('settings.providers.temperature')}{p.temperature === undefined && ` (${t('settings.providers.temperatureDefault')})`}</label>
             <input
               type="range"
-              min={TEMP_MIN}
-              max={TEMP_MAX}
-              step={TEMP_STEP}
+              min={TEMPERATURE_MIN}
+              max={TEMPERATURE_MAX}
+              step={TEMPERATURE_STEP}
               value={p.temperature ?? 1}
               onChange={(e) => updateProvider(i, { temperature: parseFloat(e.target.value) })}
               className="range-input"
@@ -331,7 +283,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
               )}
               {detecting[p.id] && <Loader2 size={13} className="spin" style={{ flex: 'none' }} />}
               <button
-                onClick={() => void detectContextWindow(i)}
+                onClick={() => void detectContextWindow(p)}
                 className="link-button"
                 title={t('settings.providers.contextWindowDetect')}
                 style={{ whiteSpace: 'nowrap', flex: 'none' }}

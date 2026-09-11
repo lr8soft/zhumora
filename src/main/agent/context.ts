@@ -20,6 +20,7 @@ import {
   estimateTokens,
   getPreserveTokenBudget
 } from './contextBudget'
+import { configuredContextWindow, contextDetectionCacheKey } from './contextDetectionPolicy'
 
 // 默认上下文窗口（API 未返回、启发式也未命中时的 fallback）
 const DEFAULT_CONTEXT_WINDOW = 32768
@@ -29,7 +30,8 @@ const TOOL_RESULT_CHAR_LIMIT = 2_000
 /** 摘要输入中每条文本的最大字符（防止单条超长消息撑爆摘要 prompt） */
 const MAX_SINGLE_MSG_CHARS = 4_000
 
-// 缓存：provider+model → contextWindow
+// 缓存：endpoint + model + 是否携带认证 → contextWindow。
+// 区分匿名/认证请求，避免“未填 Key 时的保守兜底”污染补填 Key 后的探测。
 const contextWindowCache = new Map<string, number>()
 
 // ============================================================
@@ -121,15 +123,16 @@ export function heuristicContextWindow(model: string): number | null {
  * 5. 模型名启发式表（常见商用模型）
  * 6. 以上都失败 → DEFAULT_CONTEXT_WINDOW（保守兜底，绝不返回 0）
  */
-export async function fetchContextWindow(provider: ProviderConfig, modelOverride?: string): Promise<number> {
-  // 用户手动配置优先
-  if (provider.contextWindow && provider.contextWindow > 0) {
-    return provider.contextWindow
-  }
-
+async function resolveContextWindow(
+  provider: ProviderConfig,
+  modelOverride: string | undefined,
+  options: { useConfiguredValue: boolean; forceRefresh: boolean }
+): Promise<number> {
+  const configured = configuredContextWindow(provider, options.useConfiguredValue)
+  if (configured !== null) return configured
   const model = modelOverride || provider.defaultModel
-  const cacheKey = `${provider.baseUrl}::${model}`
-  if (contextWindowCache.has(cacheKey)) {
+  const cacheKey = contextDetectionCacheKey(provider, model)
+  if (!options.forceRefresh && contextWindowCache.has(cacheKey)) {
     return contextWindowCache.get(cacheKey)!
   }
 
@@ -232,6 +235,16 @@ export async function fetchContextWindow(provider: ProviderConfig, modelOverride
   return DEFAULT_CONTEXT_WINDOW
 }
 
+/** Agent 运行时入口：显式配置优先，否则使用探测/缓存/启发式结果。 */
+export function fetchContextWindow(provider: ProviderConfig, modelOverride?: string): Promise<number> {
+  return resolveContextWindow(provider, modelOverride, { useConfiguredValue: true, forceRefresh: false })
+}
+
+/** 设置页探测入口：忽略当前手动值并绕过缓存，读取端点此刻报告的真实窗口。 */
+export function detectProviderContextWindow(provider: ProviderConfig, modelOverride?: string): Promise<number> {
+  return resolveContextWindow(provider, modelOverride, { useConfiguredValue: false, forceRefresh: true })
+}
+
 /** 从 /models 的单个条目里提取上下文长度（多种字段命名兼容） */
 function pickContextLength(entry: any): number | null {
   if (!entry) return null
@@ -258,7 +271,7 @@ export function getContextWindow(provider: ProviderConfig, modelOverride?: strin
     return provider.contextWindow
   }
   const model = modelOverride || provider.defaultModel
-  const cacheKey = `${provider.baseUrl}::${model}`
+  const cacheKey = contextDetectionCacheKey(provider, model)
   const cached = contextWindowCache.get(cacheKey)
   if (cached) return cached
   return heuristicContextWindow(model) ?? DEFAULT_CONTEXT_WINDOW

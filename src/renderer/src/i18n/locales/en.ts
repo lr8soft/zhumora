@@ -137,10 +137,10 @@ export default {
       active: 'Active',
       activate: 'Click to activate',
       contextWindow: 'Context Window',
-      contextWindowAuto: 'Auto',
+      contextWindowAuto: 'Re-detect',
       contextWindowDetect: 'Detect context window',
       contextWindowDetected: 'Detected',
-      contextWindowHint: 'Max tokens for the model. Auto-detected when you fill in the Base URL (you can override it; 0 = re-detect each time).'
+      contextWindowHint: 'Maximum model tokens. Detected automatically when an API key is available; keyless local endpoints are also probed after editing the Base URL. You can still override it.'
     },
     mcp: {
       hint: 'Configure MCP (Model Context Protocol) servers for extended tool capabilities.',

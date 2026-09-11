@@ -1,7 +1,7 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron'
 import type { AppSettings } from '../../shared/types'
 import * as db from '../store/db'
-import { fetchContextWindow } from '../agent/context'
+import { detectProviderContextWindow } from '../agent/context'
 import { listProviderModels } from '../llm/models'
 import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '../mcp/client'
 import { reloadSkills } from '../skill/manager'
@@ -102,7 +102,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
   })
   ipcMain.handle('provider:context-window', async (_event, provider: AppSettings['providers'][0], modelOverride?: string) => {
     try {
-      return { detected: await fetchContextWindow(provider, modelOverride) }
+      return { detected: await detectProviderContextWindow(provider, modelOverride) }
     } catch (error) {
       return { error: (error as Error).message }
     }

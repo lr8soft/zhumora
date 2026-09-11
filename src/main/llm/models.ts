@@ -5,6 +5,7 @@
 import type { ProviderConfig } from '../../shared/types'
 import { getFetch } from '../net/fetch'
 import { log } from './logger'
+import { createProviderDiscoveryHeaders, providerDiscoveryCacheKey } from './providerDiscovery'
 
 export interface ModelListItem {
   id: string
@@ -18,7 +19,7 @@ export interface ListModelsResult {
   error?: string
 }
 
-/** baseUrl → 结果缓存（列表不常变，5 分钟 TTL；force 可绕过） */
+/** endpoint + credential → 结果缓存（列表不常变，5 分钟 TTL；force 可绕过） */
 const cache = new Map<string, { ts: number; result: ListModelsResult }>()
 const CACHE_TTL_MS = 5 * 60 * 1000
 
@@ -37,11 +38,11 @@ export async function listProviderModels(provider: ProviderConfig, force = false
   const baseUrl = (provider.baseUrl || '').replace(/\/$/, '')
   if (!baseUrl) return { models: [], error: 'baseUrl is empty' }
 
-  const cached = cache.get(baseUrl)
+  const cacheKey = providerDiscoveryCacheKey(baseUrl, provider.apiKey)
+  const cached = cache.get(cacheKey)
   if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.result
 
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (provider.apiKey) headers['Authorization'] = `Bearer ${provider.apiKey}`
+  const headers = createProviderDiscoveryHeaders(provider.apiKey)
 
   try {
     const resp = await getFetch()(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(LIST_TIMEOUT_MS) })
@@ -78,7 +79,7 @@ export async function listProviderModels(provider: ProviderConfig, force = false
     models.sort((a, b) => a.id.localeCompare(b.id))
 
     const result: ListModelsResult = { models }
-    cache.set(baseUrl, { ts: Date.now(), result })
+    cache.set(cacheKey, { ts: Date.now(), result })
     log('info', `Listed ${models.length} models from ${baseUrl}/models`)
     return result
   } catch (err) {

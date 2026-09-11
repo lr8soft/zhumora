@@ -510,9 +510,23 @@ select.input-field { cursor: pointer; }
 .temp-number { width: 72px; height: 28px; flex: 0 0 auto; text-align: center; }
 .temp-number:disabled { opacity: 0.5; cursor: not-allowed; }
 
-/* 模型组合框：输入 + 下拉选择（datalist）+ 刷新按钮 */
+/* 模型组合框：自由输入 + 不随当前文本过滤的完整模型列表 + 刷新按钮 */
 .model-combobox { display: flex; align-items: center; gap: 6px; }
 .model-combobox .input-field { flex: 1; min-width: 0; }
+.model-combobox > .icon-button { position: relative; z-index: 101; }
+.model-picker { position: relative; flex: 1; min-width: 0; }
+.model-picker > .input-field { width: 100%; }
+.model-list-backdrop { position: fixed; inset: 0; z-index: 99; padding: 0; border: 0; background: transparent; }
+.model-list {
+  position: absolute; top: calc(100% + 4px); left: 0; right: 0; z-index: 100;
+  max-height: 240px; overflow-y: auto; padding: 4px;
+  border: 1px solid var(--app-color-border); border-radius: 7px;
+  background: var(--app-color-surface-solid); box-shadow: var(--app-shadow-panel);
+}
+.model-list-item { width: 100%; display: flex; align-items: baseline; gap: 8px; padding: 7px 9px; border: 0; border-radius: 5px; background: transparent; color: var(--app-color-text); text-align: left; cursor: pointer; }
+.model-list-item:hover, .model-list-item.active { background: var(--app-color-active-bg); }
+.model-list-item > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.model-list-item > small { flex: 0 0 auto; color: var(--app-color-text-mute); font-size: 0.667rem; }
 .checkbox { accent-color: var(--app-color-primary); width: 15px; height: 15px; margin: 0; cursor: pointer; }
 
 /* ---------- 设置页 ---------- */

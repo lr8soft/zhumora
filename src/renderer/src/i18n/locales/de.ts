@@ -137,10 +137,10 @@ export default {
       active: 'Aktiv',
       activate: 'Klicken zum Aktivieren',
       contextWindow: 'Kontextfenster',
-      contextWindowAuto: 'Auto',
+      contextWindowAuto: 'Neu erkennen',
       contextWindowDetect: 'Kontextfenster erkennen',
       contextWindowDetected: 'Erkannt',
-      contextWindowHint: 'Max. Tokens des Modells. Wird bei Eingabe der Base URL automatisch erkannt (manuell überschreibbar; 0 = jedes Mal erkennen).'
+      contextWindowHint: 'Maximale Modell-Tokens. Mit API-Key erfolgt die Erkennung automatisch; lokale Endpunkte ohne Key werden nach Bearbeitung der Base-URL ebenfalls geprüft. Manuell überschreibbar.'
     },
     mcp: {
       hint: 'Konfigurieren Sie MCP-Server (Model Context Protocol) für erweiterte Tool-Fähigkeiten.',

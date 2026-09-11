@@ -137,10 +137,10 @@ export default {
       active: 'アクティブ',
       activate: 'クリックしてアクティブ化',
       contextWindow: 'コンテキストウィンドウ',
-      contextWindowAuto: '自動',
+      contextWindowAuto: '再検出',
       contextWindowDetect: 'コンテキストウィンドウを検出',
       contextWindowDetected: '検出済み',
-      contextWindowHint: 'モデルの最大トークン数。Base URL を入力すると自動検出（手動で上書き可；0 = 毎回検出）。'
+      contextWindowHint: 'モデルの最大トークン数。API Key がある場合は自動検出し、Key なしのローカル接続も Base URL 編集後に検出します。手動で上書きできます。'
     },
     mcp: {
       hint: 'MCP (Model Context Protocol) サーバーを設定してツール機能を拡張。',

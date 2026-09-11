@@ -5,6 +5,7 @@ import { ArrowUp, BrainCircuit, FolderOpen, ImagePlus, Shield, ShieldCheck, Shie
 import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore, INPUT_MIN_HEIGHT, INPUT_MAX_HEIGHT } from '../store'
 import MessageBubble from './MessageBubble'
+import SetupRequiredDialog from './SetupRequiredDialog'
 import type { AutoApproveMode, UIMessage } from '@shared/types'
 import { toolPresentationRevision } from '@shared/toolPresentation'
 import { ttsPlayback } from '../tts/playback'
@@ -56,6 +57,7 @@ export default function ChatView() {
   // 思考强度下拉是否展开
   const [effortMenuOpen, setEffortMenuOpen] = useState(false)
   const [avatarMenuOpen, setAvatarMenuOpen] = useState(false)
+  const [setupPrompt, setSetupPrompt] = useState<'avatar' | 'tts' | null>(null)
   const enabledProviders = settings.providers.filter(p => p.enabled)
   // 当前生效 provider（聊天页选择优先，否则 active provider）
   const spmParts = selectedProviderModel?.split('::')
@@ -517,8 +519,11 @@ export default function ChatView() {
             <div className="mode-selector">
               <button
                 className={activeAvatarModel ? 'composer-mode-chip avatar-active' : 'composer-mode-chip'}
-                onClick={() => setAvatarMenuOpen(!avatarMenuOpen)}
-                disabled={avatarModels.length === 0}
+                onClick={() => {
+                  if (avatarModels.length === 0) setSetupPrompt('avatar')
+                  else setAvatarMenuOpen(!avatarMenuOpen)
+                }}
+                disabled={!activeSession}
                 title={avatarModels.length === 0 ? t('chat.avatarNoModels') : t('chat.avatarHint')}
               >
                 <UserRound size={13} />
@@ -552,9 +557,13 @@ export default function ChatView() {
             </div>
             <button
               className={activeSession?.ttsEnabled ? 'composer-mode-chip tts-active' : 'composer-mode-chip'}
-              disabled={!activeSession || (!activeSession.ttsEnabled && !ttsReady)}
+              disabled={!activeSession}
               title={!ttsReady ? t('chat.ttsNoModel') : activeSession?.ttsEnabled ? t('chat.ttsDisable') : t('chat.ttsEnable')}
               onClick={() => {
+                if (!ttsReady) {
+                  setSetupPrompt('tts')
+                  return
+                }
                 if (!activeSession?.ttsEnabled) void ttsPlayback.unlock().catch(error => setImageError(String(error)))
                 void setSessionTts(!activeSession?.ttsEnabled).catch(error => setImageError(String(error)))
               }}
@@ -640,6 +649,9 @@ export default function ChatView() {
               {isRunning ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
             </button>
           </div>
+          {setupPrompt && (
+            <SetupRequiredDialog target={setupPrompt} onClose={() => setSetupPrompt(null)} />
+          )}
         </div>
       </div>
     </div>

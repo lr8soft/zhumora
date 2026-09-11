@@ -236,7 +236,7 @@ function defaultSettings(): AppSettings {
         name: '煮米 API',
         baseUrl: 'https://api.zhuminet.com/v1',
         apiKey: '',
-        defaultModel: 'gpt-4o',
+        defaultModel: '',
         enabled: true
       }
     ],
