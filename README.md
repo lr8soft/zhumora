@@ -1,6 +1,6 @@
 # Zhumora Agent
 
-An open-source desktop AI agent for Windows.
+A source-available desktop AI agent for Windows.
 
 Zhumora connects to OpenAI-compatible models and can work with your files, terminal, browser, and desktop. It is designed as a local-first agent runtime with support for MCP, skills, memory, and user-controlled permissions.
 
@@ -119,4 +119,12 @@ The authoritative session/message architecture and contribution rules are docume
 
 ## License
 
-[MIT](https://opensource.org/licenses/MIT)
+Zhumora is licensed under the [PolyForm Shield License 1.0.0](./LICENSE.md).
+You may use, modify, and redistribute it for permitted purposes, but you may not
+use it to provide a product that competes with Zhumora or another product offered
+by the licensor. Contact the project author to discuss a separate commercial
+license for uses outside those terms.
+
+Versions previously made available under the MIT License remain available under
+the terms granted for those versions. Third-party components retain their own
+licenses; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).

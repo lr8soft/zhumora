@@ -1,6 +1,6 @@
 # Zhumora 智能体
 
-开源 Windows 桌面 AI 智能体。
+源码可用的 Windows 桌面 AI 智能体。
 
 Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏览器和桌面。程序本体以本地运行为主，同时支持 MCP、Skills、长期记忆和权限控制。
 
@@ -106,6 +106,11 @@ npm run build:win
 
 会话/消息系统的权威架构与开发约束见 [ARCHITECTURE.md](./ARCHITECTURE.md) 和 [AGENTS.md](./AGENTS.md)；工具系统、上下文管理、长期记忆、MCP 和构建细节见 [TECHNICAL.md](./TECHNICAL.md)。
 
-## License
+## 许可证
 
-[MIT](https://opensource.org/licenses/MIT)
+Zhumora 采用 [PolyForm Shield License 1.0.0](./LICENSE.md)。你可以在许可范围内
+使用、修改和分发本项目，但不得用它提供与 Zhumora 或许可方其他产品竞争的产品。
+如需超出上述范围使用，请联系项目作者洽谈单独的商业授权。
+
+此前已经按 MIT 许可证发布的版本继续适用当时授予的条款。第三方组件仍采用各自
+的许可证，详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。

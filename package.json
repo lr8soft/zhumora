@@ -1,10 +1,10 @@
 {
   "name": "zhumora",
   "version": "0.4.1",
-  "description": "An open-source AI agent that can code, automate tasks, and operate your computer.",
+  "description": "A source-available AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora, LT_lrsoft",
-  "license": "MIT",
+  "license": "PolyForm-Shield-1.0.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
@@ -111,6 +111,10 @@
       {
         "from": "THIRD_PARTY_NOTICES.md",
         "to": "THIRD_PARTY_NOTICES.md"
+      },
+      {
+        "from": "LICENSE.md",
+        "to": "LICENSE.md"
       }
     ],
     "win": {

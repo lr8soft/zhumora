@@ -235,7 +235,7 @@ export function buildSystemPrompt(
   const platform = process.platform === 'win32' ? 'Windows' : process.platform === 'darwin' ? 'macOS' : 'Linux'
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
-  let prompt = `You are Zhumora, an open-source AI agent that can code, automate tasks, and operate your computer. You run in a local Electron desktop environment.
+  let prompt = `You are Zhumora, a desktop AI agent that can code, automate tasks, and operate your computer. You run in a local Electron desktop environment.
 
 ## Environment
 - Platform: ${platform}
