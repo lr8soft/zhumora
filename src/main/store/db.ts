@@ -12,6 +12,7 @@ import { normalizeTelegramBotConfig } from '../../shared/telegram'
 import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared/avatar'
 import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
 import { normalizeTtsModels, resolveDefaultTtsModelId } from '../../shared/tts'
+import { normalizeBrowserTarget, normalizeCustomBrowserPath } from '../../shared/browser'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -204,7 +205,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 9
+export const SETTINGS_SCHEMA_VERSION = 10
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -250,6 +251,9 @@ function defaultSettings(): AppSettings {
     language: 'auto',
     maxRetries: 5,
     maxRounds: 20,
+    browserMode: 'local',
+    browserTarget: 'chrome',
+    customBrowserPath: '',
     avatarModels: [],
     defaultAvatarModelId: null,
     avatarWindowSize: normalizeAvatarWindowSize(undefined),
@@ -289,6 +293,9 @@ export function normalizeSettings(input: unknown): AppSettings {
     defaultAvatarModelId: resolveDefaultAvatarModelId(avatarModels, raw.defaultAvatarModelId),
     ttsModels,
     defaultTtsModelId: resolveDefaultTtsModelId(ttsModels, raw.defaultTtsModelId),
+    browserMode: raw.browserMode === 'headless' ? 'headless' : 'local',
+    browserTarget: normalizeBrowserTarget(raw.browserTarget),
+    customBrowserPath: normalizeCustomBrowserPath(raw.customBrowserPath),
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId
       : defaults.activeProviderId,

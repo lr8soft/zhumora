@@ -4,6 +4,7 @@
 import type { AvatarModelConfig } from './avatar'
 import type { AvatarWindowSize } from './avatarWindow'
 import type { TtsModelConfig } from './tts'
+import type { BrowserTarget } from './browser'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -249,14 +250,15 @@ export interface AppSettings {
    */
   useSystemCerts?: boolean
   /**
-   * 浏览器模式（默认 'local'）：
-   * - local:    调用本机安装的 Chrome，显示窗口，使用专用持久化 profile
-   *             （cookies/登录态跨会话保留，人工过一次验证码后长期有效；
-   *             未安装 Chrome 时自动回退内置 Chromium 的可视模式）。
-   * - headless: 内置 Chromium 后台无头运行（同样用持久化 profile + 反检测注入）。
+   * 浏览器模式（默认 'local'）：local 显示窗口，headless 在后台运行。
+   * browserTarget 是首选项；启动失败后按 Chrome、Edge、自定义路径回退。
    * 浏览器已在运行时切换该设置，下次 ensureBrowser 会重启浏览器以生效。
    */
   browserMode?: 'local' | 'headless'
+  /** Preferred browser for browser_* tools; other configured candidates remain fallbacks. */
+  browserTarget?: BrowserTarget
+  /** Absolute executable path for the custom-browser candidate and final fallback. */
+  customBrowserPath?: string
   /** User-managed VRM library. Models are imported once in Settings. */
   avatarModels: AvatarModelConfig[]
   /** Model preselected when a session enables its Avatar for the first time. */

@@ -6,11 +6,10 @@
 import { chromium, type BrowserContext, type Page } from 'playwright'
 import { app } from 'electron'
 import * as path from 'node:path'
-import * as fs from 'node:fs'
 import type { ToolHandler, ToolContext } from './registry'
 import { log } from '../llm/logger'
 import { getSettings } from '../store/db'
-import { findBundledChromium } from './browserRuntime'
+import { browserConfigurationKey, resolveBrowserCandidates } from './browserSelection'
 
 /** 浏览器模式（设置项 browserMode，默认 local） */
 type BrowserMode = 'local' | 'headless'
@@ -23,18 +22,20 @@ let context: BrowserContext | null = null
 let activePage: Page | null = null
 /** 当前实例按哪种模式启动（null = 未启动）。设置变更后用于判断是否需要重启 */
 let launchedMode: BrowserMode | null = null
+let launchedBrowserKey: string | null = null
 
 function closeBrowserInternal(): Promise<void> {
   const c = context
   context = null
   activePage = null
   launchedMode = null
+  launchedBrowserKey = null
   return c ? c.close().catch(() => {}) : Promise.resolve()
 }
 
 /** 专用持久化 profile 目录（与用户日常 Chrome profile 隔离，避免锁冲突） */
-function profileDir(): string {
-  return path.join(app.getPath('userData'), 'browser-profile')
+function profileDir(profileName: string): string {
+  return path.join(app.getPath('userData'), profileName)
 }
 
 /**
@@ -57,40 +58,14 @@ const LAUNCH_ARGS = [
   '--no-default-browser-check'
 ]
 
-/**
- * 解析 Chromium 可执行文件路径
- * - dev 模式：由 Playwright 自动从系统缓存目录查找
- * - 打包模式：从 extraResources/browsers/ 下查找
- */
-function resolveChromiumPath(): string | undefined {
-  if (!app.isPackaged) {
-    // dev 模式：让 Playwright 自己找
-    return undefined
-  }
-
-  // 打包模式：在 extraResources/browsers/ 下递归识别当前平台的 Chromium 布局。
-  // Playwright 在 Windows/macOS/Linux 以及不同 CPU 架构下使用不同的中间目录名。
-  const browsersDir = path.join(process.resourcesPath, 'browsers')
-  if (!fs.existsSync(browsersDir)) {
-    log('warn', `[Playwright] Browsers directory not found: ${browsersDir}`)
-    return undefined
-  }
-
-  const exePath = findBundledChromium(browsersDir)
-  if (exePath) {
-    log('info', `[Playwright] Using bundled chromium: ${exePath}`)
-    return exePath
-  }
-
-  log('warn', `[Playwright] Chromium executable not found in: ${browsersDir}`)
-  return undefined
-}
-
 async function ensureBrowser(): Promise<Page> {
-  const mode: BrowserMode = getSettings().browserMode === 'headless' ? 'headless' : 'local'
-  // 已运行的浏览器模式与当前设置不一致（用户中途切换了设置）→ 重启使其生效
-  if (context && launchedMode !== null && launchedMode !== mode) {
-    log('info', `[Playwright] Browser mode changed to ${mode}, restarting browser...`)
+  const settings = getSettings()
+  const mode: BrowserMode = settings.browserMode === 'headless' ? 'headless' : 'local'
+  const browserKey = browserConfigurationKey(settings.browserTarget, settings.customBrowserPath)
+  const candidates = resolveBrowserCandidates(settings.browserTarget, settings.customBrowserPath)
+  // 模式、浏览器类型或自定义路径变化后重启，使已保存的设置即时生效。
+  if (context && (launchedMode !== mode || launchedBrowserKey !== browserKey)) {
+    log('info', `[Playwright] Browser configuration changed, restarting (${mode})...`)
     await closeBrowserInternal()
   }
   if (!context) {
@@ -103,27 +78,33 @@ async function ensureBrowser(): Promise<Page> {
       // 每个新文档加载前注入反检测脚本（先于页面 JS 执行）
       addInitScript: { content: ANTI_DETECTION_SCRIPT }
     }
-    if (mode === 'local') {
-      // 调用本机 Google Chrome（channel 由 Playwright 自动定位安装路径，
-      // 未安装会抛错 → 回退内置 Chromium 可视模式，行为不变）
+    const failures: string[] = []
+    let launchedLabel = ''
+    for (const candidate of candidates) {
+      log('info', `[Playwright] Trying ${candidate.label} (${mode})...`)
       try {
-        log('info', '[Playwright] Launching local Chrome (visible window)...')
-        context = await chromium.launchPersistentContext(profileDir(), { ...opts, channel: 'chrome' })
-      } catch (err) {
-        log('warn', `[Playwright] Local Chrome unavailable (${(err as Error).message}); falling back to bundled Chromium`)
-        context = await chromium.launchPersistentContext(profileDir(), opts)
+        context = await chromium.launchPersistentContext(
+          profileDir(candidate.profileName),
+          { ...opts, ...candidate.launchOptions }
+        )
+        launchedLabel = candidate.label
+        break
+      } catch (error) {
+        const message = (error as Error).message
+        failures.push(`${candidate.label}: ${message}`)
+        log('warn', `[Playwright] ${candidate.label} unavailable: ${message}`)
       }
-    } else {
-      log('info', '[Playwright] Launching bundled chromium (headless)...')
-      const executablePath = resolveChromiumPath()
-      context = await chromium.launchPersistentContext(
-        profileDir(),
-        executablePath ? { ...opts, executablePath } : opts
-      )
+    }
+    if (!context) {
+      if (!settings.customBrowserPath?.trim()) {
+        failures.push('custom browser: executable path is not configured')
+      }
+      throw new Error(`No configured browser could be launched. ${failures.join(' | ')}`)
     }
     launchedMode = mode
+    launchedBrowserKey = browserKey
     activePage = context.pages()[0] ?? (await context.newPage())
-    log('info', '[Playwright] Browser ready')
+    log('info', `[Playwright] ${launchedLabel} ready`)
   }
   if (!activePage || activePage.isClosed()) {
     activePage = await context.newPage()

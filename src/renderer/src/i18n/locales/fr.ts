@@ -267,11 +267,17 @@ export default {
       memory: 'Mémoire à long terme',
       memoryHint: 'Capture automatiquement les préférences et les faits des conversations pour personnaliser les réponses futures.',
       browser: 'Navigateur',
-      browserHint: 'Mode du navigateur utilisé par les outils browser_*. Les deux modes activent l’anti-détection et un profil persistant (un captcha résolu à la main reste effectif).',
+      browserHint: 'Choisissez le navigateur préféré pour les actions du navigateur.',
+      browserTarget: 'Navigateur préféré',
+      browserChrome: 'Google Chrome',
+      browserEdge: 'Microsoft Edge',
+      browserCustom: 'Navigateur Chromium personnalisé',
+      customBrowserPath: 'Chemin du navigateur personnalisé',
+      customBrowserPathPlaceholder: 'Par exemple C:\\Program Files\\Browser\\browser.exe',
       browserMode: 'Mode du navigateur',
-      browserModeLocal: 'Utiliser Chrome local (fenêtre visible)',
-      browserModeHeadless: 'Navigateur intégré (headless)',
-      browserModeHint: 'Le mode local utilise le Chrome installé avec une fenêtre visible pour observer la navigation de l’agent et intervenir en cas de blocage par détection de robots (sans Chrome, repli sur le navigateur intégré en mode fenêtre). Le mode headless fonctionne discrètement en arrière-plan.'
+      browserModeLocal: 'Fenêtre visible',
+      browserModeHeadless: 'Arrière-plan headless',
+      browserModeHint: 'D’autres navigateurs sont essayés automatiquement si le navigateur préféré est indisponible.'
     },
     usage: {
       hint: "Statistiques d'utilisation des tokens. Enregistré par blocs de 30 minutes, agrégé entre les sessions.",

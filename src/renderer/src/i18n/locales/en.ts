@@ -267,11 +267,17 @@ export default {
       memory: 'Long-term Memory',
       memoryHint: 'Automatically capture preferences and facts from conversations so the agent can personalize future replies.',
       browser: 'Browser',
-      browserHint: 'Browser mode used by the browser_* tools. Both modes enable anti-detection injection and a persistent login profile (a CAPTCHA solved by hand stays effective).',
+      browserHint: 'Choose the browser preferred for browser actions.',
+      browserTarget: 'Preferred browser',
+      browserChrome: 'Google Chrome',
+      browserEdge: 'Microsoft Edge',
+      browserCustom: 'Custom Chromium browser',
+      customBrowserPath: 'Custom browser path',
+      customBrowserPathPlaceholder: 'For example C:\\Program Files\\Browser\\browser.exe',
       browserMode: 'Browser mode',
-      browserModeLocal: 'Use local Chrome (visible window)',
-      browserModeHeadless: 'Built-in browser (headless)',
-      browserModeHint: 'Local mode uses the system-installed Chrome with a visible window so you can watch the agent and step in manually when bot detection blocks it (falls back to the built-in browser in windowed mode if Chrome is not installed). Headless mode runs silently in the background.'
+      browserModeLocal: 'Visible window',
+      browserModeHeadless: 'Headless background',
+      browserModeHint: 'Other browsers are tried automatically when the preferred browser is unavailable.'
     },
     usage: {
       hint: 'Token usage statistics. Recorded in 30-minute buckets, aggregated across sessions.',

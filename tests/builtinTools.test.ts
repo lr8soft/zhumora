@@ -5,7 +5,7 @@ import * as path from 'node:path'
 import { editFileExact, readPath, writeFilePreservingBom } from '../src/main/tools/fileOperations.ts'
 import { globWithRipgrep, grepWithRipgrep } from '../src/main/tools/ripgrep.ts'
 import { executeShellCommand } from '../src/main/tools/shell.ts'
-import { findBundledChromium } from '../src/main/tools/browserRuntime.ts'
+import { browserConfigurationKey, resolveBrowserCandidates } from '../src/main/tools/browserSelection.ts'
 
 const root = await fs.mkdtemp(path.join(os.tmpdir(), 'zhumora-tools-'))
 try {
@@ -70,21 +70,23 @@ try {
     /timeout must be/
   )
 
-  const browserRoot = path.join(root, 'browsers', 'chromium-123', 'chrome-win64')
-  await fs.mkdir(browserRoot, { recursive: true })
-  const fakeChrome = path.join(browserRoot, 'chrome.exe')
-  await fs.writeFile(fakeChrome, '')
-  assert.equal(findBundledChromium(path.join(root, 'browsers'), 'win32'), fakeChrome)
-
-  const macChrome = path.join(root, 'mac-browsers', 'chromium-123', 'chrome-mac-arm64', 'Chromium.app', 'Contents', 'MacOS', 'Chromium')
-  await fs.mkdir(path.dirname(macChrome), { recursive: true })
-  await fs.writeFile(macChrome, '')
-  assert.equal(findBundledChromium(path.join(root, 'mac-browsers'), 'darwin'), macChrome)
-
-  const linuxChrome = path.join(root, 'linux-browsers', 'chromium-123', 'chrome-linux64', 'chrome')
-  await fs.mkdir(path.dirname(linuxChrome), { recursive: true })
-  await fs.writeFile(linuxChrome, '')
-  assert.equal(findBundledChromium(path.join(root, 'linux-browsers'), 'linux'), linuxChrome)
+  assert.deepEqual(
+    resolveBrowserCandidates('chrome', ' C:\\Browser\\browser.exe ').map(candidate => candidate.key),
+    ['chrome', 'msedge', 'custom:C:\\Browser\\browser.exe']
+  )
+  assert.deepEqual(
+    resolveBrowserCandidates('msedge', ' C:\\Browser\\browser.exe ').map(candidate => candidate.key),
+    ['msedge', 'chrome', 'custom:C:\\Browser\\browser.exe']
+  )
+  assert.deepEqual(
+    resolveBrowserCandidates('custom', ' C:\\Browser\\browser.exe ').map(candidate => candidate.key),
+    ['custom:C:\\Browser\\browser.exe', 'chrome', 'msedge']
+  )
+  assert.deepEqual(
+    resolveBrowserCandidates('custom', '  ').map(candidate => candidate.key),
+    ['chrome', 'msedge']
+  )
+  assert.equal(browserConfigurationKey('msedge', ' C:\\Browser\\browser.exe '), 'msedge:C:\\Browser\\browser.exe')
 
   console.log('builtinTools tests passed')
 } finally {

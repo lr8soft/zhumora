@@ -2,6 +2,7 @@ import { useTranslation } from 'react-i18next'
 import { Brain, Check, FolderOpen, Globe, Monitor, Moon, RefreshCw, Repeat, ShieldCheck, Sun, Type, Wifi, Workflow } from 'lucide-react'
 import { SUPPORTED_LANGUAGES, type AppLanguage, getEffectiveLanguage, storeLanguage } from '../../i18n'
 import { useAppStore, FONT_SIZE_OPTIONS, type Theme } from '../../store'
+import type { BrowserTarget } from '@shared/browser'
 
 const THEME_OPTIONS: { value: Theme; icon: typeof Sun; labelKey: string }[] = [
   { value: 'system', icon: Monitor, labelKey: 'settings.general.themeSystem' },
@@ -231,6 +232,33 @@ export function GeneralSettings() {
             <h3>{t('settings.general.browser')}</h3>
             <p>{t('settings.general.browserHint')}</p>
           </div>
+        </div>
+        <div className="form-field" style={{ marginTop: 12 }}>
+          <label className="form-label" htmlFor="browser-target-select">
+            {t('settings.general.browserTarget')}
+          </label>
+          <select
+            id="browser-target-select"
+            className="input-field"
+            value={settingsDraft.browserTarget || 'chrome'}
+            onChange={(e) => updateSettingsDraft({ browserTarget: e.target.value as BrowserTarget })}
+          >
+            <option value="chrome">{t('settings.general.browserChrome')}</option>
+            <option value="msedge">{t('settings.general.browserEdge')}</option>
+            <option value="custom">{t('settings.general.browserCustom')}</option>
+          </select>
+        </div>
+        <div className="form-field" style={{ marginTop: 12 }}>
+          <label className="form-label" htmlFor="custom-browser-path">
+            {t('settings.general.customBrowserPath')}
+          </label>
+          <input
+            id="custom-browser-path"
+            className="input-field mono"
+            value={settingsDraft.customBrowserPath || ''}
+            placeholder={t('settings.general.customBrowserPathPlaceholder')}
+            onChange={(e) => updateSettingsDraft({ customBrowserPath: e.target.value })}
+          />
         </div>
         <div className="form-field" style={{ marginTop: 12 }}>
           <label className="form-label" htmlFor="browser-mode-select">

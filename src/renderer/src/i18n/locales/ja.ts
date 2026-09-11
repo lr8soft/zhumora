@@ -267,11 +267,17 @@ export default {
       memory: '長期記憶',
       memoryHint: '会話から設定や事実を自動で記録し、エージェントが以降の応答を個人化します。',
       browser: 'ブラウザ',
-      browserHint: 'browser_* ツールが使うブラウザのモード。両モードとも検出回避の注入とログイン状態の永続化（人手で一度 CAPTCHA を解くと長期的に有効）を有効にします。',
+      browserHint: 'ブラウザ操作で優先するブラウザを選択します。',
+      browserTarget: '優先ブラウザ',
+      browserChrome: 'Google Chrome',
+      browserEdge: 'Microsoft Edge',
+      browserCustom: 'カスタム Chromium ブラウザ',
+      customBrowserPath: 'カスタムブラウザのパス',
+      customBrowserPathPlaceholder: '例: C:\\Program Files\\Browser\\browser.exe',
       browserMode: 'ブラウザモード',
-      browserModeLocal: 'ローカル Chrome を使用（ウィンドウ表示）',
-      browserModeHeadless: '組み込みブラウザ（ヘッドレス）',
-      browserModeHint: 'ローカルモードはインストール済みの Chrome をウィンドウ付きで使い、エージェントの操作をリアルタイムで確認でき、ボット検出で遮断された場合に人手で引き継げます（Chrome 未インストール時は組み込みブラウザのウィンドウ表示にフォールバック）。ヘッドレスモードは背景で静かに動作します。'
+      browserModeLocal: 'ウィンドウを表示',
+      browserModeHeadless: 'バックグラウンド（ヘッドレス）',
+      browserModeHint: '優先ブラウザが利用できない場合は、ほかのブラウザを自動的に試します。'
     },
     usage: {
       hint: 'トークン使用量統計。30分ごとにデータポイントを記録し、セッション間で集計します。',
