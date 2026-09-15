@@ -1,9 +1,9 @@
 import type { AvatarCommand } from '../../shared/avatar'
 import { AVATAR_INTENTS, AVATAR_EMOTIONS, type AvatarIntent, type AvatarEmotion } from '../../shared/avatar.ts'
-import type { ToolHandler } from './registry'
+import type { ToolHandler, ToolRegistration } from './registry'
 import type { AvatarController } from '../avatar/contracts'
 
-export function createAvatarTools(controller: AvatarController): Array<{ name: string; handler: ToolHandler }> {
+export function createAvatarTools(controller: AvatarController): ToolRegistration[] {
   const handler: ToolHandler = {
     definition: {
       type: 'function',
@@ -69,5 +69,13 @@ export function createAvatarTools(controller: AvatarController): Array<{ name: s
       return controller.execute(ctx.sessionId, command, ctx.signal)
     }
   }
-  return [{ name: 'avatar_control', handler }]
+  return [{
+    name: 'avatar_control',
+    handler,
+    manifest: {
+      capabilities: ['presentation.avatar.write'],
+      concurrency: 'session-exclusive',
+      idempotency: 'non-idempotent'
+    }
+  }]
 }

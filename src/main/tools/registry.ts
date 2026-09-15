@@ -2,6 +2,12 @@
 // 工具定义公共接口
 // ============================================================
 import type { ToolDefinition, ToolExecutionResult, ToolHandlerOutput } from '../../shared/types'
+import {
+  createToolManifest,
+  isValidModelToolName,
+  type ToolManifest,
+  type ToolManifestOverrides
+} from './manifest.ts'
 
 /**
  * 工具权限等级（与三档批准模式 AutoApproveMode 配合使用）
@@ -48,13 +54,29 @@ export interface ToolHandler {
 export interface RegisteredTool {
   handler: ToolHandler
   source: string
+  manifest: ToolManifest
+}
+
+/** Registration descriptor kept next to each built-in adapter. */
+export interface ToolRegistration {
+  name: string
+  handler: ToolHandler
+  manifest: ToolManifestOverrides & { capabilities: readonly string[] }
 }
 
 export class ToolRegistry {
   private readonly entries = new Map<string, RegisteredTool>()
 
-  register(name: string, handler: ToolHandler, source = 'builtin'): void {
-    this.entries.set(name, { handler, source })
+  register(name: string, handler: ToolHandler, source = 'builtin', manifest: ToolManifestOverrides = {}): void {
+    if (!isValidModelToolName(name)) throw new Error(`Invalid model-facing tool name: "${name}"`)
+    if (handler.definition.function.name !== name) {
+      throw new Error(`Tool registration name "${name}" does not match definition name "${handler.definition.function.name}"`)
+    }
+    const existing = this.entries.get(name)
+    if (existing) {
+      throw new Error(`Tool name collision: "${name}" is already registered by ${existing.source}`)
+    }
+    this.entries.set(name, { handler, source, manifest: createToolManifest(name, handler.definition, source, manifest) })
   }
 
   unregisterBySource(source: string): void {
@@ -103,8 +125,13 @@ export function normalizeToolOutput(output: ToolHandlerOutput): ToolExecutionRes
   return typeof output === 'string' ? { content: output } : output
 }
 
-export function registerTool(name: string, handler: ToolHandler, source: string = 'builtin') {
-  toolRegistry.register(name, handler, source)
+export function registerTool(
+  name: string,
+  handler: ToolHandler,
+  source: string = 'builtin',
+  manifest: ToolManifestOverrides = {}
+) {
+  toolRegistry.register(name, handler, source, manifest)
 }
 
 export function unregisterToolsBySource(source: string) {

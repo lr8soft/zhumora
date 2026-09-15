@@ -8,7 +8,7 @@ import { DesktopControlCoordinator } from './desktop/controlCoordinator'
 import { DesktopControlOverlay } from './desktop/controlOverlay'
 import { officeTools } from './tools/officeTool'
 import { mcpManagerTools } from './mcp/managerTools'
-import { toolRegistry, type ToolHandler, type ToolRegistry } from './tools/registry'
+import { toolRegistry, type ToolRegistration, type ToolRegistry } from './tools/registry'
 import * as db from './store/db'
 import { getMcpConnectionStatus } from './mcp/client'
 import { getSkillsSystemPrompt } from './skill/manager'
@@ -28,8 +28,11 @@ import { getFetch } from './net/fetch'
 import type { AvatarWindowManager } from './avatar/windowManager'
 import { createAvatarTools } from './tools/avatar'
 import { TtsManager } from './tts/manager'
+import { ToolExecutionService } from './execution/service'
+import { ManifestCapabilityPolicy } from './execution/capabilityPolicy'
+import { createCompatibilityExecutionRouter } from './execution/router'
 
-const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
+const builtinGroups: ReadonlyArray<ReadonlyArray<ToolRegistration>> = [
   builtinTools,
   browserTools,
   memoryTools,
@@ -39,6 +42,7 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
 
 export interface ApplicationServices {
   tools: ToolRegistry
+  toolExecution: ToolExecutionService
   permissions: PermissionBroker
   sessions: SessionService
   bots: BotPlatformManager
@@ -51,12 +55,19 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
   toolRegistry.clear()
   const desktopControl = new DesktopControlCoordinator(new DesktopControlOverlay(id => db.getSession(id)?.title || '当前会话'))
   for (const group of [...builtinGroups, createAvatarTools(avatar), createDesktopTools(desktopControl)]) {
-    for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
+    for (const { name, handler, manifest } of group) toolRegistry.register(name, handler, 'builtin', manifest)
   }
   const permissions = new PermissionBroker()
+  const toolExecution = new ToolExecutionService({
+    registry: toolRegistry,
+    policy: new ManifestCapabilityPolicy({ allowLegacyUnclassified: false }),
+    router: createCompatibilityExecutionRouter(),
+    log
+  })
   const tts = new TtsManager(db)
   const sessions = new SessionService({
     tools: toolRegistry,
+    toolExecutionService: toolExecution,
     permissions,
     store: db,
     getSkillsPrompt: getSkillsSystemPrompt,
@@ -87,5 +98,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, sessions, bots, avatar, tts, desktopControl }
+  return { tools: toolRegistry, toolExecution, permissions, sessions, bots, avatar, tts, desktopControl }
 }

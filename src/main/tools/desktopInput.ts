@@ -1,6 +1,6 @@
 import type { ToolDefinition } from '../../shared/types'
 import type { DesktopActionName } from '../desktop/types'
-import type { ToolHandler } from './registry'
+import type { ToolHandler, ToolRegistration } from './registry'
 import type { DesktopControlCoordinator } from '../desktop/controlCoordinator'
 import { encodeKeyboardInput } from '../desktop/keyboard.ts'
 
@@ -54,9 +54,15 @@ function define(name: string, description: string, properties: Record<string, un
   return { type: 'function', function: { name, description, parameters: { type: 'object', properties, required, additionalProperties: false } } }
 }
 
-export function createDesktopInputTools(execute: ToolHandler['execute'], control: DesktopControlCoordinator) {
+export function createDesktopInputTools(execute: ToolHandler['execute'], control: DesktopControlCoordinator): ToolRegistration[] {
   return desktopInputDefinitions.map(definition => ({
     name: definition.function.name,
+    manifest: {
+      capabilities: ['desktop.control'],
+      executionClass: 'desktop' as const,
+      concurrency: 'global-exclusive' as const,
+      idempotency: 'non-idempotent' as const
+    },
     handler: {
       definition, permission: 'dangerous' as const,
       async execute(args, ctx) {

@@ -50,6 +50,9 @@ flowchart TB
     SS[SessionService<br/>唯一会话与运行入口]
     EH[SessionEventHub<br/>按 sessionId 广播]
     PB[PermissionBroker]
+    EX[ToolExecutionService<br/>校验 + 策略 + 权限 + 结果归一化]
+    CP[ManifestCapabilityPolicy<br/>能力与执行类别准入]
+    ER[ToolExecutionRouter<br/>按 executionClass 路由]
   end
 
   subgraph AgentCore[Agent 核心]
@@ -80,7 +83,10 @@ flowchart TB
   SS --> RUN
   SS <--> DB
   RUN --> LLM
-  RUN --> TOOLS
+  RUN --> EX
+  EX --> CP
+  EX --> PB
+  EX --> ER --> TOOLS
   TOOLS --> MCP
   TOOLS --> DESK
 
@@ -93,6 +99,9 @@ flowchart TB
 
   ROOT -.构造与注入.-> SS
   ROOT -.构造与注入.-> PB
+  ROOT -.构造与注入.-> EX
+  ROOT -.构造与注入.-> CP
+  ROOT -.构造与注入.-> ER
   ROOT -.构造与注入.-> TOOLS
   ROOT -.构造与注入.-> TG
   ROOT -.构造与注入.-> QQ
@@ -107,6 +116,9 @@ flowchart TB
 | 活跃会话运行表 | `SessionService` | `Map<sessionId, run>`；实现同会话互斥和跨会话并行 |
 | Agent 组装与启动 | `SessionService` | provider、历史、prompt、工具、权限、压缩回调均在此汇合 |
 | ReAct 循环 | `runner.ts` | 只执行传入的单次运行，不读取 UI 或数据库 |
+| 工具执行管线 | `ToolExecutionService` | 工具查找、参数解析/schema 校验、权限顺序、取消复查、executor 调用与结果归一化 |
+| 工具能力准入 | `ManifestCapabilityPolicy` | 根据不可变 manifest 做 execution class/capability 准入；异常时关闭执行路径 |
+| 工具执行路由 | `ToolExecutionRouter` | 根据 `executionClass` 选择唯一 executor；缺少路由时失败关闭，禁止隐式宿主回退 |
 | 持久化历史与权威消息 ID | main + SQLite | renderer 只允许使用短生命周期的 `pending-*` 占位 |
 | 全局会话事件 | `SessionEventHub` | renderer、Avatar、TTS 以及其他观察者统一订阅 |
 | 工具权限请求生命周期 | `PermissionBroker` | UI/Bot presenter 仅负责展示和回传结果 |
@@ -242,6 +254,36 @@ stateDiagram-v2
 4. 中止、删除、超时或运行结束必须清理该 session 的悬挂请求。
 5. 工具在获得允许前不得执行；用户中止后即使迟到的允许结果也不能触发新工具。
 
+### 工具目录契约
+
+工具注册时同时生成不可变的 `ToolManifest`。manifest 记录稳定 ID、模型可见名称、原始名称、来源、版本、输入/输出 schema、能力、执行类别、并发和幂等元数据。`ToolExecutionService` 消费该目录，按“参数校验 → capability policy → executor 可用性 → 用户权限 → 取消复查 → 执行”的顺序处理。预算和沙箱继续接在此执行边界，不得把策略重新分散回 handler。
+
+- 注册名必须与 definition 中的模型可见名称一致，并满足 provider function name 约束。
+- 注册表禁止同名静默覆盖；冲突必须失败。
+- MCP 工具使用包含 server ID 和稳定摘要的模型可见命名空间，manifest 保留上游原始名称，调用 MCP server 时仍使用原名。
+- JSON Schema 参数校验保持为纯函数，并在权限展示和 handler 执行前运行；失败也必须生成合法的错误 tool result。
+- capability policy 必须在权限展示前运行并失败关闭；policy 抛错、能力被阻止或 manifest 自相矛盾时不得执行工具。
+- `ToolExecutionRouter` 只按 manifest 的 `executionClass` 路由。没有 executor 的类别必须返回 `executor-unavailable`，不得回落到兼容 handler。
+- 当前兼容路由显式覆盖 `in-process`、`host-process`、`mcp`、`browser`、`desktop`；`sandbox` 故意没有兼容路由，直到真正的沙箱 executor 落地。
+- 应用内置工具必须使用 `ToolRegistration` 显式声明 capability；生产组合根设置 `allowLegacyUnclassified: false`。新增工具若遗漏分类，即使注册成功也不能在生产执行。
+- 权限等待结束后必须再次检查 run signal，迟到的批准不能在用户中止后启动工具。
+
+当前 capability 家族与执行边界：
+
+| Capability 家族 | 代表工具 | Execution class |
+|---|---|---|
+| `filesystem.read/write` | read、write、edit、grep、glob、ls、Office | `in-process`（当前仍依赖工作区路径校验） |
+| `host.unrestricted` | bash | `host-process`（尚未沙箱化） |
+| `browser.*` | navigate、click、type、read、close | `browser` |
+| `desktop.observe/control` | desktop_observe、desktop_key/type/mouse/action | `desktop` |
+| `memory.read/write` | 长期记忆工具 | `in-process` |
+| `document.*` | Word、Excel、PowerPoint、PDF | `in-process` |
+| `agent.configuration.*`、`agent.capabilities.manage` | MCP 配置管理 | `in-process` + `alwaysConfirm` |
+| `presentation.avatar.write` | avatar_control | `in-process` |
+| `mcp.call` | 动态 MCP 工具 | `mcp` |
+
+`SandboxToolExecutor` 只接受一个声明为 `os-enforced` 的外部 runtime，并只向该 runtime 传递可序列化的 manifest 身份、capability、参数和工作区信息；不会传递或调用宿主 `ToolHandler`。当前发行版没有符合条件的 runtime，因此组合根不注册 `sandbox` route。Node Permission Model 不作为该 runtime：其官方威胁模型不抵御恶意代码，且允许路径中的符号链接可能绕过文件权限，不能充当 Harness 的安全边界。
+
 ## 9. 历史与压缩流程
 
 - `messages` 表保存用户能看到的完整历史。
@@ -261,6 +303,15 @@ stateDiagram-v2
 | `src/main/agent/sessionEventHub.ts` | 进程内类型化事件广播 |
 | `src/main/agent/runner.ts` | 单次 ReAct 状态机，不接触 DB/UI/Bot |
 | `src/main/agent/persistedCallbacks.ts` | Agent callback 到持久化和领域事件的适配 |
+| `src/main/execution/service.ts` | 统一工具执行应用服务；拥有参数、权限、取消和 executor 调用顺序 |
+| `src/main/execution/contracts.ts` | 执行请求、结果、disposition 和 executor 接口 |
+| `src/main/execution/capabilityPolicy.ts` | manifest 能力、执行类别及部署级 allow/block policy |
+| `src/main/execution/router.ts` | execution class 到 executor 的失败关闭路由 |
+| `src/main/execution/sandboxExecutor.ts` | OS/container sandbox runtime 的数据边界；不得回调宿主 handler |
+| `src/main/execution/compatibilityExecutor.ts` | 兼容既有 handler 的过渡执行器，不提供沙箱 |
+| `src/main/tools/manifest.ts` | 工具稳定身份、命名空间和策略元数据契约 |
+| `src/main/tools/schemaValidator.ts` | 无副作用的工具参数 JSON Schema 校验 |
+| `src/main/tools/registry.ts` | 注册 manifest、拒绝模型可见名称冲突、提供不可变工具目录投影 |
 | `src/main/bot/sessionAdapter.ts` | 外部消息转换后调用 Session API |
 | `src/main/bot/messageQueue.ts` | 外部 conversation 的 FIFO 和 transport abort |
 | `src/main/telegram/`、`src/main/qq/` | 平台协议适配，不实现会话规则 |

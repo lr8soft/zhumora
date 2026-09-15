@@ -11,10 +11,10 @@ assert.equal(decidePermission('full', 'dangerous', false), 'allow')
 assert.equal(decidePermission('full', 'safe', true), 'confirm')
 
 const registry = new ToolRegistry()
-const handler = (permission: 'safe' | 'normal' | 'dangerous', alwaysConfirm = false) => ({
+const handler = (permission: 'safe' | 'normal' | 'dangerous', alwaysConfirm = false, name = permission) => ({
   definition: {
     type: 'function' as const,
-    function: { name: permission, description: permission, parameters: { type: 'object' } }
+    function: { name, description: permission, parameters: { type: 'object' } }
   },
   permission,
   alwaysConfirm,
@@ -23,7 +23,7 @@ const handler = (permission: 'safe' | 'normal' | 'dangerous', alwaysConfirm = fa
 registry.register('safe', handler('safe'))
 registry.register('normal', handler('normal'))
 registry.register('dangerous', handler('dangerous'))
-registry.register('boundary', handler('safe', true))
+registry.register('boundary', handler('safe', true, 'boundary'))
 
 const broker = new PermissionBroker()
 const presented: string[] = []

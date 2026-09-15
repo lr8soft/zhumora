@@ -14,7 +14,7 @@
 import type { McpServerConfig } from '../../shared/types'
 import { isValidHttpHeaderName, isValidHttpHeaderValue } from '../../shared/mcpConfig'
 import * as db from '../store/db'
-import type { ToolHandler } from '../tools/registry'
+import type { ToolHandler, ToolRegistration } from '../tools/registry'
 import { connectMcpServer, disconnectMcpServer, getMcpConnectionStatus } from './client'
 import { log } from '../llm/logger'
 import { broadcastSettingsChanged } from '../store/settingsBus'
@@ -372,9 +372,22 @@ async function tryConnect(config: McpServerConfig): Promise<string> {
   }
 }
 
-export const mcpManagerTools: { name: string; handler: ToolHandler }[] = [
-  { name: 'mcp_list_servers', handler: mcpListServersTool },
-  { name: 'mcp_add_server', handler: mcpAddServerTool },
-  { name: 'mcp_update_server', handler: mcpUpdateServerTool },
-  { name: 'mcp_remove_server', handler: mcpRemoveServerTool }
+export const mcpManagerTools: ToolRegistration[] = [
+  {
+    name: 'mcp_list_servers',
+    handler: mcpListServersTool,
+    manifest: { capabilities: ['agent.configuration.read'], idempotency: 'idempotent' }
+  },
+  { name: 'mcp_add_server', handler: mcpAddServerTool, manifest: mcpManagementManifest() },
+  { name: 'mcp_update_server', handler: mcpUpdateServerTool, manifest: mcpManagementManifest() },
+  { name: 'mcp_remove_server', handler: mcpRemoveServerTool, manifest: mcpManagementManifest() }
 ]
+
+function mcpManagementManifest() {
+  return {
+    capabilities: ['agent.capabilities.manage', 'agent.configuration.write', 'network.client', 'process.spawn'],
+    executionClass: 'in-process' as const,
+    concurrency: 'global-exclusive' as const,
+    idempotency: 'non-idempotent' as const
+  }
+}

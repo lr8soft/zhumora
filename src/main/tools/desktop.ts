@@ -9,7 +9,7 @@ import type {
   DesktopObservation,
   DesktopObserveMode
 } from '../desktop/types'
-import type { ToolHandler } from './registry'
+import type { ToolHandler, ToolRegistration } from './registry'
 import { createDesktopInputTools, desktopAfterAction, desktopInputDefinitions } from './desktopInput'
 import type { DesktopControlCoordinator } from '../desktop/controlCoordinator'
 
@@ -391,9 +391,18 @@ function optionalBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
-export function createDesktopTools(control: DesktopControlCoordinator) {
+export function createDesktopTools(control: DesktopControlCoordinator): ToolRegistration[] {
   return [
-    { name: DESKTOP_OBSERVE_TOOL_NAME, handler: desktopObserveTool },
+    {
+      name: DESKTOP_OBSERVE_TOOL_NAME,
+      handler: desktopObserveTool,
+      manifest: {
+        capabilities: ['desktop.observe'],
+        executionClass: 'desktop',
+        concurrency: 'global-exclusive',
+        idempotency: 'idempotent'
+      }
+    },
     ...createDesktopInputTools(desktopActionTool.execute, control)
   ]
 }

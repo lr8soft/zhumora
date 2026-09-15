@@ -4,6 +4,7 @@ import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
 import { SessionBusyError, SessionService, type SessionStore } from '../src/main/agent/sessionService.ts'
 import type { AgentEventCallbacks, AgentRunOptions } from '../src/main/agent/runner.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
+import { ToolExecutionService } from '../src/main/execution/service.ts'
 
 const settings = {
   providers: [{
@@ -58,9 +59,11 @@ const executeAgent = async (options: AgentRunOptions, callbacks: AgentEventCallb
 
 let nextId = 0
 const permissions = new PermissionBroker()
+const tools = new ToolRegistry()
 const service = new SessionService({
   store,
-  tools: new ToolRegistry(),
+  tools,
+  toolExecutionService: new ToolExecutionService({ registry: tools }),
   permissions,
   getSkillsPrompt: () => 'skills',
   getMcpStatus: () => [],

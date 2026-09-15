@@ -2,7 +2,7 @@
 // Memory Tools — LLM 可主动调用的记忆工具集
 // 让 Agent 能搜索、保存、列出、删除长期记忆
 // ============================================================
-import type { ToolHandler, ToolContext } from './registry'
+import type { ToolHandler, ToolContext, ToolRegistration } from './registry'
 import { getMemories, addMemory, deleteMemory, touchMemory } from '../store/db'
 import type { MemoryCategory } from '../../shared/types'
 import { log } from '../llm/logger'
@@ -167,9 +167,9 @@ export const memoryDeleteTool: ToolHandler = {
 }
 
 // 导出所有记忆工具
-export const memoryTools: { name: string; handler: ToolHandler }[] = [
-  { name: 'memory_search', handler: memorySearchTool },
-  { name: 'memory_save', handler: memorySaveTool },
-  { name: 'memory_list', handler: memoryListTool },
-  { name: 'memory_delete', handler: memoryDeleteTool }
+export const memoryTools: ToolRegistration[] = [
+  { name: 'memory_search', handler: memorySearchTool, manifest: { capabilities: ['memory.read'], idempotency: 'non-idempotent' } },
+  { name: 'memory_save', handler: memorySaveTool, manifest: { capabilities: ['memory.write'], idempotency: 'non-idempotent' } },
+  { name: 'memory_list', handler: memoryListTool, manifest: { capabilities: ['memory.read'], idempotency: 'non-idempotent' } },
+  { name: 'memory_delete', handler: memoryDeleteTool, manifest: { capabilities: ['memory.write'], idempotency: 'non-idempotent' } }
 ]

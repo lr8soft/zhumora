@@ -3,7 +3,7 @@
 // format-specific so smaller models do not have to decode four mini-languages
 // inside one generic tool.
 import * as path from 'node:path'
-import type { ToolHandler, ToolContext } from './registry.ts'
+import type { ToolHandler, ToolContext, ToolRegistration } from './registry.ts'
 import { executeOffice, type OfficeArgs } from './office.ts'
 
 type OfficeFormat = 'docx' | 'xlsx' | 'pptx' | 'pdf'
@@ -265,9 +265,17 @@ export const pdfDocumentTool: ToolHandler = {
   }
 }
 
-export const officeTools: { name: string; handler: ToolHandler }[] = [
-  { name: 'word_document', handler: wordDocumentTool },
-  { name: 'excel_workbook', handler: excelWorkbookTool },
-  { name: 'powerpoint_presentation', handler: powerpointPresentationTool },
-  { name: 'pdf_document', handler: pdfDocumentTool }
+export const officeTools: ToolRegistration[] = [
+  { name: 'word_document', handler: wordDocumentTool, manifest: officeManifest('document.word') },
+  { name: 'excel_workbook', handler: excelWorkbookTool, manifest: officeManifest('document.spreadsheet') },
+  { name: 'powerpoint_presentation', handler: powerpointPresentationTool, manifest: officeManifest('document.presentation') },
+  { name: 'pdf_document', handler: pdfDocumentTool, manifest: officeManifest('document.pdf') }
 ]
+
+function officeManifest(formatCapability: string) {
+  return {
+    capabilities: ['filesystem.read', 'filesystem.write', `${formatCapability}.read`, `${formatCapability}.write`],
+    executionClass: 'in-process' as const,
+    idempotency: 'non-idempotent' as const
+  }
+}

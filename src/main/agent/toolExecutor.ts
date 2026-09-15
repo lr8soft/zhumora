@@ -1,10 +1,11 @@
 import type { ChatMessage, ContentPart, ToolCall } from '../../shared/types'
-import { log } from '../llm/logger'
-import { normalizeToolOutput, type ToolContext, type ToolRegistry } from '../tools/registry'
+import { log } from '../llm/logger.ts'
+import type { ToolContext } from '../tools/registry'
+import type { ToolExecutionService } from '../execution/service'
 
 export interface ToolExecutionOptions {
   toolCall: ToolCall
-  registry: ToolRegistry
+  service: ToolExecutionService
   context: ToolContext
   permissionCheck?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
   hardStop?: string | null
@@ -19,76 +20,29 @@ export interface ExecutedToolCall {
 }
 
 export async function executeToolCall(options: ToolExecutionOptions): Promise<ExecutedToolCall> {
-  const { toolCall, registry, context, permissionCheck, hardStop, loopWarningCount } = options
+  const { toolCall, service, context, permissionCheck, hardStop, loopWarningCount } = options
   const name = toolCall.function.name
-  let resultText = ''
-  let isError = false
-  let durationMs = 0
+  const executed = await service.execute({ toolCall, context, permissionCheck, hardStop })
+  let resultText = executed.output.content
+  const isError = executed.output.isError === true
   let multimodalContent: ContentPart[] | undefined
 
-  if (context.signal?.aborted) {
-    resultText = 'Execution skipped: aborted by user'
-    isError = true
-  } else {
-    const entry = registry.get(name)
-    if (!entry) {
-      resultText = `Error: Tool "${name}" not found`
-      isError = true
-      log('error', `Tool not found: ${name}`)
-    } else {
-      let parsedArgs: Record<string, unknown> = {}
-      try {
-        parsedArgs = JSON.parse(toolCall.function.arguments || '{}')
-      } catch {
-        resultText = `Error: Invalid JSON arguments: ${toolCall.function.arguments}`
-        isError = true
-      }
+  if (loopWarningCount && executed.disposition === 'completed') {
+    log('warn', `Loop detected (soft): ${loopWarningCount} consecutive identical calls to ${name}`)
+    resultText += `\n\n[Loop warning] This exact call to ${name} has now been made ${loopWarningCount} times in a row. Stop repeating it — try a different approach or proceed to the next step.`
+  }
 
-      if (!isError && hardStop) {
-        resultText = `Execution skipped: agent hard-stopped (${hardStop})`
-        isError = true
-      }
-
-      if (!isError && permissionCheck && !(await permissionCheck(name, parsedArgs))) {
-        resultText = 'Permission denied'
-        isError = true
-      }
-
-      if (!isError) {
-        const start = Date.now()
-        try {
-          log('info', `Executing tool: ${name}(${JSON.stringify(parsedArgs).slice(0, 200)})`)
-          const output = normalizeToolOutput(await entry.handler.execute(parsedArgs, context))
-          durationMs = Date.now() - start
-          resultText = output.content
-          isError = output.isError === true
-          log('info', `Tool ${name} completed in ${durationMs}ms`)
-
-          if (loopWarningCount) {
-            log('warn', `Loop detected (soft): ${loopWarningCount} consecutive identical calls to ${name}`)
-            resultText += `\n\n[Loop warning] This exact call to ${name} has now been made ${loopWarningCount} times in a row. Stop repeating it — try a different approach or proceed to the next step.`
-          }
-
-          if (!isError && output.attachments?.length) {
-            multimodalContent = []
-            if (resultText) multimodalContent.push({ type: 'text', text: resultText })
-            for (const attachment of output.attachments) {
-              multimodalContent.push({
-                type: 'image_url',
-                image_url: {
-                  url: `data:${attachment.mediaType};base64,${attachment.base64}`,
-                  detail: attachment.detail || 'auto'
-                }
-              })
-            }
-          }
-        } catch (error) {
-          durationMs = Date.now() - start
-          resultText = `Error: ${(error as Error).message}`
-          isError = true
-          log('error', `Tool ${name} failed: ${(error as Error).message}`)
+  if (!isError && executed.output.attachments?.length) {
+    multimodalContent = []
+    if (resultText) multimodalContent.push({ type: 'text', text: resultText })
+    for (const attachment of executed.output.attachments) {
+      multimodalContent.push({
+        type: 'image_url',
+        image_url: {
+          url: `data:${attachment.mediaType};base64,${attachment.base64}`,
+          detail: attachment.detail || 'auto'
         }
-      }
+      })
     }
   }
 
@@ -107,6 +61,6 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
     },
     displayContent,
     isError,
-    durationMs
+    durationMs: executed.durationMs
   }
 }

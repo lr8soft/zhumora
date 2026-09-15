@@ -1,7 +1,7 @@
 // Built-in file, search, and command tools.
 // Semantics intentionally follow OpenCode V2; ripgrep packaging follows Cline/VS Code.
 import { promises as fs } from 'node:fs'
-import type { ToolHandler, ToolContext } from './registry'
+import type { ToolHandler, ToolContext, ToolRegistration } from './registry'
 import { updateSessionTitle } from '../store/db'
 import { editFileExact, readPath, resolveToolPath, writeFilePreservingBom } from './fileOperations'
 import { globWithRipgrep, grepWithRipgrep } from './ripgrep'
@@ -266,13 +266,21 @@ export const setTitleTool: ToolHandler = {
   }
 }
 
-export const builtinTools: { name: string; handler: ToolHandler }[] = [
-  { name: 'read', handler: readTool },
-  { name: 'write', handler: writeTool },
-  { name: 'edit', handler: editTool },
-  { name: 'bash', handler: bashTool },
-  { name: 'grep', handler: grepTool },
-  { name: 'glob', handler: globTool },
-  { name: 'ls', handler: lsTool },
-  { name: 'set_title', handler: setTitleTool }
+export const builtinTools: ToolRegistration[] = [
+  { name: 'read', handler: readTool, manifest: { capabilities: ['filesystem.read'], idempotency: 'idempotent' } },
+  { name: 'write', handler: writeTool, manifest: { capabilities: ['filesystem.write'], idempotency: 'non-idempotent' } },
+  { name: 'edit', handler: editTool, manifest: { capabilities: ['filesystem.read', 'filesystem.write'], idempotency: 'non-idempotent' } },
+  {
+    name: 'bash',
+    handler: bashTool,
+    manifest: { capabilities: ['host.unrestricted'], executionClass: 'host-process', idempotency: 'unknown' }
+  },
+  { name: 'grep', handler: grepTool, manifest: { capabilities: ['filesystem.read'], idempotency: 'idempotent' } },
+  { name: 'glob', handler: globTool, manifest: { capabilities: ['filesystem.read'], idempotency: 'idempotent' } },
+  { name: 'ls', handler: lsTool, manifest: { capabilities: ['filesystem.read'], idempotency: 'idempotent' } },
+  {
+    name: 'set_title',
+    handler: setTitleTool,
+    manifest: { capabilities: ['session.metadata.write'], concurrency: 'session-exclusive', idempotency: 'non-idempotent' }
+  }
 ]

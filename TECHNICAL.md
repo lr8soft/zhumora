@@ -193,6 +193,56 @@ condition, per round:
 
 All of this is keyed on `finish_reason`, so normal turns are unaffected.
 
+### Tool catalog contract
+
+Every registered tool now owns an immutable `ToolManifest` in addition to its
+model-facing function definition and handler. The manifest records a stable
+source-qualified id, version, original and model-facing names, schemas,
+capabilities, execution class, concurrency intent, and idempotency intent.
+Unmigrated built-ins are explicitly marked `legacy.unclassified`; these fields
+are consumed by capability policy. The legacy allowance is temporary until each
+built-in has an explicit capability classification.
+
+The registry rejects invalid provider function names, definition/name mismatch,
+and duplicate model-visible names instead of silently replacing an existing
+tool. MCP tools are exposed as deterministic namespaced names containing the
+server id and a short digest; their manifest retains the upstream name and the
+MCP client uses that upstream name for `callTool`.
+
+`ToolExecutionService` is the single pre/post-handler execution path. It resolves
+the registered manifest, parses arguments as a JSON object, validates the JSON
+Schema subset supported by `schemaValidator.ts`, evaluates capability policy,
+checks executor availability, runs permission checks, checks the session signal
+again after asynchronous gates, invokes the selected executor, and normalizes
+expected failures. Invalid arguments and policy denials fail before a permission
+is shown and still become ordinary error tool results, preserving provider
+tool-call sequencing.
+
+`ManifestCapabilityPolicy` fails closed for malformed, blocked, disallowed, or
+internally inconsistent manifest capabilities. Unit-level compatibility still
+permits `legacy.unclassified`, but the application composition root disables it.
+Every built-in `ToolRegistration` now declares capabilities; dynamic MCP tools
+declare `mcp.call`. Deployments and tests can inject tighter capability and
+execution-class allowlists without changing handlers.
+
+`ToolExecutionRouter` selects an executor only from the manifest execution
+class. Current `in-process`, `host-process`, `mcp`, `browser`, and `desktop`
+classes are explicitly mapped to `CompatibilityToolExecutor`, which delegates
+to existing handlers, so their isolation behavior has not yet changed. The
+`sandbox` class has no compatibility route and therefore fails closed instead
+of silently running on the host. A real sandbox runtime can be wired through
+`SandboxToolExecutor` later without changing the Agent runner or tool-result
+protocol.
+
+`SandboxToolExecutor` defines that future route's trust boundary. It accepts only
+a runtime whose profile declares `os-enforced` isolation, sends a cloned,
+JSON-serializable request, and never gives the runtime access to the host tool
+handler. No such runtime is bundled or registered yet. Node's Permission Model
+is deliberately not treated as a sandbox because its documented threat model
+does not protect against malicious code and permitted trees can escape through
+symbolic links. Until a container/AppContainer-class backend exists, `bash`
+remains honestly classified as `host.unrestricted` / `host-process`.
+
 ## 6. Built-in tools
 
 ### 6.1 Workspace and shell

@@ -15,6 +15,7 @@ import type { ChatMessage, ProviderConfig, ReasoningEffort } from '../../shared/
 import { streamChat } from '../llm/provider'
 import { log } from '../llm/logger'
 import { toolRegistry, type ToolRegistry } from '../tools/registry'
+import type { ToolExecutionService } from '../execution/service.ts'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
 import { fetchContextWindow } from '../agent/context'
 import { buildSystemPrompt, type PromptRuntimeSnapshot } from '../agent/promptBuilder'
@@ -57,6 +58,8 @@ export interface AgentRunOptions {
   promptRuntime?: PromptRuntimeSnapshot
   /** 应用组合根构造的工具注册表；测试可传隔离实例。 */
   toolRegistry?: ToolRegistry
+  /** 统一工具执行应用服务；由 SessionService/组合根注入。 */
+  toolExecutionService: ToolExecutionService
   /** 覆盖模型名（如果用户在聊天页选了别的模型） */
   modelOverride?: string
   /** 对话级思考强度（聊天输入框选择；'off'/undefined = 不发送 reasoning_effort 参数） */
@@ -87,6 +90,7 @@ export async function runAgent(
 ): Promise<ChatMessage[]> {
   const { provider, workspacePath, messages, messageIds, compaction, signal, sessionId, memoryEnabled, onSessionTitleUpdate } = opts
   const toolsRegistry = opts.toolRegistry || toolRegistry
+  const toolExecutionService = opts.toolExecutionService
   // 对话级思考强度（'off'/undefined = 不发送参数，模型默认行为）。
   // 收窄为 streamChat 接受的 'low'|'medium'|'high'
   const reasoningEffort = opts.reasoningEffort && opts.reasoningEffort !== 'off' ? opts.reasoningEffort : undefined
@@ -115,7 +119,7 @@ export async function runAgent(
   // 局部变量同步进 base（phase 内部推进后由返回值带回）
   const toolPhaseBase: Omit<ToolPhaseOptions, 'hardStop'> = {
     conversation,
-    toolsRegistry,
+    toolExecutionService,
     workspacePath,
     sessionId,
     signal,

@@ -17,6 +17,7 @@ import type { AgentRunOptions, runAgent } from './runner.ts'
 import { collectUserTexts, ensureSessionTitle } from './titleService.ts'
 import { SessionEventHub } from './sessionEventHub.ts'
 import type { ToolRegistry } from '../tools/registry.ts'
+import type { ToolExecutionService } from '../execution/service.ts'
 import { generateId } from '../id.ts'
 
 type Provider = AppSettings['providers'][number]
@@ -77,6 +78,7 @@ interface ActiveSessionRun {
 interface SessionServiceDependencies {
   store: SessionStore
   tools: ToolRegistry
+  toolExecutionService: ToolExecutionService
   permissions: PermissionBroker
   getSkillsPrompt: () => string
   getMcpStatus: () => { id: string; name: string; connected: boolean }[]
@@ -179,6 +181,7 @@ export class SessionService {
           mcpServers: this.deps.getMcpStatus()
         },
         toolRegistry: this.deps.tools,
+        toolExecutionService: this.deps.toolExecutionService,
         sessionNeedsTitle: needsTitle,
         onSessionTitleUpdate: (id, title) => run.events.titleUpdated?.(id, title),
         onAutoCompact: state => this.deps.store.setSessionCompaction({ sessionId, ...state, createdAt: this.now() })

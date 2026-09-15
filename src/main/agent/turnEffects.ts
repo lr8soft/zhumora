@@ -7,7 +7,8 @@
 // ============================================================
 import type { ChatMessage, ToolCall } from '../../shared/types'
 import { log } from '../llm/logger'
-import type { ToolContext, ToolRegistry } from '../tools/registry'
+import type { ToolContext } from '../tools/registry'
+import type { ToolExecutionService } from '../execution/service.ts'
 import { executeToolCall } from './toolExecutor'
 import { LoopDetector, type LoopDetectionConfig } from './loopDetector'
 import {
@@ -68,7 +69,7 @@ export function applyRecoveryDecision(
     } else {
       cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
     }
-    cb.onTruncated?.('text', decision.cause || 'length')
+    cb.onTruncated?.('text', decision.cause === 'stream' ? 'stream' : 'length')
     const continuation = recovery.recordTruncation()
     log('warn', `Round ${round}: incomplete text round (${isStream ? 'stream interrupted mid-response' : 'text output truncated at token limit (finish_reason=length)'}) — continuing (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
     conversation.appendSyntheticUser(continuePrompt)
@@ -126,7 +127,7 @@ function toolContinuationPrompt(cause: IncompleteCause): string {
 
 export interface ToolPhaseOptions {
   conversation: WorkingConversation
-  toolsRegistry: ToolRegistry
+  toolExecutionService: ToolExecutionService
   workspacePath: string
   sessionId?: string
   signal?: AbortSignal
@@ -153,7 +154,7 @@ export async function runToolCallPhase(
   opts: ToolPhaseOptions
 ): Promise<ToolPhaseResult> {
   const {
-    conversation, toolsRegistry, workspacePath, sessionId, signal, permissionCheck,
+    conversation, toolExecutionService, workspacePath, sessionId, signal, permissionCheck,
     onSessionTitleUpdate, loopDetector, loopConfig, cb
   } = opts
   let { hardStop } = opts
@@ -172,7 +173,7 @@ export async function runToolCallPhase(
 
     const executed = await executeToolCall({
       toolCall: tc,
-      registry: toolsRegistry,
+      service: toolExecutionService,
       context: toolContext,
       permissionCheck,
       hardStop,

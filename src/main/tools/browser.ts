@@ -6,7 +6,7 @@
 import { chromium, type BrowserContext, type Page } from 'playwright'
 import { app } from 'electron'
 import * as path from 'node:path'
-import type { ToolHandler, ToolContext } from './registry'
+import type { ToolHandler, ToolContext, ToolRegistration } from './registry'
 import { log } from '../llm/logger'
 import { getSettings } from '../store/db'
 import { browserConfigurationKey, resolveBrowserCandidates } from './browserSelection'
@@ -410,13 +410,22 @@ export const browserCloseTool: ToolHandler = {
 }
 
 // 导出所有浏览器工具
-export const browserTools: { name: string; handler: ToolHandler }[] = [
-  { name: 'browser_navigate', handler: browserNavigateTool },
-  { name: 'browser_click', handler: browserClickTool },
-  { name: 'browser_type', handler: browserTypeTool },
-  { name: 'browser_screenshot', handler: browserScreenshotTool },
-  { name: 'browser_get_text', handler: browserGetTextTool },
-  { name: 'browser_get_html', handler: browserGetHtmlTool },
-  { name: 'browser_wait', handler: browserWaitTool },
-  { name: 'browser_close', handler: browserCloseTool }
+export const browserTools: ToolRegistration[] = [
+  { name: 'browser_navigate', handler: browserNavigateTool, manifest: browserManifest('browser.navigate', 'non-idempotent') },
+  { name: 'browser_click', handler: browserClickTool, manifest: browserManifest('browser.interact', 'non-idempotent') },
+  { name: 'browser_type', handler: browserTypeTool, manifest: browserManifest('browser.interact', 'non-idempotent') },
+  { name: 'browser_screenshot', handler: browserScreenshotTool, manifest: browserManifest('browser.read', 'idempotent') },
+  { name: 'browser_get_text', handler: browserGetTextTool, manifest: browserManifest('browser.read', 'idempotent') },
+  { name: 'browser_get_html', handler: browserGetHtmlTool, manifest: browserManifest('browser.read', 'idempotent') },
+  { name: 'browser_wait', handler: browserWaitTool, manifest: browserManifest('browser.read', 'idempotent') },
+  { name: 'browser_close', handler: browserCloseTool, manifest: browserManifest('browser.lifecycle', 'non-idempotent') }
 ]
+
+function browserManifest(capability: string, idempotency: 'idempotent' | 'non-idempotent') {
+  return {
+    capabilities: [capability],
+    executionClass: 'browser' as const,
+    concurrency: 'global-exclusive' as const,
+    idempotency
+  }
+}

@@ -10,6 +10,7 @@ import { StreamableHTTPClientTransport } from '@modelcontextprotocol/sdk/client/
 import type { McpServerConfig, ToolDefinition, ToolImageAttachment } from '../../shared/types'
 import { buildMcpRequestHeaders } from '../../shared/mcpConfig'
 import { registerTool, unregisterToolsBySource, type ToolHandler, type ToolContext } from '../tools/registry'
+import { createMcpToolName } from '../tools/manifest.ts'
 import { log } from '../llm/logger'
 import { getMaxRetries, withRetry } from '../net/retry'
 import { getMcpFetch } from '../net/fetch'
@@ -133,11 +134,12 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
     unregisterToolsBySource(sourceTag)
 
     for (const tool of toolsList.tools) {
+      const modelToolName = createMcpToolName(config.id, tool.name)
       const handler: ToolHandler = {
         definition: {
           type: 'function',
           function: {
-            name: tool.name,
+            name: modelToolName,
             description: tool.description || `MCP tool from ${config.name}`,
             parameters: tool.inputSchema || { type: 'object', properties: {} }
           }
@@ -166,7 +168,11 @@ export async function connectMcpServer(config: McpServerConfig): Promise<void> {
           }
         }
       }
-      registerTool(tool.name, handler, sourceTag)
+      registerTool(modelToolName, handler, sourceTag, {
+        originalName: tool.name,
+        capabilities: ['mcp.call'],
+        executionClass: 'mcp'
+      })
     }
 
     // 标记为已连接
