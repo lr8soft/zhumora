@@ -45,8 +45,8 @@ function MessageViewport({ sessionId }: Props) {
         className="chat-messages"
         data={rows}
         computeItemKey={(_, row) => row.key}
-        itemContent={(_, row) => (
-          <div className="chat-timeline-row">
+        itemContent={(index, row) => (
+          <div className={`chat-timeline-row${index === 0 ? ' first' : ''}${index === rows.length - 1 ? ' last' : ''}`}>
             <TimelineRowView row={row} />
           </div>
         )}

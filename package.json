@@ -1,6 +1,6 @@
 {
   "name": "zhumora",
-  "version": "0.4.1",
+  "version": "0.4.2",
   "description": "A source-available AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora, LT_lrsoft",

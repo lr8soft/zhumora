@@ -261,8 +261,14 @@ h1, h2, h3, p { margin: 0; }
 }
 .truncated-notice > svg { flex: 0 0 auto; }
 .message-viewport { position: relative; flex: 1; min-height: 0; }
-.chat-messages { height: 100%; min-height: 0; overflow-y: auto; padding: 22px 18px; }
-.chat-timeline-row { padding-bottom: 14px; }
+.chat-messages { width: 100%; height: 100%; min-width: 0; min-height: 0; overflow-x: hidden; overflow-y: auto; }
+/* Virtuoso 的 viewport 是 scroller 内 width:100% 的绝对定位层。padding 放在
+   scroller 上会让该层从 padding 起点再占满 100%，实际宽度超出两侧内边距。
+   间距必须落在受 border-box 约束、且参与行高测量的 item 内容层。 */
+.chat-timeline-row { width: 100%; min-width: 0; padding: 0 18px 14px; }
+.chat-timeline-row.first { padding-top: 22px; }
+.chat-timeline-row.last { padding-bottom: 22px; }
+.message-viewport .chat-empty { padding-right: 18px; padding-left: 18px; }
 .scroll-to-bottom {
   position: absolute; right: 28px; bottom: 18px; z-index: 6;
   width: 34px; height: 34px; display: grid; place-items: center;
