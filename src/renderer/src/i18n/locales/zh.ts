@@ -40,6 +40,7 @@ export default {
     thinkingBlock: '深度思考',
     tool: { running: '运行中', done: '已完成', error: '出错', args: '参数', result: '返回' },
     retrying: '网络不稳定，正在重试（{{attempt}}/{{max}}）…',
+    scrollToBottom: '滚动到最新消息',
     stop: '停止',
     send: '发送',
     welcome: '在下方输入消息开始对话。',
@@ -82,6 +83,17 @@ export default {
       medium: '平衡',
       high: '深度推理'
     }
+  },
+  diagram: {
+    title: '图表',
+    showDiagram: '查看图表',
+    showSource: '查看源码',
+    copySource: '复制源码',
+    copied: '已复制',
+    rendering: '正在渲染图表…',
+    renderError: '图表渲染失败，已保留源码。',
+    tooLarge: '图表源码过大，已保留源码。',
+    accessibleLabel: 'Mermaid 图表'
   },
   permission: {
     title: '权限请求',

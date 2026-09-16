@@ -40,6 +40,7 @@ export default {
     thinkingBlock: 'Deep thinking',
     tool: { running: 'Running', done: 'Done', error: 'Error', args: 'Arguments', result: 'Result' },
     retrying: 'Network unstable, retrying ({{attempt}}/{{max}})…',
+    scrollToBottom: 'Scroll to latest message',
     stop: 'Stop',
     send: 'Send',
     welcome: 'Type a message below to start a conversation.',
@@ -72,6 +73,17 @@ export default {
     reasoningEffortHint: "Choose reasoning effort (enabled for the current provider)",
     reasoningEffort: { off: 'Default', low: 'Low', medium: 'Medium', high: 'High' },
     reasoningEffortDesc: { off: 'Let the model decide', low: 'Fast, less thinking', medium: 'Balanced', high: 'Deep reasoning' }
+  },
+  diagram: {
+    title: 'Diagram',
+    showDiagram: 'Show diagram',
+    showSource: 'Show source',
+    copySource: 'Copy source',
+    copied: 'Copied',
+    rendering: 'Rendering diagram…',
+    renderError: 'Diagram rendering failed. The source is preserved.',
+    tooLarge: 'The diagram source is too large. The source is preserved.',
+    accessibleLabel: 'Mermaid diagram'
   },
   permission: {
     title: 'Permission Request',

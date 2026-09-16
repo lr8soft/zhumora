@@ -1,5 +1,30 @@
 # Third-Party Notices
 
+Zhumora includes the following libraries for virtualized chat rendering and
+safe, local diagram rendering.
+
+## Mermaid
+
+Copyright (c) 2014-2022 Knut Sveidqvist
+
+Licensed under the MIT License. The complete license text is distributed with
+the Mermaid package.
+
+## React Virtuoso
+
+Copyright (c) 2020 Petyo Ivanov
+
+Licensed under the MIT License. The complete license text is distributed with
+the React Virtuoso package.
+
+## DOMPurify
+
+Copyright DOMPurify contributors.
+
+DOMPurify is available under the Mozilla Public License 2.0 or the Apache
+License 2.0. Zhumora uses it under the Apache License 2.0; the complete license
+text is distributed with the DOMPurify package.
+
 Zhumora includes sherpa-onnx for optional, fully local text-to-speech.
 
 ## sherpa-onnx

@@ -40,6 +40,7 @@ export default {
     thinkingBlock: '深く思考中',
     tool: { running: '実行中', done: '完了', error: 'エラー', args: '引数', result: '結果' },
     retrying: 'ネットワークが不安定です。再試行中（{{attempt}}/{{max}}）…',
+    scrollToBottom: '最新のメッセージへ移動',
     stop: '停止',
     send: '送信',
     welcome: '下にメッセージを入力して会話を開始してください。',
@@ -72,6 +73,17 @@ export default {
     reasoningEffortHint: "思考強度を選択（現在のプロバイダーで有効）",
     reasoningEffort: { off: '既定', low: '低', medium: '中', high: '高' },
     reasoningEffortDesc: { off: 'モデルに委ねる', low: '高速、少ない思考', medium: 'バランス', high: '深い推論' }
+  },
+  diagram: {
+    title: '図表',
+    showDiagram: '図表を表示',
+    showSource: 'ソースを表示',
+    copySource: 'ソースをコピー',
+    copied: 'コピーしました',
+    rendering: '図表を描画中…',
+    renderError: '図表を描画できませんでした。ソースは保持されています。',
+    tooLarge: '図表のソースが大きすぎます。ソースは保持されています。',
+    accessibleLabel: 'Mermaid 図表'
   },
   permission: {
     title: '権限リクエスト',

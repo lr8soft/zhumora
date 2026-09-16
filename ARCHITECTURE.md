@@ -269,6 +269,26 @@ stateDiagram-v2
 | `src/main/composition.ts` | 唯一组合根和具体实现注入 |
 | `src/renderer/` | 会话投影、展示和交互，不成为持久化权威 |
 
+### Renderer 聊天页更新边界
+
+聊天页将高频输入和长历史渲染分成两个独立更新边界：
+
+- `ChatComposer` 持有未发送文字、待发送附件和输入区菜单等短生命周期 UI 状态。键盘输入只允许重渲染 composer，不得把草稿状态提升到消息列表 owner，也不得写入 main/数据库。
+- `MessageViewport` 按显式 `sessionId` 订阅该会话的消息、重试和压缩投影，负责消息列表派生数据与滚动。它不读取 composer 草稿，后台会话更新也不得触发当前 viewport。长历史由 Virtuoso 按动态高度虚拟化；row key 必须来自权威消息 ID 或显式派生事件 key，不能使用数组位置。
+- `buildTimelineRows` 是消息 cache 到展示时间线的纯投影：只负责合并 tool 展示、插入压缩/重试行，不拥有或改写消息。虚拟列表只渲染投影结果；DB 和 renderer session cache 仍保存完整历史。
+- 自动跟随输出只在用户已经位于底部时开启；用户上翻阅读后，新 token 不得强制抢回滚动位置。切换会话时按该会话的末尾初始化 viewport。
+- `ChatView` 只组合 header、通知、viewport 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。
+
+完整历史仍由数据库和 renderer session cache 保存。展示层的组件拆分、memo 和虚拟化只能减少渲染工作，不得改变消息 ID、持久化内容、压缩边界或 `SessionService` 所有权。
+
+### Markdown 与图表渲染边界
+
+- 消息的持久化真值始终是原始 Markdown 文本；图表 SVG 只是 renderer 的可丢弃投影，不写数据库、不进入 Agent 历史，也不新增 main/preload/IPC 协议。
+- `MarkdownView` 只有在 assistant 消息完成后，才把语言标记为 `mermaid` 的 fenced code block 交给 `MermaidBlock`。流式输出、普通代码块、reasoning 和压缩摘要保持源码展示，避免半截语法反复解析。
+- `MermaidRenderer` 是 renderer 组合根创建的进程级 owner。由于 Mermaid 配置是库级可变状态，初始化和渲染必须串行；缓存以 `theme + 完整 source` 为 key，容量有界，主题或源码变化自然失效。
+- 图表使用 `securityLevel: strict`、关闭 HTML labels、限制源码长度和边数量，并对生成 SVG 再执行 DOMPurify SVG allowlist 清洗；URI 属性和非本地 CSS `url(...)` 资源也必须移除。禁止启用点击回调、任意 HTML、脚本、`foreignObject`、外链对象或其他交互绑定。
+- 渲染失败、输入为空或超过限制时必须显示可复制源码；图表只是渐进增强，不能令整条消息不可读。
+
 ## 11. 禁止回归的旧设计
 
 以下旧组件已经删除，不得以新名字恢复同类职责：

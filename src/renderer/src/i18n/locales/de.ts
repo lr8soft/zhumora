@@ -40,6 +40,7 @@ export default {
     thinkingBlock: 'Tiefes Denken',
     tool: { running: 'Läuft', done: 'Fertig', error: 'Fehler', args: 'Argumente', result: 'Ergebnis' },
     retrying: 'Netzwerk instabil, erneuter Versuch ({{attempt}}/{{max}})…',
+    scrollToBottom: 'Zur neuesten Nachricht scrollen',
     stop: 'Stopp',
     send: 'Senden',
     welcome: 'Geben Sie unten eine Nachricht ein, um eine Konversation zu starten.',
@@ -72,6 +73,17 @@ export default {
     reasoningEffortHint: "Begründungsintensität wählen (für aktuellen Anbieter aktiviert)",
     reasoningEffort: { off: 'Standard', low: 'Niedrig', medium: 'Mittel', high: 'Hoch' },
     reasoningEffortDesc: { off: 'Vom Modell entscheiden lassen', low: 'Schnell, weniger Denken', medium: 'Ausgewogen', high: 'Tiefes Nachdenken' }
+  },
+  diagram: {
+    title: 'Diagramm',
+    showDiagram: 'Diagramm anzeigen',
+    showSource: 'Quelltext anzeigen',
+    copySource: 'Quelltext kopieren',
+    copied: 'Kopiert',
+    rendering: 'Diagramm wird gerendert…',
+    renderError: 'Das Diagramm konnte nicht gerendert werden. Der Quelltext bleibt erhalten.',
+    tooLarge: 'Der Diagramm-Quelltext ist zu groß. Der Quelltext bleibt erhalten.',
+    accessibleLabel: 'Mermaid-Diagramm'
   },
   permission: {
     title: 'Berechtigungsanfrage',

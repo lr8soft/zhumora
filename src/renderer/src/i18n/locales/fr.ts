@@ -40,6 +40,7 @@ export default {
     thinkingBlock: 'Raisonnement approfondi',
     tool: { running: 'En cours', done: 'Terminé', error: 'Erreur', args: 'Arguments', result: 'Résultat' },
     retrying: 'Réseau instable, nouvelle tentative ({{attempt}}/{{max}})…',
+    scrollToBottom: 'Aller au message le plus récent',
     stop: 'Arrêter',
     send: 'Envoyer',
     welcome: 'Tapez un message ci-dessous pour commencer une conversation.',
@@ -72,6 +73,17 @@ export default {
     reasoningEffortHint: "Choisir l'intensité de raisonnement (activé pour le fournisseur actuel)",
     reasoningEffort: { off: 'Par défaut', low: 'Faible', medium: 'Moyen', high: 'Élevé' },
     reasoningEffortDesc: { off: 'Laisser le modèle décider', low: 'Rapide, moins de réflexion', medium: 'Équilibré', high: 'Raisonnement approfondi' }
+  },
+  diagram: {
+    title: 'Diagramme',
+    showDiagram: 'Afficher le diagramme',
+    showSource: 'Afficher le code',
+    copySource: 'Copier le code',
+    copied: 'Copié',
+    rendering: 'Rendu du diagramme…',
+    renderError: 'Le rendu du diagramme a échoué. Le code source est conservé.',
+    tooLarge: 'Le code du diagramme est trop volumineux. Le code source est conservé.',
+    accessibleLabel: 'Diagramme Mermaid'
   },
   permission: {
     title: 'Demande de Permission',

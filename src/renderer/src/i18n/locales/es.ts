@@ -40,6 +40,7 @@ export default {
     thinkingBlock: 'Razonamiento profundo',
     tool: { running: 'En ejecución', done: 'Completado', error: 'Error', args: 'Argumentos', result: 'Resultado' },
     retrying: 'Red inestable, reintentando ({{attempt}}/{{max}})…',
+    scrollToBottom: 'Ir al mensaje más reciente',
     stop: 'Detener',
     send: 'Enviar',
     welcome: 'Escribe un mensaje abajo para iniciar una conversación.',
@@ -72,6 +73,17 @@ export default {
     reasoningEffortHint: "Elige la intensidad de razonamiento (activado para el proveedor actual)",
     reasoningEffort: { off: 'Predeterminado', low: 'Baja', medium: 'Media', high: 'Alta' },
     reasoningEffortDesc: { off: 'Que lo decida el modelo', low: 'Rápido, menos pensamiento', medium: 'Equilibrado', high: 'Razonamiento profundo' }
+  },
+  diagram: {
+    title: 'Diagrama',
+    showDiagram: 'Mostrar diagrama',
+    showSource: 'Mostrar código',
+    copySource: 'Copiar código',
+    copied: 'Copiado',
+    rendering: 'Renderizando diagrama…',
+    renderError: 'No se pudo renderizar el diagrama. Se conserva el código.',
+    tooLarge: 'El código del diagrama es demasiado grande. Se conserva el código.',
+    accessibleLabel: 'Diagrama de Mermaid'
   },
   permission: {
     title: 'Solicitud de Permiso',
