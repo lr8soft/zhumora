@@ -76,13 +76,10 @@ function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Prop
         </div>
       ) : null}
 
-      {/* 正文内容 */}
+      {/* 正文内容：流式期间已闭合的 mermaid 块立即出图（MarkdownView 内部按 fence 完成度切分） */}
       {message.content ? (
         <div className="markdown-body">
-          <MarkdownView
-            content={message.content}
-            enableDiagrams={message.status !== 'streaming' && message.status !== 'thinking'}
-          />
+          <MarkdownView content={message.content} enableDiagrams />
         </div>
       ) : null}
 

@@ -80,6 +80,8 @@ export default {
     showSource: 'ソースを表示',
     copySource: 'ソースをコピー',
     copied: 'コピーしました',
+    save: '画像として保存',
+    saved: '保存しました',
     rendering: '図表を描画中…',
     renderError: '図表を描画できませんでした。ソースは保持されています。',
     tooLarge: '図表のソースが大きすぎます。ソースは保持されています。',

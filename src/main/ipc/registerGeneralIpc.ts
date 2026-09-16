@@ -1,4 +1,5 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron'
+import { promises as fsPromises } from 'node:fs'
 import type { AppSettings } from '../../shared/types'
 import * as db from '../store/db'
 import { detectProviderContextWindow } from '../agent/context'
@@ -84,6 +85,26 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
       filters: [{ name: 'Skill files', extensions: ['md'] }]
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+  /** 保存 Mermaid 图表为独立 SVG 文件。content 是 renderer 已 sanitize 的 SVG，source 是原始图表源码（写入文件头注释）。 */
+  ipcMain.handle('settings:saveDiagram', async (_event, content: unknown, source: unknown) => {
+    if (typeof content !== 'string' || !content) return 'failed'
+    const result = await dialog.showSaveDialog(win, {
+      title: 'Save Diagram',
+      defaultPath: 'diagram.svg',
+      filters: [{ name: 'SVG Image', extensions: ['svg'] }]
+    })
+    if (result.canceled || !result.filePath) return 'canceled'
+    try {
+      const header = typeof source === 'string' && source
+        ? `<!--\n${source.replace(/-->/g, '-- >')}\n-->\n`
+        : ''
+      await fsPromises.writeFile(result.filePath, header + content, 'utf8')
+      return 'saved'
+    } catch (error) {
+      console.error('Save diagram error:', error)
+      return 'failed'
+    }
   })
   ipcMain.handle('shell:openExternal', (_event, url: string) => {
     void shell.openExternal(url)

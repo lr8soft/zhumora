@@ -80,6 +80,8 @@ export default {
     showSource: 'Show source',
     copySource: 'Copy source',
     copied: 'Copied',
+    save: 'Save as image',
+    saved: 'Saved',
     rendering: 'Rendering diagram…',
     renderError: 'Diagram rendering failed. The source is preserved.',
     tooLarge: 'The diagram source is too large. The source is preserved.',

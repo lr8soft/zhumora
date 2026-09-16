@@ -717,7 +717,7 @@ select.input-field { cursor: pointer; }
 .markdown-body th { background: var(--app-muted-bg); font-weight: 650; }
 .markdown-body hr { margin: 14px 0; border: 0; border-top: 1px solid var(--app-color-border); }
 
-/* Mermaid 只在完整的显式 mermaid fenced code block 中启用。源码始终可回退查看。 */
+/* Mermaid 在已闭合的显式 mermaid fenced code block 中启用（流式输出中块一闭合立即出图）。源码始终可回退查看；图表可导出为独立 SVG。 */
 .mermaid-block {
   margin: 0 0 10px; overflow: hidden;
   border: 1px solid var(--app-color-border); border-radius: 7px;

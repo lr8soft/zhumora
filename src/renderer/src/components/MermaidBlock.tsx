@@ -1,7 +1,8 @@
 import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { AlertTriangle, Check, Code2, Copy, LoaderCircle, Workflow } from 'lucide-react'
+import { AlertTriangle, Check, Code2, Copy, LoaderCircle, Save, Workflow } from 'lucide-react'
 
+import { formatStandaloneSvg } from '../diagramPolicy'
 import { useAppStore } from '../store'
 import { useMermaidRenderer } from '../mermaidContext'
 import { MermaidRenderError, type MermaidTheme } from '../mermaidRenderer'
@@ -23,6 +24,7 @@ export default function MermaidBlock({ source }: Props) {
   const [renderState, setRenderState] = useState<RenderState>({ status: 'loading' })
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
+  const [saved, setSaved] = useState(false)
 
   useEffect(() => {
     let active = true
@@ -47,6 +49,12 @@ export default function MermaidBlock({ source }: Props) {
     return () => window.clearTimeout(timer)
   }, [copied])
 
+  useEffect(() => {
+    if (!saved) return
+    const timer = window.setTimeout(() => setSaved(false), 1500)
+    return () => window.clearTimeout(timer)
+  }, [saved])
+
   const copySource = async () => {
     try {
       await navigator.clipboard.writeText(source)
@@ -54,6 +62,13 @@ export default function MermaidBlock({ source }: Props) {
     } catch {
       setCopied(false)
     }
+  }
+
+  const saveDiagram = async () => {
+    if (renderState.status !== 'ready') return
+    // renderer 侧把响应式 SVG 规范化为独立文件（xmlns/宽高），main 只负责落盘
+    const result = await window.api.settings.saveDiagram(formatStandaloneSvg(renderState.svg), source)
+    setSaved(result === 'saved')
   }
 
   const sourceVisible = showSource || renderState.status === 'error'
@@ -64,10 +79,16 @@ export default function MermaidBlock({ source }: Props) {
         <span className="mermaid-title"><Workflow size={14} />{t('diagram.title')}</span>
         <div className="mermaid-actions">
           {renderState.status === 'ready' && (
-            <button onClick={() => setShowSource(!showSource)}>
-              {showSource ? <Workflow size={13} /> : <Code2 size={13} />}
-              {showSource ? t('diagram.showDiagram') : t('diagram.showSource')}
-            </button>
+            <>
+              <button onClick={() => setShowSource(!showSource)}>
+                {showSource ? <Workflow size={13} /> : <Code2 size={13} />}
+                {showSource ? t('diagram.showDiagram') : t('diagram.showSource')}
+              </button>
+              <button onClick={() => void saveDiagram()}>
+                {saved ? <Check size={13} /> : <Save size={13} />}
+                {saved ? t('diagram.saved') : t('diagram.save')}
+              </button>
+            </>
           )}
           <button onClick={() => void copySource()}>
             {copied ? <Check size={13} /> : <Copy size={13} />}

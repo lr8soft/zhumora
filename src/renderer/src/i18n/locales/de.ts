@@ -80,6 +80,8 @@ export default {
     showSource: 'Quelltext anzeigen',
     copySource: 'Quelltext kopieren',
     copied: 'Kopiert',
+    save: 'Als Bild speichern',
+    saved: 'Gespeichert',
     rendering: 'Diagramm wird gerendert…',
     renderError: 'Das Diagramm konnte nicht gerendert werden. Der Quelltext bleibt erhalten.',
     tooLarge: 'Der Diagramm-Quelltext ist zu groß. Der Quelltext bleibt erhalten.',

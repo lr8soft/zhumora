@@ -80,6 +80,8 @@ export default {
     showSource: 'Afficher le code',
     copySource: 'Copier le code',
     copied: 'Copié',
+    save: 'Enregistrer en image',
+    saved: 'Enregistré',
     rendering: 'Rendu du diagramme…',
     renderError: 'Le rendu du diagramme a échoué. Le code source est conservé.',
     tooLarge: 'Le code du diagramme est trop volumineux. Le code source est conservé.',
