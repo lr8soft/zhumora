@@ -83,6 +83,7 @@ export default {
     save: 'Guardar como imagen',
     saved: 'Guardado',
     exporting: 'Exportando…',
+    exportFailed: 'Error al exportar: ',
     format: { svg: 'Vectorial SVG', png: 'Imagen PNG', jpeg: 'Imagen JPEG' },
     rendering: 'Renderizando diagrama…',
     renderError: 'No se pudo renderizar el diagrama. Se conserva el código.',

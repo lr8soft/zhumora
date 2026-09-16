@@ -30,6 +30,7 @@ export default function MermaidBlock({ source }: Props) {
   const [showSource, setShowSource] = useState(false)
   const [copied, setCopied] = useState(false)
   const [saved, setSaved] = useState(false)
+  const [exportError, setExportError] = useState<string | null>(null)
   const [menuOpen, setMenuOpen] = useState(false)
   const [exporting, setExporting] = useState<DiagramFormat | null>(null)
   const menuRef = useRef<HTMLDivElement | null>(null)
@@ -63,6 +64,13 @@ export default function MermaidBlock({ source }: Props) {
     return () => window.clearTimeout(timer)
   }, [saved])
 
+  // 导出错误 5 秒后自动消失；源码/主题变化导致的重新渲染也会清掉旧提示
+  useEffect(() => {
+    if (!exportError) return
+    const timer = window.setTimeout(() => setExportError(null), 5000)
+    return () => window.clearTimeout(timer)
+  }, [exportError])
+
   const copySource = async () => {
     try {
       await navigator.clipboard.writeText(source)
@@ -84,17 +92,25 @@ export default function MermaidBlock({ source }: Props) {
   const saveDiagram = async (format: DiagramFormat) => {
     if (renderState.status !== 'ready' || exporting) return
     setMenuOpen(false)
+    setExportError(null)
     // 背景与图表容器一致：light 白、dark #1d2228（--app-color-surface），避免导出后深底深字
     const background = resolvedTheme === 'dark' ? '#1d2228' : '#ffffff'
     if (format === 'svg') {
       // renderer 组装独立 SVG（源码注释转义 + 背景矩形），main 只负责落盘
-      const result = await window.api.settings.saveDiagram(
-        buildStandaloneSvg(renderState.svg, source, background), 'svg', 'diagram.svg'
-      )
-      setSaved(result === 'saved')
+      let result: 'saved' | 'canceled' | 'failed'
+      try {
+        result = await window.api.settings.saveDiagram(
+          buildStandaloneSvg(renderState.svg, source, background), 'svg', 'diagram.svg'
+        )
+      } catch (error) {
+        setExportError(`${t('diagram.exportFailed')} ${error instanceof Error ? error.message : String(error)}`)
+        return
+      }
+      if (result === 'failed') setExportError(t('diagram.exportFailed'))
+      else setSaved(result === 'saved')
       return
     }
-    // PNG/JPEG：光栅化在 renderer 完成（OffscreenCanvas 2x），main 只写 Buffer
+    // PNG/JPEG：光栅化在 renderer 完成（DOM 尺寸检测 + 2x 画布），main 只写 Buffer
     setExporting(format)
     try {
       const dataUrl = await encodeCanvasImage(
@@ -103,9 +119,11 @@ export default function MermaidBlock({ source }: Props) {
         background
       )
       const result = await window.api.settings.saveDiagram(dataUrl, format, format === 'png' ? 'diagram.png' : 'diagram.jpeg')
-      setSaved(result === 'saved')
+      if (result === 'failed') setExportError(t('diagram.exportFailed'))
+      else setSaved(result === 'saved')
     } catch (error) {
       console.error('Diagram export error:', error)
+      setExportError(`${t('diagram.exportFailed')} ${error instanceof Error ? error.message : String(error)}`)
     } finally {
       setExporting(null)
     }
@@ -176,6 +194,12 @@ export default function MermaidBlock({ source }: Props) {
           aria-label={t('diagram.accessibleLabel')}
           dangerouslySetInnerHTML={{ __html: renderState.svg }}
         />
+      )}
+      {exportError && (
+        <div className="mermaid-export-error" role="alert">
+          <AlertTriangle size={14} />
+          <span>{exportError}</span>
+        </div>
       )}
       {sourceVisible && (
         <pre className="mermaid-source"><code>{source}</code></pre>

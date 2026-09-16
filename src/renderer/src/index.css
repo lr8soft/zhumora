@@ -754,6 +754,7 @@ select.input-field { cursor: pointer; }
 .mermaid-save-menu-list button:hover { background: var(--app-muted-bg); }
 .mermaid-status, .mermaid-error { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 18px; color: var(--app-color-text-mute); font-size: 0.8rem; text-align: center; }
 .mermaid-error { color: var(--app-color-danger); }
+.mermaid-export-error { display: flex; align-items: center; gap: 6px; padding: 6px 12px; margin: 0 12px 10px; color: var(--app-color-danger); font-size: 0.75rem; border: 1px solid color-mix(in srgb, var(--app-color-danger) 35%, transparent); border-radius: 6px; background: color-mix(in srgb, var(--app-color-danger) 8%, transparent); }
 .mermaid-canvas { padding: 16px; overflow: auto; background: var(--app-color-surface-solid); }
 .mermaid-canvas svg { width: auto; max-width: 100%; height: auto; display: block; margin: 0 auto; }
 .mermaid-source {

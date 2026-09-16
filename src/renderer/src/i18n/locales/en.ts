@@ -83,6 +83,7 @@ export default {
     save: 'Save as image',
     saved: 'Saved',
     exporting: 'Exporting…',
+    exportFailed: 'Export failed: ',
     format: { svg: 'SVG vector', png: 'PNG image', jpeg: 'JPEG image' },
     rendering: 'Rendering diagram…',
     renderError: 'Diagram rendering failed. The source is preserved.',

@@ -83,6 +83,7 @@ export default {
     save: 'Enregistrer en image',
     saved: 'Enregistré',
     exporting: 'Exportation…',
+    exportFailed: "Échec de l'export : ",
     format: { svg: 'Vecteur SVG', png: 'Image PNG', jpeg: 'Image JPEG' },
     rendering: 'Rendu du diagramme…',
     renderError: 'Le rendu du diagramme a échoué. Le code source est conservé.',

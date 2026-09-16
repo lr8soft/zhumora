@@ -1,5 +1,3 @@
-import { normalizeSvgTag } from '../../shared/diagram.ts'
-
 export const MAX_MERMAID_SOURCE_LENGTH = 50_000
 
 export type MermaidSourceValidation = 'empty' | 'too-large' | null
@@ -121,47 +119,71 @@ export function splitMermaidSegments(content: string, enableDiagrams: boolean): 
 }
 
 /**
- * 把 SVG 光栅化为 PNG/JPEG 数据 URL。
- * 光栅化前先规范化根 tag（补 xmlns 与固有尺寸，否则 <img>/canvas 无法加载）；
- * 画布按 viewBox 尺寸的 2 倍绘制，输出更清晰；背景在光栅化时填入，不依赖 SVG 自身。
+ * 把 SVG 光栅化为 PNG/JPEG 数据 URL（背景色填充，PNG 亦支持透明）。
+ *
+ * 走 DOM 而非 OffscreenCanvas：SVG 临时挂载后测真实内容尺寸（getBBox），
+ * 克隆并序列化（保证 xmlns 与固有 width/height，<img> 加载不缩放/不变形）。
+ * 画布按 2 倍尺寸绘制，输出更清晰。
  */
 export function encodeCanvasImage(svg: string, mimeType: 'image/png' | 'image/jpeg', background: string): Promise<string> {
+  const host = document.createElement('div')
+  host.setAttribute('aria-hidden', 'true')
+  Object.assign(host.style, { position: 'fixed', left: '-99999px', top: '0', width: '0', height: '0', overflow: 'hidden', pointerEvents: 'none' })
+  host.innerHTML = svg
+  const root = host.querySelector('svg')
+  if (!root) {
+    throw new Error('SVG root element not found for rasterization.')
+  }
+  // 需挂入文档才能测量几何（getBBox 回退路径）；导出完成后移除
+  document.body.appendChild(host)
+
+  // viewBox 优先（含 Mermaid 自带留白，不会裁切内容），失败再退回内容包围盒
+  let width = 0
+  let height = 0
+  const parts = /viewBox="([^"]+)"/.exec(root.getAttribute('viewBox') || '')?.[1]?.split(/\s+/)
+  width = Number(parts?.[2])
+  height = Number(parts?.[3])
+  if (!(width > 0) || !(height > 0)) {
+    try {
+      const box = (root as unknown as SVGSVGElement).getBBox()
+      width = box.width
+      height = box.height
+    } catch { /* unmeasurable */ }
+  }
+  if (!Number.isFinite(width) || !Number.isFinite(height) || width <= 0 || height <= 0) {
+    host.remove()
+    throw new Error('SVG has no measurable size for rasterization.')
+  }
+
+  const clone = root.cloneNode(true) as SVGSVGElement
+  clone.removeAttribute('style')
+  clone.setAttribute('width', String(Math.ceil(width)))
+  clone.setAttribute('height', String(Math.ceil(height)))
+  const serialized = new XMLSerializer().serializeToString(clone)
+  host.remove()
+
+  const scale = 2
   return new Promise((resolve, reject) => {
-    const normalized = normalizeSvgTag(svg)
-    if (!normalized) {
-      reject(new Error('SVG root element not found for rasterization.'))
-      return
-    }
-    const viewBox = /viewBox="([^"]+)"/.exec(normalized.normalized)?.[1]
-    const parts = viewBox?.split(/\s+/)
-    const vw = Number(parts?.[2])
-    const vh = Number(parts?.[3])
-    if (!Number.isFinite(vw) || !Number.isFinite(vh) || vw <= 0 || vh <= 0) {
-      reject(new Error('SVG has no usable viewBox for rasterization.'))
-      return
-    }
-    const scale = 2
-    const canvas = new OffscreenCanvas(vw * scale, vh * scale)
+    const canvas = document.createElement('canvas')
+    canvas.width = Math.ceil(width * scale)
+    canvas.height = Math.ceil(height * scale)
     const context = canvas.getContext('2d')
     if (!context) {
       reject(new Error('Canvas 2D context unavailable.'))
       return
     }
     const image = new Image()
-    const url = URL.createObjectURL(new Blob([normalized.normalized], { type: 'image/svg+xml' }))
+    const url = URL.createObjectURL(new Blob([serialized], { type: 'image/svg+xml' }))
     image.onload = () => {
       URL.revokeObjectURL(url)
       context.fillStyle = background
       context.fillRect(0, 0, canvas.width, canvas.height)
       context.drawImage(image, 0, 0, canvas.width, canvas.height)
-      canvas.convertToBlob({ type: mimeType, quality: 0.92 })
-        .then(blob => {
-          const reader = new FileReader()
-          reader.onloadend = () => resolve(String(reader.result))
-          reader.onerror = () => reject(new Error('Failed to encode raster image.'))
-          reader.readAsDataURL(blob)
-        })
-        .catch(reject)
+      try {
+        resolve(canvas.toDataURL(mimeType, 0.92))
+      } catch (error) {
+        reject(error)
+      }
     }
     image.onerror = () => {
       URL.revokeObjectURL(url)

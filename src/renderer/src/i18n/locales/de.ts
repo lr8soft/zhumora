@@ -83,6 +83,7 @@ export default {
     save: 'Als Bild speichern',
     saved: 'Gespeichert',
     exporting: 'Wird exportiert…',
+    exportFailed: 'Export fehlgeschlagen: ',
     format: { svg: 'SVG-Vektorbild', png: 'PNG-Bild', jpeg: 'JPEG-Bild' },
     rendering: 'Diagramm wird gerendert…',
     renderError: 'Das Diagramm konnte nicht gerendert werden. Der Quelltext bleibt erhalten.',
