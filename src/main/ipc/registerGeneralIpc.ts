@@ -8,6 +8,7 @@ import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '.
 import { reloadSkills } from '../skill/manager'
 import { logCertModeChanged } from '../net/fetch'
 import { equivalentConfigList } from './settingsChange'
+import { validateStandaloneSvg } from '../../shared/diagram'
 import type { ApplicationServices } from '../composition'
 import { reconcileAvatarSessions } from './registerAvatarIpc'
 
@@ -86,20 +87,34 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     })
     return result.canceled ? null : result.filePaths[0]
   })
-  /** 保存 Mermaid 图表为独立 SVG 文件。content 是 renderer 已 sanitize 的 SVG，source 是原始图表源码（写入文件头注释）。 */
-  ipcMain.handle('settings:saveDiagram', async (_event, content: unknown, source: unknown) => {
+  /** 保存 Mermaid 图表为图片文件（SVG / PNG / JPEG）。
+   *  format=svg 时 content 是 renderer 组装好的独立 SVG 文本（含源码注释头），utf8 写入；
+   *  format=png/jpeg 时 content 是 dataURL（光栅化在 renderer 完成），解码为 Buffer 写入。
+   *  文件名一律取用户选择的路径，避免 dataURL 被当成文件名。 */
+  ipcMain.handle('settings:saveDiagram', async (_event, content: unknown, format: unknown, defaultPath: unknown) => {
     if (typeof content !== 'string' || !content) return 'failed'
+    if (format !== 'svg' && format !== 'png' && format !== 'jpeg') return 'failed'
+    // SVG 落盘前校验：注释体含未转义的 "--" 是非法 XML，落盘后浏览器打开会解析失败
+    if (format === 'svg' && !validateStandaloneSvg(content)) return 'failed'
+    const defaultName = typeof defaultPath === 'string' && defaultPath ? defaultPath : `diagram.${format}`
     const result = await dialog.showSaveDialog(win, {
       title: 'Save Diagram',
-      defaultPath: 'diagram.svg',
-      filters: [{ name: 'SVG Image', extensions: ['svg'] }]
+      defaultPath: defaultName,
+      filters: [
+        { name: 'SVG Image', extensions: ['svg'] },
+        { name: 'PNG Image', extensions: ['png'] },
+        { name: 'JPEG Image', extensions: ['jpeg', 'jpg'] }
+      ]
     })
     if (result.canceled || !result.filePath) return 'canceled'
     try {
-      const header = typeof source === 'string' && source
-        ? `<!--\n${source.replace(/-->/g, '-- >')}\n-->\n`
-        : ''
-      await fsPromises.writeFile(result.filePath, header + content, 'utf8')
+      if (format === 'svg') {
+        await fsPromises.writeFile(result.filePath, content, 'utf8')
+      } else {
+        const dataUrl = /^data:image\/(png|jpeg);base64,/.exec(content)?.[0]
+        if (!dataUrl) return 'failed'
+        await fsPromises.writeFile(result.filePath, Buffer.from(content.slice(dataUrl.length), 'base64'))
+      }
       return 'saved'
     } catch (error) {
       console.error('Save diagram error:', error)

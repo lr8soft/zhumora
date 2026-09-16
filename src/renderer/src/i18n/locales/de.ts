@@ -82,6 +82,8 @@ export default {
     copied: 'Kopiert',
     save: 'Als Bild speichern',
     saved: 'Gespeichert',
+    exporting: 'Wird exportiert…',
+    format: { svg: 'SVG-Vektorbild', png: 'PNG-Bild', jpeg: 'JPEG-Bild' },
     rendering: 'Diagramm wird gerendert…',
     renderError: 'Das Diagramm konnte nicht gerendert werden. Der Quelltext bleibt erhalten.',
     tooLarge: 'Der Diagramm-Quelltext ist zu groß. Der Quelltext bleibt erhalten.',

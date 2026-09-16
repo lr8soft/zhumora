@@ -1,3 +1,5 @@
+import { normalizeSvgTag } from '../../shared/diagram.ts'
+
 export const MAX_MERMAID_SOURCE_LENGTH = 50_000
 
 export type MermaidSourceValidation = 'empty' | 'too-large' | null
@@ -118,21 +120,53 @@ export function splitMermaidSegments(content: string, enableDiagrams: boolean): 
   return segments
 }
 
-const SVG_NS = 'http://www.w3.org/2000/svg'
-
-/** 把 Mermaid 生成的响应式 SVG 规范化为可独立打开的 .svg 文件（补 xmlns 与 viewBox 派生的宽高）。 */
-export function formatStandaloneSvg(svg: string): string {
-  const match = svg.match(/<svg\b[^>]*>/)
-  if (!match) return svg
-  const tag = match[0]
-  let next = tag
-  if (!/\bxmlns=/.test(tag)) next = tag.replace(/<svg\b/, `<svg xmlns="${SVG_NS}"`)
-  const viewBox = /viewBox="([^"]+)"/.exec(tag)?.[1]
-  if (viewBox) {
-    const [, , w, h] = viewBox.split(/\s+/)
-    if (w && h && Number(w) > 0 && Number(h) > 0 && !/\bwidth=/.test(tag)) {
-      next = next.replace(/<svg\b/, `<svg width="${w}" height="${h}"`)
+/**
+ * 把 SVG 光栅化为 PNG/JPEG 数据 URL。
+ * 光栅化前先规范化根 tag（补 xmlns 与固有尺寸，否则 <img>/canvas 无法加载）；
+ * 画布按 viewBox 尺寸的 2 倍绘制，输出更清晰；背景在光栅化时填入，不依赖 SVG 自身。
+ */
+export function encodeCanvasImage(svg: string, mimeType: 'image/png' | 'image/jpeg', background: string): Promise<string> {
+  return new Promise((resolve, reject) => {
+    const normalized = normalizeSvgTag(svg)
+    if (!normalized) {
+      reject(new Error('SVG root element not found for rasterization.'))
+      return
     }
-  }
-  return svg.replace(tag, next)
+    const viewBox = /viewBox="([^"]+)"/.exec(normalized.normalized)?.[1]
+    const parts = viewBox?.split(/\s+/)
+    const vw = Number(parts?.[2])
+    const vh = Number(parts?.[3])
+    if (!Number.isFinite(vw) || !Number.isFinite(vh) || vw <= 0 || vh <= 0) {
+      reject(new Error('SVG has no usable viewBox for rasterization.'))
+      return
+    }
+    const scale = 2
+    const canvas = new OffscreenCanvas(vw * scale, vh * scale)
+    const context = canvas.getContext('2d')
+    if (!context) {
+      reject(new Error('Canvas 2D context unavailable.'))
+      return
+    }
+    const image = new Image()
+    const url = URL.createObjectURL(new Blob([normalized.normalized], { type: 'image/svg+xml' }))
+    image.onload = () => {
+      URL.revokeObjectURL(url)
+      context.fillStyle = background
+      context.fillRect(0, 0, canvas.width, canvas.height)
+      context.drawImage(image, 0, 0, canvas.width, canvas.height)
+      canvas.convertToBlob({ type: mimeType, quality: 0.92 })
+        .then(blob => {
+          const reader = new FileReader()
+          reader.onloadend = () => resolve(String(reader.result))
+          reader.onerror = () => reject(new Error('Failed to encode raster image.'))
+          reader.readAsDataURL(blob)
+        })
+        .catch(reject)
+    }
+    image.onerror = () => {
+      URL.revokeObjectURL(url)
+      reject(new Error('SVG rasterization failed.'))
+    }
+    image.src = url
+  })
 }

@@ -82,6 +82,8 @@ export default {
     copied: 'Copiado',
     save: 'Guardar como imagen',
     saved: 'Guardado',
+    exporting: 'Exportando…',
+    format: { svg: 'Vectorial SVG', png: 'Imagen PNG', jpeg: 'Imagen JPEG' },
     rendering: 'Renderizando diagrama…',
     renderError: 'No se pudo renderizar el diagrama. Se conserva el código.',
     tooLarge: 'El código del diagrama es demasiado grande. Se conserva el código.',

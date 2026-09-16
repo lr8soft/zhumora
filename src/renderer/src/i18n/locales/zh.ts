@@ -92,6 +92,8 @@ export default {
     copied: '已复制',
     save: '保存为图片',
     saved: '已保存',
+    exporting: '正在导出…',
+    format: { svg: 'SVG 矢量图', png: 'PNG 图片', jpeg: 'JPEG 图片' },
     rendering: '正在渲染图表…',
     renderError: '图表渲染失败，已保留源码。',
     tooLarge: '图表源码过大，已保留源码。',

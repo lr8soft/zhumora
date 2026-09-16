@@ -82,6 +82,8 @@ export default {
     copied: 'Copied',
     save: 'Save as image',
     saved: 'Saved',
+    exporting: 'Exporting…',
+    format: { svg: 'SVG vector', png: 'PNG image', jpeg: 'JPEG image' },
     rendering: 'Rendering diagram…',
     renderError: 'Diagram rendering failed. The source is preserved.',
     tooLarge: 'The diagram source is too large. The source is preserved.',

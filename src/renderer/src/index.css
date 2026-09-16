@@ -738,6 +738,20 @@ select.input-field { cursor: pointer; }
 }
 .mermaid-actions button:hover { color: var(--app-color-text); border-color: var(--app-color-border); background: var(--app-muted-bg); }
 .mermaid-actions button:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 1px; }
+.mermaid-save-menu { position: relative; }
+.mermaid-save-menu button[aria-expanded] { padding-right: 6px; }
+.mermaid-save-menu button[aria-expanded] .rotated { transform: rotate(180deg); }
+.mermaid-save-menu-list {
+  position: absolute; top: calc(100% + 4px); right: 0; z-index: 30; min-width: 110px; padding: 3px;
+  display: flex; flex-direction: column; gap: 2px;
+  border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface-solid);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.18);
+}
+.mermaid-save-menu-list button {
+  min-height: 24px; display: flex; align-items: center; padding: 3px 8px; color: var(--app-color-text);
+  border: 0; border-radius: 4px; background: transparent; font-size: 0.717rem; cursor: pointer;
+}
+.mermaid-save-menu-list button:hover { background: var(--app-muted-bg); }
 .mermaid-status, .mermaid-error { display: flex; align-items: center; justify-content: center; gap: 7px; padding: 18px; color: var(--app-color-text-mute); font-size: 0.8rem; text-align: center; }
 .mermaid-error { color: var(--app-color-danger); }
 .mermaid-canvas { padding: 16px; overflow: auto; background: var(--app-color-surface-solid); }

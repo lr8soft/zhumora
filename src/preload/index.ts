@@ -177,11 +177,10 @@ const api = {
       ipcRenderer.invoke('settings:pickDirectory'),
     pickFile: (): Promise<string | null> =>
       ipcRenderer.invoke('settings:pickFile'),
-    /** 保存 Mermaid 图表为独立 SVG 文件（system save dialog）。
-     *  svg 是 renderer 已 sanitize 并规范化的 SVG 内容；source 是图表原始源码。
+    /** 保存 Mermaid 图表为图片文件（system save dialog）：svg 传组装好的独立 SVG 文本；png/jpeg 传 dataURL。
      *  返回 'saved' | 'canceled'（用户取消） | 'failed'（参数或写入错误） */
-    saveDiagram: (svg: string, source: string): Promise<'saved' | 'canceled' | 'failed'> =>
-      ipcRenderer.invoke('settings:saveDiagram', svg, source),
+    saveDiagram: (content: string, format: 'svg' | 'png' | 'jpeg', defaultPath: string): Promise<'saved' | 'canceled' | 'failed'> =>
+      ipcRenderer.invoke('settings:saveDiagram', content, format, defaultPath),
     openExternal: (url: string): Promise<boolean> =>
       ipcRenderer.invoke('shell:openExternal', url),
     /** 主进程侧设置被修改（如 agent 增删 MCP 服务器）→ 前端重新拉取 */

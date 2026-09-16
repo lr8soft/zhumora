@@ -4,11 +4,11 @@ import {
   containsExternalCssReference,
   extractFencedCodeBlocks,
   extractMermaidBlocks,
-  formatStandaloneSvg,
   MAX_MERMAID_SOURCE_LENGTH,
   splitMermaidSegments,
   validateMermaidSource
 } from '../src/renderer/src/diagramPolicy.ts'
+import { buildStandaloneSvg, escapeXmlCommentBody, validateStandaloneSvg } from '../src/shared/diagram.ts'
 
 assert.equal(validateMermaidSource('   \n'), 'empty')
 assert.equal(validateMermaidSource('flowchart LR\nA --> B'), null)
@@ -112,23 +112,57 @@ assert.equal(
   one
 )
 
-// ---------- 独立 SVG 导出格式 ----------
+// ---------- 独立 SVG 导出（源码注释转义 + xmlns/宽高 + 背景矩形） ----------
 
-assert.equal(
-  formatStandaloneSvg('<svg viewBox="0 0 300 100"><g/></svg>'),
-  '<svg width="300" height="100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100"><g/></svg>'
+// 典型 Mermaid 源码：箭头与边标签里的 "--" 全部拆开，注释体不得再出现 "--"
+const standalone = buildStandaloneSvg(
+  '<svg viewBox="0 0 300 100"><g/></svg>',
+  'graph LR\nA -- note --> B\nC -->|x| D\n%% comment',
+  '#1d2228'
 )
-// 已有 xmlns/width 时不重复注入
 assert.equal(
-  formatStandaloneSvg('<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 10 20"/>'),
-  '<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 10 20"/>'
+  standalone,
+  '<!--\ngraph LR\nA    note   > B\nC   >|x| D\n%% comment\n-->\n'
+  + '<svg width="300" height="100" xmlns="http://www.w3.org/2000/svg" viewBox="0 0 300 100">'
+  + '<rect width="300" height="100" fill="#1d2228"/><g/></svg>'
 )
-// 无 viewBox 时仅补 xmlns
+// 注释体（首尾分隔符之间）不得包含 "--"：浏览器 XML 解析器会直接报错
+const commentBody = /<!--([\s\S]*?)-->/.exec(standalone)?.[1] || ''
+assert.ok(!commentBody.includes('--'))
+assert.ok(validateStandaloneSvg(standalone))
+
+// 已有 xmlns/width 时不重复注入，背景矩形仍插入
 assert.equal(
-  formatStandaloneSvg('<svg><g/></svg>'),
-  '<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>'
+  buildStandaloneSvg(
+    '<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 10 20"><g/></svg>',
+    '', '#ffffff'
+  ),
+  '<svg xmlns="http://www.w3.org/2000/svg" width="100%" viewBox="0 0 10 20">'
+  + '<rect width="10" height="20" fill="#ffffff"/><g/></svg>'
 )
-// 非 SVG 内容原样返回
-assert.equal(formatStandaloneSvg('<div>x</div>'), '<div>x</div>')
+// 无 viewBox 时仅补 xmlns，背景矩形用 100%
+assert.equal(
+  buildStandaloneSvg('<svg><g/></svg>', '', '#fff'),
+  '<svg xmlns="http://www.w3.org/2000/svg"><rect width="100%" height="100%" fill="#fff"/><g/></svg>'
+)
+// 非 SVG 内容原样返回（仅带注释头）
+assert.equal(
+  buildStandaloneSvg('<div>x</div>', 'graph TD\nA --> B', '#fff'),
+  '<!--\ngraph TD\nA   > B\n-->\n<div>x</div>'
+)
+// 三连破折号等边界：转义后注释体不得残留任何 "--"
+assert.ok(!escapeXmlCommentBody('A --- B').includes('--'))
+assert.ok(!escapeXmlCommentBody('A ---> B').includes('--'))
+assert.equal(escapeXmlCommentBody('a - b'), 'a - b')
+// 空源码不生成注释头
+assert.equal(buildStandaloneSvg('<svg><g/></svg>', '', '#fff'), buildStandaloneSvg('<svg><g/></svg>', '', '#fff'))
+assert.ok(!buildStandaloneSvg('<svg><g/></svg>', '', '#fff').startsWith('<!--'))
+
+// ---------- 落盘前安全校验 ----------
+
+assert.ok(validateStandaloneSvg('<svg xmlns="http://www.w3.org/2000/svg"><g/></svg>'))
+assert.ok(!validateStandaloneSvg('<p>not svg</p>'))
+// 注释体含未转义的 "--" 必须拒绝（这正是之前导出文件在浏览器里炸掉的形态）
+assert.ok(!validateStandaloneSvg('<!--\ngraph LR\nA -- note --> B\n-->\n<svg xmlns="x"/>'))
 
 console.log('diagram policy tests passed')
