@@ -1,130 +1,121 @@
-# Zhumora Agent
+# Zhumora 智能体
 
-A source-available desktop AI agent for Windows.
+源码可用的 Windows 桌面 AI 智能体。
 
-Zhumora connects to OpenAI-compatible models and can work with your files, terminal, browser, and desktop. It is designed as a local-first agent runtime with support for MCP, skills, memory, and user-controlled permissions.
+Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏览器和桌面。程序本体以本地运行为主，同时支持 MCP、Skills、长期记忆和权限控制。
 
-[简体中文](./README.zh-CN.md) · [Technical documentation](./TECHNICAL.md)
-
-<p align="center">
-  <img src="./img/image-main.png" alt="Zhumora — AI agent chat interface" width="960" />
-</p>
-
-## Features
-
-- Connect to OpenAI-compatible APIs, including local endpoints such as Ollama, llama.cpp, and vLLM
-- Read, edit, search, and manage files in the selected workspace
-- Read and write Word, Excel, PowerPoint, and PDF artifacts with format-specific built-in tools
-- Run terminal commands
-- Automate Chromium with Playwright
-- Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input
-- Extend tools through MCP servers
-- Load reusable skills from Markdown files
-- Local session history, long-term memory, and token usage records
-- Chat with the same agent from your phone through a Telegram bot or a QQ bot, with live progress updates
-- Import VRM characters and opt into a separate transparent Avatar window per session, with Agent-controlled configured motions and expressions
-- Import local sherpa-onnx VITS/Kokoro voices and opt into spoken final responses per session
-- Permission prompts for potentially dangerous actions
-- Light / dark themes and multilingual UI
-
-## Chat from Telegram and QQ
-
-Open **Settings → Chat Bots** and connect a Telegram bot or a QQ bot, then talk to the same local agent from your phone — no need to sit at the desktop.
+[English](README.en-US.md) · [技术文档](./TECHNICAL.md)
 
 <p align="center">
-  <img src="./img/image-chatbot.png" alt="Zhumora — Settings, Chat Bots (Telegram and QQ)" width="960" />
+  <img src="./img/image-main.png" alt="Zhumora — AI 智能体聊天界面" width="960" />
 </p>
 
-- **Two platforms** — Telegram via BotFather token, QQ via the AppID / AppSecret from QQ Open Platform. Both run the same agent, tools, permissions, and session history
-- **See it working** — thinking streams live (`💭 …`) and every tool call shows up as it happens (`🔧 bash: npm test`), turning into `✅ 1.2s` when it finishes, so a long task never looks frozen
-- **Approve from anywhere** — risky actions ask for confirmation in the chat: inline Allow / Deny buttons on Telegram, a `y` / `n` reply on QQ
-- **Stay in control** — the bots only answer users you whitelist (send `/id` to get your ID / OpenID), and `/stop` cancels the current run at any moment
 
-## Desktop control
+<p align="center">
+  <img src="./img/image-chart.png" alt="架构图" width="960" />
+</p>
 
-Zhumora can operate the Windows desktop directly:
+## 功能
 
-- **Observe** — list running applications, capture screens, and read the UI accessibility tree of any window (with short-lived semantic element targets)
-- **Act** — click, double-click, right-click, type, press keys, scroll, drag, focus, and toggle controls, targeting elements by accessibility reference or screenshot coordinates
-- **Verify** — attach a screenshot after state-changing actions so the agent can confirm the result; plain pointer moves skip capture unless requested
+- 支持 OpenAI 兼容 API，也可接入 Ollama、llama.cpp、vLLM 等本地端点
+- 在指定工作目录内读取、编辑、搜索和管理文件
+- 通过按格式划分的内置工具读写 Word、Excel、PowerPoint 和 PDF 文件
+- 执行终端命令
+- 使用 Playwright 自动化 Chromium
+- 通过无障碍元素、截图、鼠标和键盘观察并控制 Windows 应用
+- 通过 MCP 扩展工具
+- 从 Markdown 文件加载 Skills
+- 本地保存会话、长期记忆和 Token 用量
+- 接入 Telegram Bot 或 QQ Bot，用手机和同一个本地 Agent 对话，实时显示进度
+- 可导入 VRM 角色并按会话手动开启独立透明 Avatar 窗口，由 Agent 调用已配置的动作和表情
+- 对高风险操作进行权限确认
+- 支持深色 / 浅色主题与多语言界面
 
-This lets Zhumora drive native Windows apps that have no API or CLI — not just files, shell, and the browser.
+## 用 Telegram / QQ 随身对话
 
-## Quick start
+在 **设置 → 聊天机器人** 里接入 Telegram Bot 或 QQ Bot，就能用手机和同一个本地 Agent 对话，不必守在电脑前。
 
-### Requirements
+<p align="center">
+  <img src="./img/image-chatbot.png" alt="Zhumora — 设置 · 聊天机器人（Telegram 与 QQ）" width="960" />
+</p>
+
+- **双平台接入** — Telegram 填 BotFather Token，QQ 填开放平台的 AppID / AppSecret，两端跑的是同一个 Agent、同一套工具和权限
+- **看得见进度** — 思考过程实时流出（`💭 …`），每个工具调用都即时可见（`🔧 bash: npm test`），完成后变成 `✅ 1.2s`，长时间任务不会让人以为卡死
+- **随时随地审批** — 高风险操作会在聊天里请求确认：Telegram 发「允许 / 拒绝」内联按钮，QQ 回复 `y` / `n`
+- **始终可控** — Bot 只响应白名单用户（先发 `/id` 拿到自己的 ID / OpenID），随时 `/stop` 中止当前任务
+
+## 桌面控制
+
+Zhumora 可以直接操作 Windows 桌面：
+
+- **观察** — 列出运行中的应用、截取屏幕、读取任意窗口的 UI 无障碍树（含短期有效的语义元素引用）
+- **操作** — 点击、双击、右键、输入、按键、滚动、拖拽、聚焦、切换控件，可基于无障碍元素引用或截图坐标定位
+- **验证** — 改变应用状态的操作默认附带截图；单纯移动指针仅在明确请求时截图
+
+这让 Zhumora 能够驱动没有 API 或命令行的原生 Windows 应用，而不仅仅是文件、终端和浏览器。
+
+## 快速开始
+
+### 环境要求
 
 - Windows 10 / 11
-- Node.js 22.12+ (Node.js 24 LTS recommended)
+- Node.js 22.12+（推荐 Node.js 24 LTS）
 - npm
 
-### Install
+### 安装
 
 ```bash
 npm install
 ```
 
-### Development
+### 开发
 
 ```bash
 npm run dev
 ```
 
-### Build
+### 构建
 
 ```bash
 npm run build
 ```
 
-### Package for Windows
+### 打包 Windows 安装包
 
 ```bash
 npm run build:win
 ```
 
-The Windows installer is written to `release/`.
+安装包输出到 `release/`。
 
-## Model configuration
+## 模型配置
 
-Open **Settings** and add an OpenAI-compatible provider:
+在 **设置** 中添加 OpenAI 兼容 Provider：
 
 - Base URL
-- API key, if required
-- Model name
+- API Key（如需要）
+- 模型名称
 - Temperature
-- Reasoning effort
-- Context window
+- Reasoning Effort
+- Context Window
 
-Local and remote endpoints are both supported.
+本地和远程模型端点均可使用。
 
 ## VRM Avatar
 
-Import `.vrm` characters under **Settings → Avatar**, then configure embedded animation names or attach `.vrma` animations. Avatars are off by default for every session; select one from the upward-opening Avatar menu in the composer when needed. The character runs in its own draggable transparent window, and the Agent can only invoke motions and expressions reported or configured for that model.
+在 **设置 → Avatar** 导入 `.vrm` 角色，并可为角色填写内嵌动画名称或导入 `.vrma` 动画。新会话默认关闭 Avatar；需要时在会话输入栏的 Avatar 上拉菜单选择角色。启用后，角色运行在可拖动的独立透明窗口中，Agent 只能调用该角色已报告或已配置的动作与表情。
 
-Avatars include application-owned idle, thinking, explaining, nodding, head-shaking, greeting, celebration and sadness motions, adapted to VRM 0/1. Default motions use restrained head/body movement with relaxed arms; greeting and celebration add a smile, while sadness lowers the head and uses the model's sad expression when available. They blink and vary their idle pose without LLM calls. Agent activity drives thinking and response gestures; one-shot gestures return to the current activity with blended transitions. Mouse gaze follows only inside the Avatar window and smoothly returns forward on exit. Expressions fade in and return to neutral automatically. Explicitly configured custom animations retain their own choreography.
+项目不附带角色模型。`@pixiv/three-vrm` 代码采用 MIT 许可证，但每个 VRM 模型拥有独立许可；导入和分发模型前请自行确认模型作者的授权范围。
 
-Drag the character, message bubble or top handle to move its window; empty transparent space remains click-through. **Settings → Avatar → Window size** controls width and height in logical pixels for all Avatar windows, including already open ones after saving. Windows are fitted to the monitor's available work area.
+## 文档
 
-## Local TTS
+会话/消息系统的权威架构与开发约束见 [ARCHITECTURE.md](./ARCHITECTURE.md) 和 [AGENTS.md](./AGENTS.md)；工具系统、上下文管理、长期记忆、MCP 和构建细节见 [TECHNICAL.md](./TECHNICAL.md)。
 
-Import a compatible sherpa-onnx VITS or Kokoro model folder under **Settings → Speech**, then select the default voice and its speaker ID/speed. The TTS button in the composer is off for every new session. When enabled, only the final assistant response is converted from Markdown to bounded prose, synthesized locally, and played; Agent prompts, tools, and history are unchanged. Starting another request or synthesis interrupts the previous speech. Imported weights keep their own license and must contain `tokens.txt` plus one ONNX model file (`model.onnx` is preferred); Kokoro also requires `voices.bin`.
+## 许可证
 
-In the animation library, use the semantic dropdown to replace a built-in motion with an imported clip; the star selects the startup idle. The Agent can use one `avatar_control` call with `action: "perform"`, an `intent` and optional `emotion`/`intensity`. Exact clip playback remains available for explicit looping. Imported motion quality and unusual character proportions can still require model-specific animation adjustments.
+Zhumora 采用 [PolyForm Shield License 1.0.0](./LICENSE.md)。你可以在许可范围内
+使用、修改和分发本项目，但不得用它提供与 Zhumora 或许可方其他产品竞争的产品。
+如需超出上述范围使用，请联系项目作者洽谈单独的商业授权。
 
-No character model is bundled. The `@pixiv/three-vrm` code is MIT-licensed, but each VRM model has its own license; verify the model author's terms before importing or redistributing it.
-
-## Documentation
-
-The authoritative session/message architecture and contribution rules are documented in [ARCHITECTURE.md](./ARCHITECTURE.md) and [AGENTS.md](./AGENTS.md). Tool interfaces, context management, memory, MCP, and build notes are in [TECHNICAL.md](./TECHNICAL.md).
-
-## License
-
-Zhumora is licensed under the [PolyForm Shield License 1.0.0](./LICENSE.md).
-You may use, modify, and redistribute it for permitted purposes, but you may not
-use it to provide a product that competes with Zhumora or another product offered
-by the licensor. Contact the project author to discuss a separate commercial
-license for uses outside those terms.
-
-Versions previously made available under the MIT License remain available under
-the terms granted for those versions. Third-party components retain their own
-licenses; see [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md).
+此前已经按 MIT 许可证发布的版本继续适用当时授予的条款。第三方组件仍采用各自
+的许可证，详见 [THIRD_PARTY_NOTICES.md](./THIRD_PARTY_NOTICES.md)。
