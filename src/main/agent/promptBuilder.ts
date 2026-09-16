@@ -254,6 +254,8 @@ export function buildSystemPrompt(
 ${topExtra ? '\n' + topExtra + '\n' : ''}
 ${TONE_AND_STYLE}
 
+${VISUAL_OUTPUT}
+
 ${AUTONOMY}
 
 ${CONVENTIONS}
