@@ -4,7 +4,7 @@
 
 Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏览器和桌面。程序本体以本地运行为主，同时支持 MCP、Skills、长期记忆和权限控制。
 
-[English](README.en-US.md) · [技术文档](./TECHNICAL.md)
+[English](README.en-US.md) · [技术文档](./TECHNICAL.md) · [bilibili视频](https://www.bilibili.com/video/BV1Yyew6SEmN/)
 
 <p align="center">
   <img src="./img/image-main.png" alt="Zhumora — AI 智能体聊天界面" width="960" />

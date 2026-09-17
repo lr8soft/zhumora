@@ -4,7 +4,7 @@ A open source desktop AI agent for Windows.
 
 Zhumora connects to OpenAI-compatible models and can work with your files, terminal, browser, and desktop. It is designed as a local-first agent runtime with support for MCP, skills, memory, and user-controlled permissions.
 
-[简体中文](README.md) · [Technical documentation](./TECHNICAL.md)
+[简体中文](README.md) · [Technical documentation](./TECHNICAL.md) · [Bilibili video](https://www.bilibili.com/video/BV1Yyew6SEmN/)
 
 <p align="center">
   <img src="./img/image-main.png" alt="Zhumora — AI agent chat interface" width="960" />
