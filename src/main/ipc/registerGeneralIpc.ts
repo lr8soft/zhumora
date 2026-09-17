@@ -12,6 +12,13 @@ import { validateStandaloneSvg } from '../../shared/diagram'
 import type { ApplicationServices } from '../composition'
 import { reconcileAvatarSessions } from './registerAvatarIpc'
 
+/** 图表导出保存对话框的格式过滤器（按 renderer 已选 format 收窄，避免误导用户）。 */
+const DIAGRAM_SAVE_FILTERS: Record<'svg' | 'png' | 'jpeg', { name: string; extensions: string[] }> = {
+  svg: { name: 'SVG Image', extensions: ['svg'] },
+  png: { name: 'PNG Image', extensions: ['png'] },
+  jpeg: { name: 'JPEG Image', extensions: ['jpeg', 'jpg'] }
+}
+
 export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServices): void {
   ipcMain.handle('window:minimize', () => win.minimize())
   ipcMain.handle('window:toggle-maximize', () => {
@@ -97,14 +104,11 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     // SVG 落盘前校验：注释体含未转义的 "--" 是非法 XML，落盘后浏览器打开会解析失败
     if (format === 'svg' && !validateStandaloneSvg(content)) return 'failed'
     const defaultName = typeof defaultPath === 'string' && defaultPath ? defaultPath : `diagram.${format}`
+    // 保存对话框的格式下拉只展示用户已选格式（内容写入只认 format，列全格式只会误导用户）
     const result = await dialog.showSaveDialog(win, {
       title: 'Save Diagram',
       defaultPath: defaultName,
-      filters: [
-        { name: 'SVG Image', extensions: ['svg'] },
-        { name: 'PNG Image', extensions: ['png'] },
-        { name: 'JPEG Image', extensions: ['jpeg', 'jpg'] }
-      ]
+      filters: [DIAGRAM_SAVE_FILTERS[format]]
     })
     if (result.canceled || !result.filePath) return 'canceled'
     try {
