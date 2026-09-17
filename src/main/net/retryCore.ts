@@ -110,12 +110,50 @@ export interface RetryOptions {
   maxRetries: number
   /** 日志标签，如 'LLM xxx'、'MCP connect "xxx"' */
   label: string
+  /** 中止信号（通常是会话的 AbortController signal）。信号已 abort 或
+   *  在退避等待期间 abort → 立即以 AbortError 结束，不再发起后续尝试。
+   *  会话停止语义依赖这一点：退避最长 30s 且重试可无限，不监听信号
+   *  时 runner 无法 settle，会话会永久卡在 busy 状态。 */
+  signal?: AbortSignal
   /** 自定义重试判定（默认 isRetriableError） */
   shouldRetry?: (err: unknown) => boolean
   /** 每次重试前回调（供 UI 提示），failedAttempt = 已失败次数 */
   onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
   /** 日志函数（默认静默；调用方注入 log 以保持本模块零依赖） */
   onLog?: (level: 'info' | 'warn' | 'error', msg: string) => void
+}
+
+/** 中止信号已触发 → 抛标准 AbortError（isRetriableError 对其返回 false） */
+function assertNotAborted(signal: AbortSignal | undefined): void {
+  if (signal?.aborted) {
+    const error = new Error('aborted')
+    error.name = 'AbortError'
+    throw error
+  }
+}
+
+/** 可被 AbortSignal 打断的退避睡眠（无信号时等价普通 sleep） */
+function interruptibleSleep(ms: number, signal: AbortSignal | undefined): Promise<void> {
+  if (!signal) return new Promise(resolve => setTimeout(resolve, ms))
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      reject(error)
+      return
+    }
+    const timer = setTimeout(() => {
+      signal.removeEventListener('abort', onAbort)
+      resolve()
+    }, ms)
+    const onAbort = () => {
+      clearTimeout(timer)
+      const error = new Error('aborted')
+      error.name = 'AbortError'
+      reject(error)
+    }
+    signal.addEventListener('abort', onAbort, { once: true })
+  })
 }
 
 const BASE_DELAY_MS = 1000
@@ -125,10 +163,6 @@ const MAX_DELAY_MS = 30000
 function backoffDelay(failedAttempt: number): number {
   const base = Math.min(BASE_DELAY_MS * 2 ** (failedAttempt - 1), MAX_DELAY_MS)
   return Math.round(base * (0.8 + Math.random() * 0.4))
-}
-
-function sleep(ms: number): Promise<void> {
-  return new Promise(resolve => setTimeout(resolve, ms))
 }
 
 /**
@@ -142,17 +176,26 @@ export async function withRetry<T>(fn: (attempt: number) => Promise<T>, opts: Re
   const unlimited = opts.maxRetries === UNLIMITED_RETRIES
   let attempt = 1
   for (;;) {
+    // 每次尝试前检查中止：会话已停止时不再发起新的远端请求
+    assertNotAborted(opts.signal)
     try {
       return await fn(attempt)
     } catch (err) {
       const error = err as Error
+      // 中止优先于一切重试判定（AbortError 经 shouldRetry 也会被拒绝，
+      // 这里显式抛出保留原始错误，避免被离线/预算判定改写）
+      if (opts.signal?.aborted) {
+        const abortError = new Error('aborted')
+        abortError.name = 'AbortError'
+        throw abortError
+      }
       if (!shouldRetry(error) || isOfflineError(error) || (!unlimited && attempt > opts.maxRetries)) throw error
       const delay = backoffDelay(attempt)
       opts.onLog?.('warn', `[Retry] ${opts.label} 第 ${attempt}${unlimited ? '' : `/${opts.maxRetries}`} 次失败: ${String(error?.message || err).slice(0, 200)} — ${(delay / 1000).toFixed(1)}s 后重试`)
       try {
         opts.onRetry?.(attempt, opts.maxRetries, error)
       } catch { /* 回调异常忽略 */ }
-      await sleep(delay)
+      await interruptibleSleep(delay, opts.signal)
       attempt++
     }
   }

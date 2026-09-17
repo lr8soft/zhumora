@@ -27,6 +27,8 @@ export interface AutoCompactorDeps {
   provider: ProviderConfig
   modelOverride?: string
   contextWindow: number
+  /** 会话中止信号：摘要 LLM 调用的重试循环监听它，用户停止后立即退出 */
+  signal?: AbortSignal
   /** 成功生成摘要后回传新压缩状态供持久化（不动消息表） */
   persist?: (state: { upToMessageId: string; summary: string }) => void
   /** 通知前端展示压缩提示 */
@@ -69,7 +71,7 @@ export class AutoCompactor {
   async apply(conversation: WorkingConversation): Promise<void> {
     const effective = conversation.effective()
     const effectiveIds = conversation.effectiveIds()
-    const plan = await planAutoCompact(effective, this.deps.provider, this.deps.modelOverride, this.deps.contextWindow)
+    const plan = await planAutoCompact(effective, this.deps.provider, this.deps.modelOverride, this.deps.contextWindow, this.deps.signal)
     if (plan.compressedCount <= 0) {
       log('info', 'Auto compact: no safe boundary to split, skipping')
       return

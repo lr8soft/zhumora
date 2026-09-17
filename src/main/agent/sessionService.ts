@@ -56,6 +56,11 @@ export interface SessionRunRequest {
 export interface SessionRunHandle {
   sessionId: string
   userMessage: UIMessage
+  /** 运行 settle 承诺，保留既有错误语义：中止时 reject AgentAbortedError，
+   * 普通错误原样 reject，正常完成 resolve。相比裸 runner promise 的唯一
+   * 变化是有界性 —— abort 后 runner 若因未响应信号的路径卡死，兜底清理
+   * 触发时本承诺立即以 AgentAbortedError settle，消费者（IPC 日志、
+   * Bot FIFO、删除等待）不会永久挂起。 */
   completion: Promise<void>
 }
 
@@ -69,9 +74,17 @@ export interface SessionCompactInfo {
 interface ActiveSessionRun {
   controller: AbortController
   events: AgentEventSink
-  completion?: Promise<void>
   unlinkSignal?: () => void
   abortNotified: boolean
+  /** abortRun 已触发（controller.abort 之外的本地标记） */
+  aborted: boolean
+  /** run 真正 settle（或 abort 后 settle 超时兜底触发）时 resolve。
+   *  deleteSession / stopAll / handle.completion 等待它而不是裸 runner
+   *  promise：卡死的 runner 不能无限期挂起会话删除、应用退出或 Bot FIFO。 */
+  settled: Promise<void>
+  settle: () => void
+  /** abort 后启动的 settle 兜底定时器；cleanupRun 时清除 */
+  settleTimer?: ReturnType<typeof setTimeout>
 }
 
 interface SessionServiceDependencies {
@@ -87,7 +100,8 @@ interface SessionServiceDependencies {
     messages: ChatMessage[],
     provider: Provider,
     modelOverride: string | undefined,
-    contextWindow: number
+    contextWindow: number,
+    signal?: AbortSignal
   ) => Promise<{
     beforeTokens: number
     afterTokens: number
@@ -103,6 +117,22 @@ interface SessionServiceDependencies {
 }
 
 export class SessionBusyError extends Error {}
+
+/** 中止后的 settle 兜底超时：正常路径 runner 在 abort 后毫秒级 settle
+ *（provider 重试循环监听信号、在途请求被 fetch 中断、权限等待被取消）；
+ * 超时仅在 runner 因未响应信号的路径真正卡死时触发，强制释放 busy 状态。 */
+const ABORT_SETTLE_TIMEOUT_MS = 2000
+
+interface Deferred<T> {
+  promise: Promise<T>
+  resolve: (value: T) => void
+}
+
+function deferred<T>(): Deferred<T> {
+  let resolve!: (value: T) => void
+  const promise = new Promise<T>(r => { resolve = r })
+  return { promise, resolve }
+}
 
 /** The only application use case allowed to assemble and run an Agent session. */
 export class SessionService {
@@ -132,10 +162,14 @@ export class SessionService {
     const provider = this.resolveProvider(settings, request.providerId)
     if (request.approveMode) this.setApproveMode(sessionId, request.approveMode)
 
+    const settleDefer = deferred<void>()
     const run: ActiveSessionRun = {
       controller: new AbortController(),
       events: this.events.forRun(request.localEvents),
-      abortNotified: false
+      abortNotified: false,
+      aborted: false,
+      settled: settleDefer.promise,
+      settle: settleDefer.resolve
     }
     this.active.set(sessionId, run)
     this.linkExternalSignal(sessionId, run, request.signal)
@@ -189,8 +223,23 @@ export class SessionService {
         needsTitle,
         userTexts: collectUserTexts(mapped.messages)
       })
-      run.completion = completion
-      return { sessionId, userMessage, completion }
+      // runner promise 的失败必然被 finishRun 映射为 abort/error 事件，
+      // 但存在不被 await 的场景（abort 兜底强制清理后 runner 迟到的 reject）
+      // —— 挂一个静默消费者防止 unhandled rejection。
+      void completion.catch(() => {})
+      // handle.completion 保留既有契约（中止 reject AgentAbortedError、
+      // 普通错误原样抛出），同时获得有界性：与有界 settled 竞速，卡死的
+      // runner 在兜底触发时让出，中止语义由 run.aborted 补齐。
+      const handleCompletion: Promise<void> = Promise.race([completion, run.settled]).then(
+        () => {
+          if (run.aborted) throw new AgentAbortedError()
+        },
+        (error: unknown) => {
+          if (run.aborted) throw new AgentAbortedError()
+          throw error
+        }
+      )
+      return { sessionId, userMessage, completion: handleCompletion }
     } catch (error) {
       this.cleanupRun(sessionId, run)
       throw error
@@ -239,16 +288,20 @@ export class SessionService {
   }
 
   async deleteSession(sessionId: string): Promise<void> {
-    const completion = this.active.get(sessionId)?.completion
+    const run = this.active.get(sessionId)
     this.forgetSession(sessionId)
-    if (completion) await Promise.allSettled([completion])
+    // 等待 settle 而不是裸 runner promise：runner 若因未响应信号的路径
+    // 卡死，abort 的有界兜底超时（abortRun）会强制清理并 resolve settled，
+    // 删除不会被永久挂起（AGENTS.md：删除活动会话必须先中止并等待
+    // completion settle，再删数据库）。
+    if (run) await run.settled
     this.deps.store.deleteSession(sessionId)
   }
 
   async stopAll(): Promise<void> {
     const runs = [...this.active.entries()]
     for (const [sessionId, run] of runs) this.abortRun(sessionId, run)
-    await Promise.allSettled(runs.flatMap(([, run]) => run.completion ? [run.completion] : []))
+    await Promise.allSettled(runs.map(([, run]) => run.settled))
   }
 
   abort(sessionId: string): boolean {
@@ -373,19 +426,34 @@ export class SessionService {
   }
 
   private abortRun(sessionId: string, run: ActiveSessionRun): void {
+    run.aborted = true
     run.controller.abort()
     this.deps.permissions.cancelSession(sessionId)
     if (!run.abortNotified) {
       run.abortNotified = true
       run.events.aborted?.(sessionId)
+      // 兜底：正常情况下 runner 听到信号后毫秒级 settle 并触发 cleanupRun
+      // （见 finishRun 的 finally）。若 runner 因未响应信号的路径卡死，
+      // 有界超时强制清理，保证 abort 后会话最终一定可再次运行 ——
+      // 这是"停止后切换 provider 报 session busy" bug 的最后一道防线。
+      // 定时器保持引用（不能 unref）：兜底的职责就是在进程其它工作排空时
+      // 也保证触发；runner 正常 settle 时 cleanupRun 会提前清除它，
+      // 正常路径下这个 2s 引用窗口不会真正保留进程。
+      run.settleTimer = setTimeout(() => {
+        this.deps.log?.('error', `Session ${sessionId}: run did not settle within ${ABORT_SETTLE_TIMEOUT_MS}ms after abort, forcing cleanup`)
+        this.cleanupRun(sessionId, run)
+      }, ABORT_SETTLE_TIMEOUT_MS)
     }
   }
 
   private cleanupRun(sessionId: string, run: ActiveSessionRun): void {
     if (this.active.get(sessionId) !== run) return
+    if (run.settleTimer) clearTimeout(run.settleTimer)
+    run.settleTimer = undefined
     run.unlinkSignal?.()
     this.deps.permissions.cancelSession(sessionId)
     this.active.delete(sessionId)
     run.events.running?.(sessionId, false)
+    run.settle()
   }
 }

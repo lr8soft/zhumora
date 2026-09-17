@@ -210,7 +210,8 @@ stateDiagram-v2
 - `active.has(sessionId)` 时，第二次 `sendMessage` 必须返回 busy；不能把两次运行混进同一历史。
 - 不同 session 没有全局锁，可以同时请求不同 provider、执行不同工具。
 - `abort(sessionId)` 只取消目标 run 和目标会话的权限请求。
-- `deleteSession(sessionId)` 必须先中止并等待活动 run settle，再删除数据库记录，避免删除后 callback 继续写入。
+- `deleteSession(sessionId)` 必须先中止并等待活动 run settle，再删除数据库记录，避免删除后 callback 继续写入。settle 等待是有界的：abort 后 runner 未能在 2s 内 settle（未响应信号的路径）时，`SessionService` 强制清理该 run 并记录错误，删除和 `stopAll()` 因此不会被卡死的 runner 永久挂起。
+- `agent:run` 返回的 handle `completion` 与上述 settle 同有界性，并保留既有错误契约：中止时 reject `AgentAbortedError`、普通错误原样 reject、正常完成 resolve；卡死的 runner 在兜底触发时同样让出，等待者不会永久挂起。
 - 应用退出时先停止 Bot 输入并调用 `SessionService.stopAll()`。
 
 ## 7. 事件与消息协议

@@ -36,6 +36,9 @@ export class BotSessionAdapter {
       sourcePrompt: `You are replying through ${message.channel} to ${message.senderName}. Use plain text and keep the response concise.`,
       inputSource: 'external'
     })
+    // handle.completion 有界（见 SessionRunHandle 注释）：卡死的 runner 不会
+    // 永久挂起 Bot FIFO；中止语义与错误语义由其 reject（AgentAbortedError /
+    // 原始错误）保持不变。
     await run.completion
     return { sessionId: session.id }
   }

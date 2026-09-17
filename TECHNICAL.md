@@ -135,7 +135,18 @@ emitted:
   lives in the pure module `src/main/net/retryCore.ts`: it recognizes
   Chromium `net::ERR_*` codes (Electron `net.fetch`) in addition to undici
   codes; explicit offline errors (`ERR_INTERNET_DISCONNECTED`) fail fast
-  instead of burning the retry budget.
+  instead of burning the retry budget. The retry loop accepts the session
+  abort `signal`: aborting during backoff (up to 30s per wait, unlimited
+  retries possible) rejects immediately with `AbortError` and no further
+  remote request is issued, so a stopped session settles within the abort
+  round instead of hanging in a retry wait.
+
+  As a last line of defense, `SessionService` bounds the post-abort settle:
+  if a run has not settled within 2s of abort (runner path that ignores the
+  signal), the active run is force-cleaned up with an error log, so the
+  session is guaranteed to become runnable again (same guarantee is reused
+  by `deleteSession` and `stopAll`, which await the bounded settle instead
+  of the raw runner promise).
 - **partial output already shown** → re-sending would duplicate content in
   the UI, so the provider returns the partial round with a
   `streamInterrupted` flag instead of throwing. The agent loop treats it

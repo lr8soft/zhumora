@@ -20,9 +20,10 @@ const settings = {
 
 const sessions = new Map<string, Session>([
   ['s1', { id: 's1', title: 'Session one', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }],
-  ['s2', { id: 's2', title: 'Session two', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }]
+  ['s2', { id: 's2', title: 'Session two', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }],
+  ['s3', { id: 's3', title: 'Session three', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }]
 ])
-const messages = new Map<string, UIMessage[]>([['s1', []], ['s2', []]])
+const messages = new Map<string, UIMessage[]>([['s1', []], ['s2', []], ['s3', []]])
 const store: SessionStore = {
   createSession: () => { throw new Error('not used') },
   getSessions: () => [...sessions.values()],
@@ -118,6 +119,44 @@ void deleting.completion.catch(() => {})
 await service.deleteSession('s1')
 assert.equal(service.getSession('s1'), null, 'deletion waits for the active run to abort before removing persisted state')
 assert.equal(service.isRunning('s1'), false)
+
+// 回归：agent 无视中止信号（例如卡在不受信号控制的重试退避里）时，
+// 停止操作必须在有限时间内释放会话 busy 状态，而不是永久挂起。
+// 这是"网络断线重试中点停止 → 切换 provider 再发消息报 already has a
+// running agent" bug 的防护：生产代码里 provider 层的重试循环已改为
+// 监听 signal；这里验证即便 agent 侧完全未响应信号，SessionService 的
+// 有界超时兜底也能保证用户最终可以再次发消息。
+{
+  const stuckService = new SessionService({
+    store,
+    tools: new ToolRegistry(),
+    permissions,
+    getSkillsPrompt: () => 'skills',
+    getMcpStatus: () => [],
+    // 故意完全忽略 signal、永不 settle 的 agent（模拟失控的重试循环）
+    executeAgent: async () => new Promise<never>(() => {}),
+    fetchContextWindow: async () => 32768,
+    planAutoCompact: async () => ({
+      beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: 0, keptOffset: 0, summary: null
+    }),
+    completeText: async () => '',
+    generateMessageId: () => `sm${++nextId}`,
+    now: () => 100
+  })
+  const stuckHandle = await stuckService.sendMessage({ sessionId: 's3', message: { text: 'stuck' } })
+  assert.equal(stuckService.isRunning('s3'), true)
+  stuckService.abort('s3')
+  assert.equal(stuckService.isRunning('s3'), true, 'agent 未 settle 时 abort 不立即清除状态')
+  // 有界 completion 承诺（既有契约保留）：兜底触发（生产值 2s）后必须以
+  // AgentAbortedError settle，而不是让 await 者永久挂起
+  const abortAt = Date.now()
+  await assert.rejects(stuckHandle.completion, AgentAbortedError)
+  assert.ok(Date.now() - abortAt < 5000, 'settle 等待必须有界（兜底超时 + 少量余量）')
+  assert.equal(stuckService.isRunning('s3'), false, '兜底触发后会话必须可再次运行')
+  const after = await stuckService.sendMessage({ sessionId: 's3', message: { text: 'after stuck' } })
+  assert.ok(after.userMessage.id, '兜底释放后新消息可以正常启动')
+  releases.get('s3')?.()
+}
 
 permissions.dispose()
 console.log('Session service concurrency, ownership and event tests passed')

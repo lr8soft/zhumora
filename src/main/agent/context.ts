@@ -299,7 +299,7 @@ function toSummaryInput(toCompress: ChatMessage[]): string {
 }
 
 /** 调用 LLM 生成摘要（增量压缩时输入里含旧摘要，会被一并折叠） */
-async function generateSummary(toCompress: ChatMessage[], provider: ProviderConfig, modelOverride?: string): Promise<string | null> {
+async function generateSummary(toCompress: ChatMessage[], provider: ProviderConfig, modelOverride: string | undefined, signal?: AbortSignal): Promise<string | null> {
   const summaryInput = toSummaryInput(toCompress)
   const summaryPrompt: ChatMessage[] = [
     {
@@ -312,7 +312,7 @@ async function generateSummary(toCompress: ChatMessage[], provider: ProviderConf
     }
   ]
   try {
-    const summary = await complete(provider, summaryPrompt, modelOverride, 800)
+    const summary = await complete(provider, summaryPrompt, modelOverride, 800, signal)
     log('info', `Auto compact: summary generated (${summary.length} chars)`)
     return summary
   } catch (err) {
@@ -342,7 +342,8 @@ export async function planAutoCompact(
   effective: ChatMessage[],
   provider: ProviderConfig,
   modelOverride?: string,
-  contextWindow?: number
+  contextWindow?: number,
+  signal?: AbortSignal
 ): Promise<{
   summary: string | null
   toKeep: ChatMessage[]
@@ -374,7 +375,7 @@ export async function planAutoCompact(
   log('info', `Auto compact: compressing ${toCompress.length} messages, keeping ${toKeep.length} recent (budget=${preserveBudget} tokens)`)
 
   const beforeTokens = estimateTokens(effective)
-  const summary = await generateSummary(toCompress, provider, modelOverride)
+  const summary = await generateSummary(toCompress, provider, modelOverride, signal)
 
   // LLM 失败 → 退化为截断（丢弃旧摘要与新消息，只保留 toKeep），
   // 摘要文本置 null：调用方持久化时保留旧摘要或写一个占位。

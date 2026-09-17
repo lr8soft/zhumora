@@ -100,6 +100,7 @@ export async function runAgent(
     modelOverride: opts.modelOverride,
     contextWindow,
     persist: opts.onAutoCompact,
+    signal,
     onCompact: (info) => cb.onCompact?.(info)
   }, compaction)
 

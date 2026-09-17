@@ -123,6 +123,9 @@ export async function streamChat(
       {
         maxRetries,
         label: `LLM ${provider.name || provider.baseUrl}`,
+        // 会话中止立即打断退避等待与后续重试（否则停止后 runner 会卡在
+        // 最长 30s 的退避里无法 settle，会话永久 busy，见 retryCore 注释）
+        signal: params.signal,
         // 仅在尚未向 UI 输出任何内容时才重试（否则聊天区会收到重复内容）
         shouldRetry: (err) => !state.emitted && !isMalformedToolArgumentsError(err) && isRetriableError(err),
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
@@ -248,7 +251,8 @@ export async function complete(
   provider: ProviderConfig,
   messages: ChatMessage[],
   model?: string,
-  maxTokens = 200
+  maxTokens = 200,
+  signal?: AbortSignal
 ): Promise<string> {
   const invalidHistoryIndex = messages.findIndex(message => !hasValidToolCalls(message))
   if (invalidHistoryIndex >= 0) {
@@ -287,6 +291,9 @@ export async function complete(
     {
       maxRetries: getMaxRetries(),
       label: `LLM complete ${provider.name || provider.baseUrl}`,
+      // 会话中止时立即退出退避循环；不传 signal 的调用方（标题生成、
+      // 记忆提取等运行外 fire-and-forget 调用）保持原行为
+      signal,
       shouldRetry: (err) => !isMalformedToolArgumentsError(err) && isRetriableError(err)
     }
   )

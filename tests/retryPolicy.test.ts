@@ -140,4 +140,70 @@ assert.equal(isStreamIdleTimeoutError(new Error('net::ERR_TIMED_OUT')), false, '
   assert.equal(attempts, 3, '1 次初始 + 2 次重试')
 }
 
+// 5) 中止信号：退避等待期间 abort → 立即以 AbortError 结束（不再发起新尝试）
+// 这是"停止后切换 provider 报 session busy"回归测试的核心场景：
+// 网络断线无限重试中用户点停止，退避 sleep 必须被信号打断。
+{
+  let attempts = 0
+  const ctrl = new AbortController()
+  const started = Date.now()
+  const pending = withRetry(async () => {
+    attempts++
+    throw new Error('fetch failed')
+  }, {
+    maxRetries: UNLIMITED_RETRIES,
+    label: 'abort-during-backoff',
+    signal: ctrl.signal,
+    onLog: () => {}
+  })
+  await new Promise(r => setTimeout(r, 20))
+  assert.equal(attempts, 1, '第一次尝试已发出')
+  ctrl.abort()
+  await assert.rejects(pending, (err: Error) => err.name === 'AbortError', '退避等待中被中止抛出 AbortError')
+  assert.ok(Date.now() - started < 1000, '立即退出，不等待完整退避')
+  await new Promise(r => setTimeout(r, 50))
+  assert.equal(attempts, 1, '中止后不再发起新的远端请求')
+}
+
+// 6) 中止信号：首次尝试前已 abort → 一次都不发起，直接 AbortError
+{
+  let attempts = 0
+  const ctrl = new AbortController()
+  ctrl.abort()
+  await assert.rejects(
+    withRetry(async () => {
+      attempts++
+      return 'ok'
+    }, { maxRetries: 3, label: 'pre-aborted', signal: ctrl.signal }),
+    (err: Error) => err.name === 'AbortError',
+    '已中止的信号在首次尝试前即抛出'
+  )
+  assert.equal(attempts, 0, '已中止时不发起任何请求')
+}
+
+// 7) 中止信号：尝试进行中 abort（请求失败后信号已置位）→ 中止优先于重试判定
+{
+  let attempts = 0
+  const ctrl = new AbortController()
+  const pending = withRetry(async () => {
+    attempts++
+    ctrl.abort() // 模拟请求进行中被用户停止（fetch 侧也会失败）
+    throw new Error('net::ERR_CONNECTION_RESET')
+  }, { maxRetries: UNLIMITED_RETRIES, label: 'aborted-in-flight', signal: ctrl.signal })
+  await assert.rejects(pending, (err: Error) => err.name === 'AbortError', '请求失败且信号已置位 → 抛 AbortError 而非继续重试')
+  assert.equal(attempts, 1, '只尝试一次')
+}
+
+// 8) 不传 signal 时行为与原先完全一致（MCP 等无会话信号的调用方不受影响）
+{
+  let attempts = 0
+  const result = await withRetry(async () => {
+    attempts++
+    if (attempts < 2) throw new Error('net::ERR_CONNECTION_RESET')
+    return 'ok'
+  }, { maxRetries: 5, label: 'no-signal' })
+  assert.equal(result, 'ok', '无 signal 时重试逻辑不变')
+  assert.equal(attempts, 2, '无 signal 时共 2 次尝试')
+}
+
 console.log('retry policy tests passed')
