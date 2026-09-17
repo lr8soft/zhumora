@@ -4,7 +4,7 @@
   "description": "A source-available AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora, LT_lrsoft",
-  "license": "PolyForm-Shield-1.0.0",
+  "license": "agpl-3.0",
   "type": "module",
   "engines": {
     "node": ">=22.12.0"
