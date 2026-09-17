@@ -20,7 +20,7 @@ import {
   estimateTokens,
   getPreserveTokenBudget
 } from './contextBudget'
-import { configuredContextWindow, contextDetectionCacheKey } from './contextDetectionPolicy'
+import { configuredContextWindow, contextDetectionCacheKey, pickContextLength } from './contextDetectionPolicy'
 
 // 默认上下文窗口（API 未返回、启发式也未命中时的 fallback）
 const DEFAULT_CONTEXT_WINDOW = 32768
@@ -117,7 +117,8 @@ export function heuristicContextWindow(model: string): number | null {
  * 尝试顺序：
  * 1. 用户在 ProviderConfig.contextWindow 手动配置 → 直接使用
  * 2. GET /v1/models → 匹配模型名的条目：meta.n_ctx（llama.cpp）/
- *    context_length（OpenRouter 等）/ max_context_length / limit_context
+ *    max_model_len（vLLM / SGLang）/ context_length（OpenRouter 等）/
+ *    max_context_length / limit_context
  * 3. GET /props → default_generation_settings.n_ctx（llama.cpp 专有端点）
  * 4. POST /api/show → model_info.<arch>.context_length（Ollama 专有端点，按模型名精确匹配）
  * 5. 模型名启发式表（常见商用模型）
@@ -147,7 +148,8 @@ async function resolveContextWindow(
   let nCtx: number | null = null
 
   // 尝试 1: GET /models — 精确匹配模型名（不再盲取 models[0]）
-  // llama.cpp: data[].meta.n_ctx；OpenRouter/部分网关: data[].context_length
+  // llama.cpp: data[].meta.n_ctx；vLLM / SGLang: data[].max_model_len；
+  // OpenRouter/部分网关: data[].context_length
   try {
     const resp = await getFetch()(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(5000) })
     if (resp.ok) {
@@ -243,23 +245,6 @@ export function fetchContextWindow(provider: ProviderConfig, modelOverride?: str
 /** 设置页探测入口：忽略当前手动值并绕过缓存，读取端点此刻报告的真实窗口。 */
 export function detectProviderContextWindow(provider: ProviderConfig, modelOverride?: string): Promise<number> {
   return resolveContextWindow(provider, modelOverride, { useConfiguredValue: false, forceRefresh: true })
-}
-
-/** 从 /models 的单个条目里提取上下文长度（多种字段命名兼容） */
-function pickContextLength(entry: any): number | null {
-  if (!entry) return null
-  const candidates = [
-    entry.meta?.n_ctx,
-    entry.context_length,
-    entry.max_context_length,
-    entry.limit_context,
-    entry.contextLength,
-    entry.max_input_tokens
-  ]
-  for (const c of candidates) {
-    if (typeof c === 'number' && c > 0) return Math.floor(c)
-  }
-  return null
 }
 
 /**

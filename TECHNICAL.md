@@ -93,8 +93,18 @@ The context window may be configured manually or detected from the provider wher
 
 Current auto-detection paths include:
 
-- llama.cpp model metadata exposed through `/v1/models`
-- Ollama model metadata exposed through `/api/show`
+- `GET /v1/models` model-card metadata, matched by model name:
+  `meta.n_ctx` (llama.cpp), `max_model_len` (vLLM / SGLang),
+  `context_length` / `max_context_length` / `limit_context` (OpenRouter
+  and other gateways)
+- `GET /props` (`default_generation_settings.n_ctx`, llama.cpp only)
+- `POST /api/show` (`model_info.<arch>.context_length`, Ollama only)
+- model-name heuristic table, then a conservative default
+
+Commercial cloud APIs (DeepSeek, GLM, OpenAI) do not expose a context
+field on `/v1/models`; their context window is resolved by the
+model-name heuristic table, and an explicit per-provider `contextWindow`
+always wins over detection.
 
 A context window value of `0` means auto-detect.
 
