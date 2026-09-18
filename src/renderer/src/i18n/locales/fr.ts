@@ -115,6 +115,7 @@ export default {
     tabs: {
       providers: 'Fournisseurs LLM',
       mcp: 'Serveurs MCP',
+      mcpServer: 'MCP (entrant)',
       bots: 'Bots de discussion',
       avatar: 'Avatar',
       tts: 'Voix',

@@ -147,7 +147,7 @@ interface CompactionMarker {
 /** loadMessages 进行中的去重（避免同一会话的并发拉取互相覆盖） */
 const loadingMessages = new Map<string, Promise<void>>()
 
-export type SettingsTab = 'providers' | 'mcp' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
+export type SettingsTab = 'providers' | 'mcp' | 'mcpServer' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
 
 interface AppState {
   // 视图

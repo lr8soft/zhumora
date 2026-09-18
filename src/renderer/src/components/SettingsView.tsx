@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Brain, Cable, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
+import { BarChart3, Brain, Cable, PlugZap, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
 import { useAppStore, type SettingsTab } from '../store'
 import { ProviderSettings } from './settings/ProviderSettings'
 import { McpSettings } from './settings/McpSettings'
@@ -17,6 +17,7 @@ import { TtsSettings } from './settings/TtsSettings'
 const TAB_ICONS: Record<SettingsTab, typeof Server> = {
   providers: Server,
   mcp: Cable,
+  mcpServer: PlugZap,
   bots: Send,
   avatar: UserRound,
   tts: Volume2,
@@ -36,7 +37,7 @@ export default function SettingsView() {
     openSettings()
   }, [openSettings])
 
-  const tabs: SettingsTab[] = ['providers', 'mcp', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
+  const tabs: SettingsTab[] = ['providers', 'mcp', 'mcpServer', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -83,6 +84,10 @@ export default function SettingsView() {
           servers={settingsDraft.mcpServers}
           onChange={(mcpServers) => useAppStore.getState().updateSettingsDraft({ mcpServers })}
         />}
+        {settingsTab === 'mcpServer' && <McpServerSettings
+          config={settingsDraft.mcpServer}
+          onChange={(mcpServer) => useAppStore.getState().updateSettingsDraft({ mcpServer })}
+        />}
         {settingsTab === 'bots' && <div style={{ display: 'grid', gap: 18 }}>
           <TelegramSettings
             config={settingsDraft.telegramBot}
@@ -91,10 +96,6 @@ export default function SettingsView() {
           <QQSettings
             config={settingsDraft.qqBot}
             onChange={(qqBot) => useAppStore.getState().updateSettingsDraft({ qqBot })}
-          />
-          <McpServerSettings
-            config={settingsDraft.mcpServer}
-            onChange={(mcpServer) => useAppStore.getState().updateSettingsDraft({ mcpServer })}
           />
         </div>}
         {settingsTab === 'avatar' && <AvatarSettings

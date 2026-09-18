@@ -125,6 +125,7 @@ export default {
     tabs: {
       providers: 'LLM 提供商',
       mcp: 'MCP 服务器',
+      mcpServer: 'MCP 对外服务',
       bots: '聊天机器人',
       avatar: 'Avatar',
       tts: '语音',
