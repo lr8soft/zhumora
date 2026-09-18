@@ -93,8 +93,8 @@ export default function MermaidBlock({ source }: Props) {
     if (renderState.status !== 'ready' || exporting) return
     setMenuOpen(false)
     setExportError(null)
-    // 背景与图表容器一致：light 白、dark #1d2228（--app-color-surface），避免导出后深底深字
-    const background = resolvedTheme === 'dark' ? '#1d2228' : '#ffffff'
+    // 背景与图表容器一致：light 白、dark #1e2124（--app-color-surface），避免导出后深底深字
+    const background = resolvedTheme === 'dark' ? '#1e2124' : '#ffffff'
     if (format === 'svg') {
       // renderer 组装独立 SVG（源码注释转义 + 背景矩形），main 只负责落盘
       let result: 'saved' | 'canceled' | 'failed'

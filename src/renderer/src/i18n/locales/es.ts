@@ -19,7 +19,13 @@ export default {
     settings: 'Configuración',
     collapse: 'Contraer barra lateral',
     expand: 'Expandir barra lateral',
-    resize: 'Arrastra para cambiar el ancho'
+    resize: 'Arrastra para cambiar el ancho',
+    groups: {
+      renderer: 'Escritorio',
+      telegram: 'Telegram',
+      qq: 'QQ',
+      mcp: 'MCP'
+    }
   },
   chat: {
     createSessionToStart: 'Crea una sesión para empezar a chatear',

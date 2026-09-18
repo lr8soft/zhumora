@@ -19,7 +19,13 @@ export default {
     settings: '设置',
     collapse: '收起侧边栏',
     expand: '展开侧边栏',
-    resize: '拖拽调整侧边栏宽度'
+    resize: '拖拽调整侧边栏宽度',
+    groups: {
+      renderer: '桌面',
+      telegram: 'Telegram',
+      qq: 'QQ',
+      mcp: 'MCP'
+    }
   },
   chat: {
     createSessionToStart: '创建会话开始对话',

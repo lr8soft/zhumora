@@ -77,6 +77,7 @@ try {
 
 const session: Session = {
   id: 's1', title: 'Session', createdAt: 1, updatedAt: 1, messageCount: 1,
+  origin: 'renderer',
   avatarEnabled: false, ttsEnabled: true
 }
 const settings = { ttsModels: [base], defaultTtsModelId: base.id } as AppSettings

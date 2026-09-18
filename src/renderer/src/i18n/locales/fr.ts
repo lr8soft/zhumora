@@ -19,7 +19,13 @@ export default {
     settings: 'Paramètres',
     collapse: 'Réduire la barre latérale',
     expand: 'Déployer la barre latérale',
-    resize: 'Glisser pour redimensionner'
+    resize: 'Glisser pour redimensionner',
+    groups: {
+      renderer: 'Bureau',
+      telegram: 'Telegram',
+      qq: 'QQ',
+      mcp: 'MCP'
+    }
   },
   chat: {
     createSessionToStart: 'Créez une session pour commencer à discuter',

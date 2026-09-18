@@ -19,9 +19,9 @@ const settings = {
 } as AppSettings
 
 const sessions = new Map<string, Session>([
-  ['s1', { id: 's1', title: 'Session one', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }],
-  ['s2', { id: 's2', title: 'Session two', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }],
-  ['s3', { id: 's3', title: 'Session three', createdAt: 1, updatedAt: 1, messageCount: 0, avatarEnabled: false, ttsEnabled: false }]
+  ['s1', { id: 's1', title: 'Session one', createdAt: 1, updatedAt: 1, messageCount: 0, origin: 'renderer', avatarEnabled: false, ttsEnabled: false }],
+  ['s2', { id: 's2', title: 'Session two', createdAt: 1, updatedAt: 1, messageCount: 0, origin: 'renderer', avatarEnabled: false, ttsEnabled: false }],
+  ['s3', { id: 's3', title: 'Session three', createdAt: 1, updatedAt: 1, messageCount: 0, origin: 'renderer', avatarEnabled: false, ttsEnabled: false }]
 ])
 const messages = new Map<string, UIMessage[]>([['s1', []], ['s2', []], ['s3', []]])
 const store: SessionStore = {

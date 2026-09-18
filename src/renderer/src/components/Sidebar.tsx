@@ -1,7 +1,52 @@
-import React, { useCallback } from 'react'
+import React, { useCallback, useMemo } from 'react'
 import { useTranslation } from 'react-i18next'
-import { MessageSquare, PanelLeftClose, PanelLeftOpen, Plus, Settings2, Trash2 } from 'lucide-react'
+import {
+  MessageCircle,
+  MessageSquare,
+  PanelLeftClose,
+  PanelLeftOpen,
+  Plug,
+  Plus,
+  Send,
+  Settings2,
+  Trash2
+} from 'lucide-react'
+import type { Session, SessionOrigin } from '@shared/types'
 import { useAppStore } from '../store'
+import { groupSessionsByOrigin } from '../sessionGroups'
+
+/** 外部来源的会话用平台图标，桌面会话用消息图标（运行中仍显示转圈） */
+const ORIGIN_ICON = {
+  telegram: Send,
+  qq: MessageCircle,
+  mcp: Plug
+} as const
+
+function SessionRow({ session, active, running }: { session: Session; active: boolean; running: boolean }) {
+  const { t } = useTranslation()
+  const { setActiveSession, requestDeleteSession } = useAppStore.getState()
+  const Icon = session.origin === 'renderer' ? MessageSquare : ORIGIN_ICON[session.origin as keyof typeof ORIGIN_ICON] ?? MessageSquare
+  return (
+    <button
+      className={active ? 'active' : ''}
+      title={running ? t('sidebar.running') : undefined}
+      onClick={() => setActiveSession(session.id)}
+    >
+      {running
+        ? <span className="session-spinner" />
+        : <Icon size={15} />}
+      <span className="session-title">{session.title}</span>
+      <span
+        className="session-delete"
+        title={t('sidebar.deleteSession')}
+        // 弹确认框（防误操作），确认后才真正删除
+        onClick={(e) => { e.stopPropagation(); requestDeleteSession(session.id) }}
+      >
+        <Trash2 size={12} />
+      </span>
+    </button>
+  )
+}
 
 export default function Sidebar() {
   const { t } = useTranslation()
@@ -13,7 +58,10 @@ export default function Sidebar() {
   const collapsed = useAppStore(s => s.sidebarCollapsed)
   const setSidebarCollapsed = useAppStore(s => s.setSidebarCollapsed)
   // actions 引用稳定，从 getState 取（避免整 store 订阅导致流式期间高频重渲染）
-  const { setActiveSession, createSession, requestDeleteSession, setView } = useAppStore.getState()
+  const { createSession } = useAppStore.getState()
+
+  // 按来源分组（桌面 / Telegram / QQ / MCP）的纯投影，不改 store 数据
+  const groups = useMemo(() => groupSessionsByOrigin(sessions), [sessions])
 
   /** 拖拽调整侧边栏宽度：document 级监听，松手即清理（宽度 clamp + 持久化在 store 内） */
   const onResizeStart = useCallback((e: React.MouseEvent) => {
@@ -43,7 +91,7 @@ export default function Sidebar() {
       // 离开设置页 → 丢弃草稿并恢复即时预览的外观/语言（与"取消"按钮同语义）
       st.cancelSettings()
     }
-    setView(view === 'settings' ? 'chat' : 'settings')
+    useAppStore.getState().setView(view === 'settings' ? 'chat' : 'settings')
   }
 
   // 收起态：窄 rail，只保留展开按钮 + 图标化的"新建 / 设置"
@@ -72,6 +120,8 @@ export default function Sidebar() {
     )
   }
 
+  const hasExternalSessions = groups.some(g => g.origin !== 'renderer')
+
   return (
     <aside className="sidebar">
       {/* 品牌 + 收起按钮 */}
@@ -93,35 +143,26 @@ export default function Sidebar() {
         {t('sidebar.newSession')}
       </button>
 
-      {/* 会话列表 */}
+      {/* 会话列表：按来源分组（外部来源存在时才显示分组标题，避免纯桌面会话也出现"桌面"标题） */}
       <nav className="session-nav" aria-label={t('app.name')}>
         {sessions.length === 0 && (
           <p className="sidebar-empty">{t('sidebar.noSessions')}</p>
         )}
-        {sessions.map((s) => {
-          const running = runningIds.has(s.id)
-          return (
-            <button
-              key={s.id}
-              className={s.id === activeSessionId ? 'active' : ''}
-              title={running ? t('sidebar.running') : undefined}
-              onClick={() => setActiveSession(s.id)}
-            >
-              {running
-                ? <span className="session-spinner" />
-                : <MessageSquare size={15} />}
-              <span className="session-title">{s.title}</span>
-              <span
-                className="session-delete"
-                title={t('sidebar.deleteSession')}
-                // 弹确认框（防误操作），确认后才真正删除
-                onClick={(e) => { e.stopPropagation(); requestDeleteSession(s.id) }}
-              >
-                <Trash2 size={12} />
-              </span>
-            </button>
-          )
-        })}
+        {groups.map(group => (
+          <div key={group.origin} className="sidebar-group">
+            {hasExternalSessions && (
+              <p className="sidebar-group-label">{t(`sidebar.groups.${group.origin}`)}</p>
+            )}
+            {group.sessions.map(session => (
+              <SessionRow
+                key={session.id}
+                session={session}
+                active={session.id === activeSessionId}
+                running={runningIds.has(session.id)}
+              />
+            ))}
+          </div>
+        ))}
       </nav>
 
       {/* 底部设置入口 */}

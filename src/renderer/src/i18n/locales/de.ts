@@ -19,7 +19,13 @@ export default {
     settings: 'Einstellungen',
     collapse: 'Seitenleiste einklappen',
     expand: 'Seitenleiste ausklappen',
-    resize: 'Ziehen, um Breite zu ändern'
+    resize: 'Ziehen, um Breite zu ändern',
+    groups: {
+      renderer: 'Desktop',
+      telegram: 'Telegram',
+      qq: 'QQ',
+      mcp: 'MCP'
+    }
   },
   chat: {
     createSessionToStart: 'Erstellen Sie eine Sitzung, um zu chatten',

@@ -83,6 +83,9 @@ export interface UserMessageInput {
   images?: string[]
 }
 
+/** 会话来源：桌面 UI 创建为 renderer，外部适配器（Telegram/QQ/MCP）为对应 channel */
+export type SessionOrigin = 'renderer' | 'telegram' | 'qq' | 'mcp'
+
 /** 会话 */
 export interface Session {
   id: string
@@ -91,6 +94,11 @@ export interface Session {
   updatedAt: number
   messageCount: number
   workspacePath?: string
+  /**
+   * 会话来源。由 store 从 bot_sessions 表派生（该表 UNIQUE(session_id)，
+   * 每个外部会话至多一个 channel），不是独立持久化状态；未绑定的会话恒为 'renderer'。
+   */
+  origin: SessionOrigin
   /** Avatar windows are opt-in per session. */
   avatarEnabled: boolean
   avatarModelId?: string

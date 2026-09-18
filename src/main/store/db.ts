@@ -4,7 +4,7 @@
 import Database from 'better-sqlite3'
 import * as path from 'node:path'
 import { app } from 'electron'
-import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory } from '../../shared/types'
+import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory, SessionOrigin } from '../../shared/types'
 import { normalizeQQBotConfig } from '../../shared/qq'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
@@ -34,19 +34,30 @@ export function initDatabase(): void {
 // Session 操作
 // ============================================================
 
+/**
+ * bot_sessions.channel 到 SessionOrigin 的归一化。channel 是自由字符串
+ * （未来新平台会带新值），只放行已知来源，未知值回退 renderer，
+ * 避免把数据库里的任意文本扩散进 UI 分组逻辑。
+ */
+function normalizeSessionOrigin(channel: unknown): SessionOrigin {
+  return channel === 'telegram' || channel === 'qq' || channel === 'mcp' ? channel : 'renderer'
+}
+
 export function createSession(title = 'New Session', workspacePath?: string): Session {
   const id = generateId()
   const now = Date.now()
   db!.prepare('INSERT INTO sessions (id, title, created_at, updated_at, workspace_path) VALUES (?, ?, ?, ?, ?)')
     .run(id, title, now, now, workspacePath || null)
-  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, avatarEnabled: false, ttsEnabled: false }
+  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, origin: 'renderer', avatarEnabled: false, ttsEnabled: false }
 }
 
 export function getSessions(): Session[] {
+  // bot_sessions 对 session_id 有 UNIQUE 约束，1:1 JOIN 不会放大行数
   const rows = db!.prepare(`
-    SELECT s.*, COUNT(m.id) as msg_count
+    SELECT s.*, COUNT(m.id) as msg_count, b.channel as origin
     FROM sessions s
     LEFT JOIN messages m ON m.session_id = s.id
+    LEFT JOIN bot_sessions b ON b.session_id = s.id
     GROUP BY s.id
     ORDER BY s.updated_at DESC
   `).all() as any[]
@@ -57,6 +68,7 @@ export function getSessions(): Session[] {
     updatedAt: r.updated_at,
     messageCount: r.msg_count,
     workspacePath: r.workspace_path || undefined,
+    origin: normalizeSessionOrigin(r.origin),
     avatarEnabled: r.avatar_enabled === 1,
     avatarModelId: r.avatar_model_id || undefined,
     ttsEnabled: r.tts_enabled === 1
@@ -64,7 +76,12 @@ export function getSessions(): Session[] {
 }
 
 export function getSession(id: string): Session | null {
-  const row = db!.prepare('SELECT * FROM sessions WHERE id = ?').get(id) as any
+  const row = db!.prepare(`
+    SELECT s.*, b.channel as origin
+    FROM sessions s
+    LEFT JOIN bot_sessions b ON b.session_id = s.id
+    WHERE s.id = ?
+  `).get(id) as any
   if (!row) return null
   const msgCount = (db!.prepare('SELECT COUNT(*) as c FROM messages WHERE session_id = ?').get(id) as any).c
   return {
@@ -74,6 +91,7 @@ export function getSession(id: string): Session | null {
     updatedAt: row.updated_at,
     messageCount: msgCount,
     workspacePath: row.workspace_path || undefined,
+    origin: normalizeSessionOrigin(row.origin),
     avatarEnabled: row.avatar_enabled === 1,
     avatarModelId: row.avatar_model_id || undefined,
     ttsEnabled: row.tts_enabled === 1
@@ -129,7 +147,7 @@ export function getOrCreateBotSession(
   title: string
 ): Session {
   const existing = db!.prepare(`
-    SELECT s.* FROM bot_sessions b
+    SELECT s.*, b.channel as origin FROM bot_sessions b
     JOIN sessions s ON s.id = b.session_id
     WHERE b.channel = ? AND b.account_id = ? AND b.conversation_id = ?
   `).get(channel, accountId, conversationId) as any
@@ -142,6 +160,7 @@ export function getOrCreateBotSession(
       updatedAt: existing.updated_at,
       messageCount: msgCount,
       workspacePath: existing.workspace_path || undefined,
+      origin: normalizeSessionOrigin(existing.origin),
       avatarEnabled: existing.avatar_enabled === 1,
       avatarModelId: existing.avatar_model_id || undefined,
       ttsEnabled: existing.tts_enabled === 1
@@ -154,7 +173,8 @@ export function getOrCreateBotSession(
       INSERT INTO bot_sessions (channel, account_id, conversation_id, session_id)
       VALUES (?, ?, ?, ?)
     `).run(channel, accountId, conversationId, session.id)
-    return session
+    // createSession 的 origin 默认 renderer，绑定后以实际 channel 覆写
+    return { ...session, origin: normalizeSessionOrigin(channel) }
   })()
 }
 

@@ -52,6 +52,7 @@ const store: SessionStore = {
     if (!session) {
       session = {
         id: key, title, createdAt: Date.now(), updatedAt: Date.now(), messageCount: 0,
+        origin: channel === 'telegram' || channel === 'qq' || channel === 'mcp' ? channel : 'renderer',
         avatarEnabled: false, ttsEnabled: false
       }
       sessions.set(key, session)

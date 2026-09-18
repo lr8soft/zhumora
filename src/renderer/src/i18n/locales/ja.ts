@@ -19,7 +19,13 @@ export default {
     settings: '設定',
     collapse: 'サイドバーを折りたたむ',
     expand: 'サイドバーを展開する',
-    resize: 'ドラッグで幅を調整'
+    resize: 'ドラッグで幅を調整',
+    groups: {
+      renderer: 'デスクトップ',
+      telegram: 'Telegram',
+      qq: 'QQ',
+      mcp: 'MCP'
+    }
   },
   chat: {
     createSessionToStart: 'チャットを開始するにはセッションを作成してください',

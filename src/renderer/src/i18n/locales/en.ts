@@ -19,7 +19,13 @@ export default {
     settings: 'Settings',
     collapse: 'Collapse sidebar',
     expand: 'Expand sidebar',
-    resize: 'Drag to resize sidebar'
+    resize: 'Drag to resize sidebar',
+    groups: {
+      renderer: 'Desktop',
+      telegram: 'Telegram',
+      qq: 'QQ',
+      mcp: 'MCP'
+    }
   },
   chat: {
     createSessionToStart: 'Create a session to start chatting',

@@ -33,29 +33,64 @@
   text-rendering: optimizeLegibility;
 }
 
+/* 深色主题对齐 Codex desktop 深色：近黑中性灰、层级靠亮度差（chrome < bg < surface）、
+   选中/悬停用中性灰而非强调色；强调蓝只留给发送、焦点和少量功能标识。 */
 :root[data-theme='dark'] {
   color-scheme: dark;
-  --app-color-primary: #50a9d7;
-  --app-color-primary-strong: #83c7e8;
-  --app-color-primary-soft: #153647;
-  --app-color-bg: #15191e;
-  --app-color-surface: #1d2228;
-  --app-color-surface-solid: #1d2228;
-  --app-color-border: #30363d;
-  --app-color-border-strong: #4b5661;
-  --app-color-text: #eef1f4;
-  --app-color-text-soft: #b0b9c2;
-  --app-color-text-mute: #7c8792;
+  --app-color-primary: #3b82f6;
+  --app-color-primary-strong: #2f6ad9;
+  --app-color-primary-soft: #18253f;
+  --app-color-bg: #0f1012;
+  --app-color-surface: #1e2124;
+  --app-color-surface-solid: #1e2124;
+  --app-color-border: #2a2d31;
+  --app-color-border-strong: #3a3e44;
+  --app-color-text: #e8eaed;
+  --app-color-text-soft: #a6acb4;
+  --app-color-text-mute: #70757c;
   --app-color-danger: #ef6674;
   --app-color-success: #56c99c;
   --app-color-warn: #e0a94e;
   --app-color-info: #a78bfa;
   --app-color-cyan: #4dd0e1;
-  --app-muted-bg: #242a31;
-  --app-active-bg: #18323f;
-  --app-chrome-bg: #191e23;
-  --app-shadow-panel: 0 12px 28px rgba(0, 0, 0, 0.34);
+  --app-muted-bg: #24262a;
+  --app-active-bg: #2a2d32;
+  --app-chrome-bg: #17181b;
+  --app-shadow-panel: 0 12px 28px rgba(0, 0, 0, 0.5);
 }
+
+/* ---------- 深色细节覆写（Codex：层级更分明、强调色收敛） ---------- */
+:root[data-theme='dark'] .window-titlebar { background: #101113; }
+/* 侧栏比主区更深一级，选中/激活用中性灰 pill，不用蓝色底 */
+:root[data-theme='dark'] .sidebar { background: #131417; border-right-color: #1f2226; }
+:root[data-theme='dark'] .session-nav button:hover { background: #1e2125; }
+:root[data-theme='dark'] .session-nav button.active { background: #26292e; }
+:root[data-theme='dark'] .session-nav button.active > svg { color: var(--app-color-text-soft); }
+:root[data-theme='dark'] .session-nav button.active span { color: var(--app-color-text); font-weight: 600; }
+:root[data-theme='dark'] .sidebar-settings:hover, :root[data-theme='dark'] .sidebar-rail-button:hover { background: #1e2125; }
+:root[data-theme='dark'] .sidebar-settings.active { background: #26292e; color: var(--app-color-text); }
+:root[data-theme='dark'] .sidebar-rail-button.active { background: #26292e; color: var(--app-color-text); }
+/* 新建会话：Codex 的"新对话"是普通行而非彩色按钮，深色下收敛为中性按钮 */
+:root[data-theme='dark'] .new-session-button { color: #e8eaed; border-color: #33373d; background: #22252a; }
+:root[data-theme='dark'] .new-session-button:hover { background: #2a2e34; border-color: #3a3e44; }
+/* composer 卡片：比主区亮一级、描边更淡；聚焦只加深描边不着蓝色 */
+:root[data-theme='dark'] .composer { background: #202327; border-color: #2f3339; }
+:root[data-theme='dark'] .composer:focus-within { border-color: #41464e; }
+/* 用户消息气泡：中性深灰底，替代浅色蓝底 */
+:root[data-theme='dark'] .message-user .bubble { background: #26292e; border-color: #34383e; }
+/* 发送按钮：Codex 的饱和蓝（唯一大面积强调色） */
+:root[data-theme='dark'] .composer-send { background: #4a8cf7; }
+:root[data-theme='dark'] .composer-send:hover:not(:disabled) { background: #5f9af8; }
+:root[data-theme='dark'] .composer-send.stop { background: #e5545f; }
+:root[data-theme='dark'] .composer-send.stop:hover { background: #ef6674; }
+/* 侧栏分组标题（Codex 的"项目"小标题） */
+.sidebar-group-label {
+  padding: 10px 8px 5px; color: var(--app-color-text-mute);
+  font-size: 0.667rem; font-weight: 650; letter-spacing: 0.02em;
+}
+.sidebar-group-label:first-child { padding-top: 2px; }
+.sidebar-group { display: grid; gap: 2px; }
+/* 会话来源图标（Telegram/QQ/MCP 会话）：默认继承行内 svg 的 mute 色 */
 
 /* ---------- 基础 ---------- */
 * { box-sizing: border-box; }
