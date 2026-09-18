@@ -9,12 +9,10 @@ import { ToolCallChainView } from './ToolCallChain'
 
 interface Props {
   message: UIMessage
-  /** 工具调用状态（按 toolCall.id 索引，由 ChatView 计算） */
+  /** 工具调用状态（按 toolCall.id 索引，由 buildTimelineRows 从 role=tool 消息聚合） */
   toolStatuses?: Record<string, 'done' | 'error'>
-  /** 工具调用结果（按 toolCall.id 索引，由 ChatView 从 role=tool 消息聚合，合并进折叠块展示） */
+  /** 工具调用结果（按 toolCall.id 索引，同上聚合，合并进链条节点展示） */
   toolResults?: Record<string, { content: string; isError: boolean }>
-  /** 对本气泡所含工具结果的修订标记；让 React.memo 感知原地更新的状态表。 */
-  toolRevision?: string
   /** 当前会话的重试状态（按会话传入，避免后台并行会话的状态串到前台） */
   retryStatus?: { failedAttempt: number; maxRetries: number }
 }
@@ -44,7 +42,7 @@ function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Prop
     )
   }
 
-  // 工具结果消息：正常路径已合并进工具调用折叠块（ChatView 跳过渲染），
+  // 工具结果消息：正常路径已合并进工具链条节点（timeline 投影跳过单独成行），
   // 走到这里的是孤儿结果（找不到对应 tool_call 消息，如历史清洗后的遗留）
   if (message.role === 'tool') {
     return <ToolResultBlock toolName={message.toolName || message.toolCallId || ''} content={message.content} isError={message.status === 'error'} />

@@ -8,11 +8,11 @@ interface Props {
   row: ToolChainTimelineRow
 }
 
-export function toolStatusClass(status?: 'done' | 'error'): string {
+function toolStatusClass(status?: 'done' | 'error'): string {
   return status === 'done' ? 'done' : status === 'error' ? 'error' : 'running'
 }
 
-export function toolStatusLabel(t: (key: string) => string, status?: 'done' | 'error'): string {
+function toolStatusLabel(t: (key: string) => string, status?: 'done' | 'error'): string {
   return status === 'done'
     ? t('chat.tool.done')
     : status === 'error'
@@ -21,7 +21,7 @@ export function toolStatusLabel(t: (key: string) => string, status?: 'done' | 'e
 }
 
 /** 参数 + 返回信息的展开体，链详情面板使用。 */
-export function ToolCallBody({ argumentsText, result }: {
+function ToolCallBody({ argumentsText, result }: {
   argumentsText?: string
   result?: { content: string; isError: boolean }
 }) {
@@ -48,7 +48,7 @@ export function ToolCallBody({ argumentsText, result }: {
 
 /**
  * 工具调用链条（横向节点行 + 链下固定详情面板）。
- * - 节点状态点：running=闪烁警告色 / done=绿 / error=红（与竖排 ToolCallRow 同语义）
+ * - 节点状态点：running=闪烁警告色 / done=绿 / error=红
  * - 默认横向滚动跟随最新节点（最右）；用户左翻后新节点不强制抢回位置
  * - 点击节点在链下方固定详情面板中显示该次调用的参数 + 返回信息
  * 展开态、选中节点、横向滚动位置都是组件的短生命周期 UI 状态，不进 store。

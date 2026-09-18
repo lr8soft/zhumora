@@ -89,7 +89,6 @@ const TimelineRowView = React.memo(function TimelineRowView({ row }: { row: Time
         message={row.message}
         toolStatuses={row.toolStatuses}
         toolResults={row.toolResults}
-        toolRevision={row.toolRevision}
         retryStatus={row.retryStatus}
       />
     )
