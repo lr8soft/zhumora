@@ -62,25 +62,29 @@ export class McpServerManager {
 
   /** 设置保存后的增量应用：等价（或从禁用态切到禁用态）时不产生重启。 */
   async applySettings(next: { mcpServer: McpServerSettings }, previous: { mcpServer: McpServerSettings }): Promise<void> {
-    if (equivalentMcpServerSettings(next.mcpServer, previous.mcpServer)) return
+    if (equivalentMcpServerSettings(next.mcpServer, previous.mcpServer)
+      && this.matchesDesiredState(normalizeMcpServerSettings(next.mcpServer))) return
     await this.configure(next.mcpServer)
   }
 
   /** 按当前设置同步服务器生命周期（幂等；等价设置不产生重启）。 */
   async configure(settings: McpServerSettings): Promise<void> {
     const normalized = normalizeMcpServerSettings(settings)
-    if (equivalentMcpServerSettings(normalized, this.settings) && this.state !== 'failed') {
+    if (equivalentMcpServerSettings(normalized, this.settings) && this.matchesDesiredState(normalized)) {
       this.service.updateSettings(normalized)
       return
     }
     this.settings = normalized
-    this.service.updateSettings(normalized)
     if (!normalized.enabled) {
-      await this.stopTransport()
+      await this.stopRuntime()
+      this.service.updateSettings(normalized)
+      this.effectiveToken = null
       this.setState('stopped')
       return
     }
-    await this.stopTransport()
+    // Reconfiguration invalidates protocol sessions and their conversation keys.
+    // Stop accepting requests and abort/settle in-flight delegated tasks together.
+    await this.stopRuntime()
     const token = normalized.token || randomBytes(24).toString('base64url')
     // token 为空（自动生成）时不回写 settings 表：值只存在于运行中的传输层，
     // 重启应用会生成新 token，避免把未保存的密钥写进用户配置。
@@ -100,6 +104,7 @@ export class McpServerManager {
       await transport.start()
     } catch (error) {
       this.transport = null
+      this.effectiveToken = null
       this.setState('failed', error)
       throw error
     }
@@ -108,10 +113,19 @@ export class McpServerManager {
   }
 
   async stop(): Promise<void> {
-    await this.service.stop()
-    await this.stopTransport()
+    await this.stopRuntime()
     this.effectiveToken = null
     this.setState('stopped')
+  }
+
+  private async stopRuntime(): Promise<void> {
+    await Promise.all([this.stopTransport(), this.service.stop()])
+  }
+
+  private matchesDesiredState(settings: McpServerSettings): boolean {
+    return settings.enabled
+      ? this.state === 'connecting' || this.state === 'connected'
+      : this.state === 'stopped'
   }
 
   private async stopTransport(): Promise<void> {

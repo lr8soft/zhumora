@@ -110,10 +110,12 @@ export class McpInboundService {
       // 请求已不在本任务挂起（已被 UI 先答 / 运行结束）：不伪造错误，回当前状态。
       return task.status()
     }
-    if (allow && !this.canExternalDecide(permission)) {
+    if (!this.canExternalDecide(permission)) {
       // 硬边界：外部不可裁决（delegate 关闭 / dangerous / alwaysConfirm）。
+      // 批准和拒绝都属于裁决；两者都必须留给桌面 UI，不能让外部通过
+      // allow=false 绕过权限所有权。
       // 不触碰 broker——请求保持挂起，由 Zhumora 桌面 UI 的人类裁决。
-      log('warn', `MCP permission ${permissionId}: ${permission.toolName} (${permission.level}) cannot be approved by an external orchestrator; left to the user`)
+      log('warn', `MCP permission ${permissionId}: ${permission.toolName} (${permission.level}) cannot be decided by an external orchestrator; left to the user`)
       return this.status(conversationKey)
     }
     if (reason) log('info', `MCP permission ${permissionId} ${allow ? 'approved' : 'denied'} by orchestrator: ${reason.slice(0, 200)}`)
@@ -135,7 +137,7 @@ export class McpInboundService {
   }
 
   /** 仅 delegate 模式 + normal 级 + 非 alwaysConfirm 可被外部裁决（taskProtocol 硬边界）。 */
-  private canExternalDecide(permission: McpTaskPermission): boolean {
+  canExternalDecide(permission: McpTaskPermission): boolean {
     return this.settings.permissionMode === 'delegate'
       && delegateAllowsExternal(permission.level, this.registry.alwaysConfirm(permission.toolName))
   }

@@ -19,7 +19,6 @@ export const DEFAULT_MCP_SERVER_SETTINGS: McpServerInboundConfig = {
   enabled: false,
   token: '',
   clientLabel: 'MCP',
-  protocolVersion: '2025-06-18',
   permissionMode: 'ui',
   approveMode: 'manual',
   port: 0
@@ -35,9 +34,6 @@ export function normalizeMcpServerSettings(input: unknown): McpServerInboundConf
     enabled: raw.enabled === true,
     token: typeof raw.token === 'string' ? raw.token.trim() : '',
     clientLabel: label && LABEL_RE.test(label) ? label : 'MCP',
-    protocolVersion: typeof raw.protocolVersion === 'string' && raw.protocolVersion.trim()
-      ? raw.protocolVersion.trim().slice(0, 32)
-      : DEFAULT_MCP_SERVER_SETTINGS.protocolVersion,
     permissionMode: raw.permissionMode === 'delegate' ? 'delegate' : 'ui',
     approveMode: raw.approveMode === 'auto' || raw.approveMode === 'full' ? raw.approveMode : 'manual',
     port: typeof raw.port === 'number' && Number.isInteger(raw.port) && raw.port >= 0 && raw.port <= 65535
@@ -53,7 +49,6 @@ export function equivalentMcpServerSettings(left: McpServerInboundConfig, right:
   return a.enabled === b.enabled
     && a.token === b.token
     && a.clientLabel === b.clientLabel
-    && a.protocolVersion === b.protocolVersion
     && a.permissionMode === b.permissionMode
     && a.approveMode === b.approveMode
     && a.port === b.port

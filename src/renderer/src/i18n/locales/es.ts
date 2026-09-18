@@ -218,7 +218,7 @@ export default {
       access: 'Endpoint y acceso',
       accessHint: 'Solo loopback (127.0.0.1). Los clientes se autentican con el token Bearer.',
       port: 'Puerto',
-      portHint: '0 = automático. Un puerto fijo da a los clientes una dirección estable; un puerto en uso vuelve a un puerto automático.',
+      portHint: '0 = automático. Un puerto fijo da a los clientes una dirección estable; el inicio falla si el puerto está en uso.',
       token: 'Token de acceso',
       tokenPlaceholder: 'vacío = se genera en cada arranque',
       tokenHint: 'Los clientes lo usan para autenticarse. «Generar» escribe un token fijo (se mantiene entre reinicios tras guardar).',

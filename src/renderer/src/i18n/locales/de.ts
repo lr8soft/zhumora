@@ -218,7 +218,7 @@ export default {
       access: 'Endpunkt und Zugriff',
       accessHint: 'Nur Loopback (127.0.0.1). Clients authentifizieren sich mit dem Bearer-Token.',
       port: 'Port',
-      portHint: '0 = automatisch. Ein fester Port gibt Clients eine stabile Adresse; ein belegter Port wechselt zu einem freien Port.',
+      portHint: '0 = automatisch. Ein fester Port gibt Clients eine stabile Adresse; bei einem belegten Port schlägt der Start fehl.',
       token: 'Zugriffstoken',
       tokenPlaceholder: 'leer = bei jedem Start automatisch generiert',
       tokenHint: 'Clients nutzen es zur Authentifizierung. „Generieren“ schreibt ein festes Token (bleibt nach dem Speichern über Neustarts erhalten).',

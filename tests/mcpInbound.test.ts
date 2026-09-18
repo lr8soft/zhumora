@@ -5,6 +5,7 @@
 // 结构约束（AGENTS.md）：不引入 Electron——service 只依赖 SessionService API
 // 与 BotMessageQueue，与 Bot 适配器同一测试模式。
 import assert from 'node:assert/strict'
+import net, { type AddressInfo } from 'node:net'
 import { AgentAbortedError, type AppSettings, type Session, type UIMessage } from '../src/shared/types.ts'
 import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
 import { SessionService, type SessionStore } from '../src/main/agent/sessionService.ts'
@@ -130,7 +131,7 @@ function def(name: string) {
 }
 
 const mcpDefaults = {
-  token: 't', clientLabel: 'Codex', protocolVersion: '2025-06-18', port: 0
+  token: 't', clientLabel: 'Codex', port: 0
 }
 function makeInbound(mode: 'ui' | 'delegate'): McpInboundService {
   return new McpInboundService(
@@ -191,6 +192,10 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   const waiting = task.wait(1000)
   task.settle({ status: 'completed', reply: 'result' })
   assert.deepEqual(await waiting, { status: 'completed', reply: 'result' })
+
+  const nonBlocking = createMcpTaskSession()
+  assert.deepEqual(await nonBlocking.wait(0), { status: 'running' },
+    'wait_ms=0 is a non-blocking status snapshot, not an unbounded waiter')
 
   assert.equal(delegateAllowsExternal('normal', false), true)
   assert.equal(delegateAllowsExternal('dangerous', false), false, 'dangerous is never external-decidable')
@@ -278,6 +283,9 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   const permissionId = (status as { permission: { permissionId: string } }).permission.permissionId
   assert.equal(status.permission?.level, 'normal')
 
+  const externalDenial = inbound.respond('p-ui', permissionId, false, 'external should not decide')
+  assert.equal(externalDenial.status, 'awaiting_permission',
+    'ui mode: external denial is ignored just like external approval')
   const decision = inbound.respond('p-ui', permissionId, true, 'external should not win')
   assert.equal(decision.status, 'awaiting_permission',
     'ui mode: external approval is ignored and the request stays with the human UI')
@@ -321,6 +329,9 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   const permissionId = (status as { permission: { permissionId: string } }).permission.permissionId
   assert.equal(status.permission?.level, 'dangerous')
 
+  const externalDenial = inbound.respond('p-dangerous', permissionId, false, 'please deny')
+  assert.equal(externalDenial.status, 'awaiting_permission',
+    'delegate mode: dangerous denial also stays with the human')
   const decision = inbound.respond('p-dangerous', permissionId, true, 'please')
   assert.equal(decision.status, 'awaiting_permission',
     'delegate mode: dangerous tools always wait for the human, even when the client approves')
@@ -347,7 +358,7 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   const token = 'transport-test-token'
   const transport = createMcpTransport({
     service: inbound,
-    getSettings: () => ({ enabled: true, token, clientLabel: 'T', protocolVersion: '2025-06-18', permissionMode: 'ui', approveMode: 'manual', port: 0 }),
+    getSettings: () => ({ enabled: true, token, clientLabel: 'T', permissionMode: 'ui', approveMode: 'manual', port: 0 }),
     port: () => 0
   })
   await transport.start()
@@ -360,6 +371,7 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
       method: 'POST',
       headers: {
         'Content-Type': 'application/json',
+        'Accept': 'application/json, text/event-stream',
         'Authorization': `Bearer ${token}`,
         ...headers
       },
@@ -375,21 +387,23 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   // initialize：响应必须回带 Mcp-Session-Id（客户端后续请求依赖它关联会话）
   const initResponse = await rpc({
     jsonrpc: '2.0', id: 1, method: 'initialize',
-    params: { protocolVersion: '2025-06-18', clientInfo: { name: 'codex-test' } }
+    params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex-test', version: '1' } }
   })
   assert.equal(initResponse.status, 200)
   const sessionHeader = initResponse.headers.get('mcp-session-id')
   assert.ok(sessionHeader, 'initialize returns Mcp-Session-Id')
-  const initBody = (await initResponse.json()) as { result: { serverInfo: { name: string }; instructions: string } }
+  const initBody = (await initResponse.json()) as { result: { protocolVersion: string; serverInfo: { name: string }; instructions: string } }
+  assert.equal(initBody.result.protocolVersion, '2025-06-18', 'the SDK negotiates a supported protocol version')
   assert.equal(initBody.result.serverInfo.name, 'zhumora')
   assert.ok(initBody.result.instructions.includes('zhumora_chat'))
+  const sessionHeaders = { 'Mcp-Session-Id': sessionHeader, 'MCP-Protocol-Version': '2025-06-18' }
 
   // 通知（无 id）→ 202 无 body
-  const notify = await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' }, { 'Mcp-Session-Id': sessionHeader })
+  const notify = await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' }, sessionHeaders)
   assert.equal(notify.status, 202)
 
   // tools/list
-  const listResponse = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, { 'Mcp-Session-Id': sessionHeader })
+  const listResponse = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, sessionHeaders)
   const listBody = (await listResponse.json()) as { result: { tools: { name: string }[] } }
   assert.deepEqual(listBody.result.tools.map(t => t.name).sort(),
     ['zhumora_chat', 'zhumora_respond', 'zhumora_status'])
@@ -398,39 +412,88 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   const statusResponse = await rpc({
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: 'zhumora_status', arguments: {} }
-  }, { 'Mcp-Session-Id': sessionHeader })
+  }, sessionHeaders)
   const statusBody = (await statusResponse.json()) as { result: { content: { text: string }[] } }
   assert.equal(JSON.parse(statusBody.result.content[0].text).status, 'busy')
 
   // 未知方法 → JSON-RPC -32601
-  const unknown = await rpc({ jsonrpc: '2.0', id: 4, method: 'nope' }, { 'Mcp-Session-Id': sessionHeader })
+  const unknown = await rpc({ jsonrpc: '2.0', id: 4, method: 'nope' }, sessionHeaders)
   const unknownBody = (await unknown.json()) as { error: { code: number } }
   assert.equal(unknownBody.error.code, -32601)
 
   // 完整委托链路：zhumora_chat 走 SessionService → complete 回传
-  setTimeout(() => releaseSession('mcp:inbound:codex-test'), 80)
+  const firstSessionId = `mcp:inbound:${sessionHeader}`
+  setTimeout(() => releaseSession(firstSessionId), 80)
   const chatResponse = await rpc({
     jsonrpc: '2.0', id: 5, method: 'tools/call',
     params: { name: 'zhumora_chat', arguments: { message: 'hello from transport', wait_ms: 5000 } }
-  }, { 'Mcp-Session-Id': sessionHeader })
+  }, sessionHeaders)
   const chatBody = (await chatResponse.json()) as { result: { content: { text: string }[] } }
   const chatResult = JSON.parse(chatBody.result.content[0].text)
   assert.equal(chatResult.status, 'completed')
-  assert.equal(chatResult.reply, `done:mcp:inbound:codex-test`, 'clientInfo.name is the stable external conversation key')
+  assert.equal(chatResult.reply, `done:${firstSessionId}`, 'Mcp-Session-Id is the stable external conversation key')
 
   // 同一会话头再来一条 → 复用同一 Zhumora session（消息累计进同一历史）
   // 第二次运行开始后才注册 release，用轮询释放保证时序
   const secondPromise = rpc({
     jsonrpc: '2.0', id: 6, method: 'tools/call',
     params: { name: 'zhumora_chat', arguments: { message: 'second message', wait_ms: 5000 } }
-  }, { 'Mcp-Session-Id': sessionHeader })
-  for (let i = 0; i < 200 && !releases.has('mcp:inbound:codex-test'); i++) await new Promise(r => setTimeout(r, 10))
-  releaseSession('mcp:inbound:codex-test')
+  }, sessionHeaders)
+  for (let i = 0; i < 200 && !releases.has(firstSessionId); i++) await new Promise(r => setTimeout(r, 10))
+  releaseSession(firstSessionId)
   const second = await secondPromise
   const secondResult = JSON.parse(((await second.json()) as { result: { content: { text: string }[] } }).result.content[0].text)
   assert.equal(secondResult.status, 'completed')
-  const history = service.getMessages('mcp:inbound:codex-test')
+  const history = service.getMessages(firstSessionId)
   assert.equal(history.filter(m => m.role === 'user').length, 2, 'both delegated messages share one session history')
+
+  // 同一个 clientInfo.name 建立第二个 MCP session：必须隔离，不能按客户端名称串会话。
+  const secondInit = await rpc({
+    jsonrpc: '2.0', id: 7, method: 'initialize',
+    params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'codex-test', version: '1' } }
+  })
+  const secondSessionHeader = secondInit.headers.get('mcp-session-id')
+  assert.ok(secondSessionHeader && secondSessionHeader !== sessionHeader,
+    'each initialize gets an independent MCP session even for the same client name')
+  const secondSessionHeaders = { 'Mcp-Session-Id': secondSessionHeader, 'MCP-Protocol-Version': '2025-06-18' }
+  await rpc({ jsonrpc: '2.0', method: 'notifications/initialized' }, secondSessionHeaders)
+
+  // wait_ms=0 必须立即返回 running；两个 session 可以同时启动，不互相 busy。
+  const nonBlockingCall = (headers: Record<string, string>, message: string, id: number) => Promise.race([
+    rpc({
+      jsonrpc: '2.0', id, method: 'tools/call',
+      params: { name: 'zhumora_chat', arguments: { message, wait_ms: 0 } }
+    }, headers),
+    new Promise<never>((_, reject) => setTimeout(() => reject(new Error('wait_ms=0 did not return')), 500))
+  ])
+  const [firstRunningResponse, secondRunningResponse] = await Promise.all([
+    nonBlockingCall(sessionHeaders, 'parallel one', 8),
+    nonBlockingCall(secondSessionHeaders, 'parallel two', 9)
+  ])
+  const firstRunning = JSON.parse(((await firstRunningResponse.json()) as { result: { content: { text: string }[] } }).result.content[0].text)
+  const secondRunning = JSON.parse(((await secondRunningResponse.json()) as { result: { content: { text: string }[] } }).result.content[0].text)
+  assert.equal(firstRunning.status, 'running')
+  assert.equal(secondRunning.status, 'running')
+  const secondSessionId = `mcp:inbound:${secondSessionHeader}`
+  await releaseWhenReady(firstSessionId)
+  await releaseWhenReady(secondSessionId)
+  assert.equal((await awaitTerminal(inbound, sessionHeader)).status, 'completed')
+  assert.equal((await awaitTerminal(inbound, secondSessionHeader)).status, 'completed')
+
+  // 非 initialize 请求必须携带一个仍然有效的 session id。
+  assert.equal((await rpc({ jsonrpc: '2.0', id: 10, method: 'tools/list' })).status, 400)
+  assert.equal((await rpc(
+    { jsonrpc: '2.0', id: 11, method: 'tools/list' },
+    { 'Mcp-Session-Id': 'unknown', 'MCP-Protocol-Version': '2025-06-18' }
+  )).status, 404)
+
+  // DELETE 终止 session 后，旧 session id 立即失效并从路由表清理。
+  const deleted = await fetch(base, {
+    method: 'DELETE',
+    headers: { Authorization: `Bearer ${token}`, ...secondSessionHeaders }
+  })
+  assert.equal(deleted.status, 200)
+  assert.equal((await rpc({ jsonrpc: '2.0', id: 12, method: 'tools/list' }, secondSessionHeaders)).status, 404)
 
   await transport.stop()
   assert.equal(transport.status(), 'stopped')
@@ -441,9 +504,59 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
 // ---------- manager：生命周期（默认关闭 / 自动 token 生效且可鉴权 / token 变更重启） ----------
 
 {
+  // 应用启动时 manager 已由数据库配置构造，随后 configure 会再次收到同一对象。
+  // 配置等价不能掩盖“enabled 但 runtime 仍 stopped”的状态差异。
+  const enabledAtStartup = {
+    enabled: true, token: 'startup-token', clientLabel: 'Codex',
+    permissionMode: 'ui' as const, approveMode: 'manual' as const, port: 0
+  }
+  const manager = new McpServerManager(
+    service,
+    new BotSessionAdapter({ sessions: service }),
+    permissions,
+    sharedRegistry,
+    enabledAtStartup
+  )
+  await manager.configure(enabledAtStartup)
+  assert.equal(manager.status().state, 'connected',
+    'an enabled persisted config starts even when it is semantically equal to constructor settings')
+  assert.ok(manager.status().url)
+  await manager.stop()
+}
+
+{
+  // 固定端口是客户端配置的一部分；占用时必须明确失败，不能静默漂移到随机端口。
+  const blocker = net.createServer()
+  await new Promise<void>((resolve, reject) => {
+    blocker.once('error', reject)
+    blocker.listen(0, '127.0.0.1', () => resolve())
+  })
+  const occupiedPort = (blocker.address() as AddressInfo).port
+  const disabled = {
+    enabled: false, token: 'fixed-token', clientLabel: 'Codex',
+    permissionMode: 'ui' as const, approveMode: 'manual' as const, port: occupiedPort
+  }
+  const manager = new McpServerManager(
+    service,
+    new BotSessionAdapter({ sessions: service }),
+    permissions,
+    sharedRegistry,
+    disabled
+  )
+  await assert.rejects(
+    manager.configure({ ...disabled, enabled: true }),
+    error => (error as NodeJS.ErrnoException).code === 'EADDRINUSE'
+  )
+  assert.equal(manager.status().state, 'failed')
+  assert.equal(manager.status().url, null)
+  await manager.stop()
+  await new Promise<void>(resolve => blocker.close(() => resolve()))
+}
+
+{
   // 固定端口：模拟用户要稳定地址的场景；token 变更在同一端口上验证"旧 token 立即失效"。
   const PORT = 18923
-  const base = { clientLabel: 'Codex', protocolVersion: '2025-06-18', permissionMode: 'ui', approveMode: 'manual' as const }
+  const base = { clientLabel: 'Codex', permissionMode: 'ui', approveMode: 'manual' as const }
   const manager = new McpServerManager(
     service,
     new BotSessionAdapter({ sessions: service }),
@@ -460,8 +573,15 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
       try {
         const res = await fetch(url, {
           method: 'POST',
-          headers: { 'Content-Type': 'application/json', Authorization: `Bearer ${token}` },
-          body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'ping' })
+          headers: {
+            'Content-Type': 'application/json',
+            Accept: 'application/json, text/event-stream',
+            Authorization: `Bearer ${token}`
+          },
+          body: JSON.stringify({
+            jsonrpc: '2.0', id: 1, method: 'initialize',
+            params: { protocolVersion: '2025-06-18', clientInfo: { name: 'manager-test', version: '1' }, capabilities: {} }
+          })
         })
         return res.status
       } catch (error) {

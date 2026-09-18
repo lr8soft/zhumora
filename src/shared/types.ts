@@ -198,8 +198,6 @@ export interface McpServerInboundConfig {
   token: string
   /** 外部客户端会话在侧边栏的显示名前缀。 */
   clientLabel: string
-  /** MCP 协议版本号。 */
-  protocolVersion: string
   /** ui：权限只由桌面 UI 裁决；delegate：外部编排器可裁决 normal 级。 */
   permissionMode: 'ui' | 'delegate'
   /** 外部客户端会话使用的三档工具批准模式。 */

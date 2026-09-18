@@ -201,12 +201,12 @@ Bot 层禁止拥有：
 
 约束：
 
-- 传输是 loopback-only 的 MCP streamable-http 服务（`127.0.0.1` + Bearer token），由 `src/main/mcpServer/transport.ts` 拥有；`zhumora_chat` / `zhumora_respond` / `zhumora_status` 三个工具的 schema 与 JSON-RPC 路由也在该层。
-- 外部 conversation（MCP 协议会话）到 Zhumora session 的映射走 `SessionService.resolveExternalSession('mcp', 'inbound', conversationKey, title)` 存储边界；同一编排器会话永远落到同一 Zhumora session（上下文可累积），不同编排器会话互相隔离。
+- 传输是 loopback-only 的 MCP streamable-http 服务（`127.0.0.1` + Bearer token），由 `src/main/mcpServer/transport.ts` 拥有；Streamable HTTP、JSON-RPC、协议版本协商和 `Mcp-Session-Id` 生命周期使用官方 `@modelcontextprotocol/sdk`，本地代码只负责鉴权、session 路由和 `zhumora_chat` / `zhumora_respond` / `zhumora_status` 工具适配。禁止重新手写一套 MCP 协议状态机。
+- MCP 协议的 `Mcp-Session-Id` 是外部 conversation 的唯一键；不得使用 `clientInfo.name`、客户端名称或缺失 session 时的全局 `default` 代替。未知/过期 session 必须拒绝，DELETE 关闭时清理映射。该 conversation 到 Zhumora session 的映射走 `SessionService.resolveExternalSession('mcp', 'inbound', conversationKey, title)` 存储边界；同一 MCP session 永远落到同一 Zhumora session（上下文可累积），不同 MCP session 互相隔离。
 - 任务状态由 `src/main/agent/taskProtocol.ts` 的 `McpTaskSession` 纯模块拥有：运行中 / 等待权限 / 完成 / 失败 / 中止。`zhumora_chat` 投递消息后至多等待 `wait_ms`，到期返回 `running` 转后台；任务终态保留在会话上，`zhumora_status` 轮询取回。内部子 agent 工具复用同一模块，不复制等待/状态逻辑。
 - 权限呈现者恒注册（`DelegatePermissionPresenter`），两种模式下编排器都能看到 `awaiting_permission`。能否裁决由 `McpInboundService.respond` 的门禁控制：仅 `permissionMode='delegate'` 且工具为 `normal` 级且非 `alwaysConfirm` 时可被外部批准；`dangerous` 与能力边界变更永远留给 Zhumora 桌面 UI 的人类。裁决唯一入口是 `PermissionBroker.respond`，与 UI 呈现者共用 first-response-wins；外部无法裁决的请求保持挂起，不得被伪造为已拒绝。
 - 外部会话使用 `inputSource='external'` 与固定的 `sourcePrompt`（声明对方是编排器而非人）；运行事件经全局 `SessionEventHub` 广播，侧边栏像 Bot 会话一样实时可见。
-- 服务器生命周期（启动/停止/token）归 `McpServerManager`；设置经 `normalizeMcpServerSettings` 归一化，语义等价不重启，token 变化触发重启使旧 token 立即失效。token 留空时自动生成且不回写设置（只存在于运行中的传输层）。
+- 服务器生命周期（启动/停止/token）归 `McpServerManager`；设置经 `normalizeMcpServerSettings` 归一化，语义等价不重启，token 变化触发重启使旧 token 立即失效。token 留空时自动生成且不回写设置（只存在于运行中的传输层）。固定端口被占用时启动失败并向设置页报告，禁止静默切换端口使既有客户端配置失效；端口为 `0` 时才允许自动分配。
 
 ## 6. 会话并发与生命周期
 

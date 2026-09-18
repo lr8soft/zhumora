@@ -99,6 +99,8 @@ export function createMcpTaskSession(): McpTaskSession {
     if (isTerminalMcpTaskStatus(current) || current.status === 'awaiting_permission') {
       return Promise.resolve(current)
     }
+    // 0 是协议层的非阻塞轮询语义；不得创建一个既无 timer、又无终态的 waiter。
+    if (waitMs !== undefined && waitMs <= 0) return Promise.resolve(current)
     return new Promise(resolve => {
       const waiter: TaskWaiter = {
         wake: () => {

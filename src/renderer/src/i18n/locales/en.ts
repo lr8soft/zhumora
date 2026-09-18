@@ -218,7 +218,7 @@ export default {
       access: 'Endpoint and access',
       accessHint: 'Loopback only (127.0.0.1). Clients authenticate with the Bearer token.',
       port: 'Port',
-      portHint: '0 = automatic. A fixed port gives clients a stable address; a busy port falls back to an automatic one.',
+      portHint: '0 = automatic. A fixed port gives clients a stable address; startup fails if that port is already in use.',
       token: 'Access token',
       tokenPlaceholder: 'empty = auto-generated on every start',
       tokenHint: 'Clients use it to authenticate. Click "Generate" to write a fixed token (persists across restarts after saving).',

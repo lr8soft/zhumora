@@ -218,7 +218,7 @@ export default {
       access: 'Point d’accès et accès',
       accessHint: 'Boucle locale uniquement (127.0.0.1). Les clients s’authentifient avec le jeton Bearer.',
       port: 'Port',
-      portHint: '0 = automatique. Un port fixe donne aux clients une adresse stable ; un port occupé bascule sur un port automatique.',
+      portHint: '0 = automatique. Un port fixe donne aux clients une adresse stable ; le démarrage échoue si ce port est occupé.',
       token: 'Jeton d’accès',
       tokenPlaceholder: 'vide = généré à chaque démarrage',
       tokenHint: 'Les clients s’en servent pour s’authentifier. « Générer » écrit un jeton fixe (conservé au-delà des redémarrages après enregistrement).',
