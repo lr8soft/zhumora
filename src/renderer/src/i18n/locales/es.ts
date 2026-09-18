@@ -50,6 +50,7 @@ export default {
     stop: 'Detener',
     send: 'Enviar',
     welcome: 'Escribe un mensaje abajo para iniciar una conversación.',
+    heroPrompt: '¿Qué quieres construir en {{workspace}}?',
     welcomeHint: "El agente puede leer archivos, ejecutar comandos, usar herramientas MCP y comprender imágenes.",
     inputPlaceholder: 'Envía un mensaje... (Enter para enviar, Shift+Enter para nueva línea)',
     workspace: 'Workspace',

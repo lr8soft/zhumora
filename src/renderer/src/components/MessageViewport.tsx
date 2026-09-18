@@ -69,15 +69,30 @@ function MessageViewport({ sessionId }: Props) {
 
 export default React.memo(MessageViewport)
 
-function EmptyConversation() {
+/** 空会话 hero：Codex 的大标题引导（"你想让我们在 X 中构建什么？"，X = 工作目录名） */
+export function EmptyConversationHero({ workspacePath }: { workspacePath?: string }) {
   const { t } = useTranslation()
+  const title = useMemo(() => {
+    const normalized = (workspacePath || '').replace(/[\\/]+$/, '')
+    const name = normalized ? (normalized.split(/[\\/]/).filter(Boolean).pop() || normalized) : ''
+    return name ? t('chat.heroPrompt', { workspace: name }) : t('app.name')
+  }, [workspacePath, t])
   return (
     <div className="chat-empty">
       <img className="empty-mark" src="./logo.png" alt="" />
-      <h2>{t('app.name')}</h2>
-      <p>{t('chat.welcome')}</p>
-      <small>{t('chat.welcomeHint')}</small>
+      <h2>{title}</h2>
+      <p>{t('chat.welcomeHint')}</p>
     </div>
+  )
+}
+
+function EmptyConversation() {
+  const { t } = useTranslation()
+  const sessionId = useAppStore(s => s.activeSessionId)
+  const session = useAppStore(s => s.sessions.find(x => x.id === sessionId))
+  const settings = useAppStore(s => s.settings)
+  return (
+    <EmptyConversationHero workspacePath={session?.workspacePath || settings.workspacePath} />
   )
 }
 

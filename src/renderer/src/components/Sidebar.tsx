@@ -5,6 +5,7 @@ import {
   MessageSquare,
   PanelLeftClose,
   PanelLeftOpen,
+  Pencil,
   Plug,
   Plus,
   Send,
@@ -137,10 +138,11 @@ export default function Sidebar() {
         </button>
       </div>
 
-      {/* 新建会话 */}
+      {/* 新建会话：Codex 的"新对话"普通行 + 右侧 + 徽标（悬停淡入） */}
       <button className="new-session-button" onClick={createSession} title={t('sidebar.newSession')}>
-        <Plus size={15} />
+        <Pencil size={15} />
         {t('sidebar.newSession')}
+        <Plus size={14} className="new-session-plus" />
       </button>
 
       {/* 会话列表：按来源分组（外部来源存在时才显示分组标题，避免纯桌面会话也出现"桌面"标题） */}

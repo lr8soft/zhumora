@@ -50,6 +50,7 @@ export default {
     stop: '停止',
     send: '送信',
     welcome: '下にメッセージを入力して会話を開始してください。',
+    heroPrompt: 'この {{workspace}} で、何を作りたいですか？',
     welcomeHint: "Agent はファイル読み取り、コマンド実行、MCP ツール利用、画像の理解に対応しています。",
     inputPlaceholder: 'メッセージを送信... (Enter で送信、Shift+Enter で改行)',
     workspace: 'ワークスペース',

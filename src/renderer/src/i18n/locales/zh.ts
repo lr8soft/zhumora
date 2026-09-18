@@ -50,6 +50,7 @@ export default {
     stop: '停止',
     send: '发送',
     welcome: '在下方输入消息开始对话。',
+    heroPrompt: '你想让我们在 {{workspace}} 中构建什么？',
     welcomeHint: "Agent 可以读取文件、运行命令、使用 MCP 工具，也能看懂你发的图片。",
     inputPlaceholder: '输入消息... (Enter 发送, Shift+Enter 换行)',
     workspace: '目录',

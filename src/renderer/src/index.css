@@ -4,29 +4,34 @@
    字号全部使用 rem，根字号可由用户选择（默认 15px）。
    ============================================================ */
 
-/* ---------- 设计令牌 ---------- */
+/* ---------- 设计令牌（浅色对齐 Codex desktop：冷中性、层级靠灰阶差） ---------- */
 :root {
   color-scheme: light;
   --app-color-primary: #1389c9;
   --app-color-primary-strong: #076b9f;
   --app-color-primary-soft: #e7f5fb;
-  --app-color-bg: #f5f6f8;
+  --app-color-bg: #ffffff;
   --app-color-surface: #ffffff;
   --app-color-surface-solid: #ffffff;
-  --app-color-border: #e1e5ea;
-  --app-color-border-strong: #b9c4ce;
-  --app-color-text: #18212b;
-  --app-color-text-soft: #596675;
-  --app-color-text-mute: #8994a0;
+  /* 边框要明显深于纯白底，卡片边界必须可感知（Codex 也是可见描边） */
+  --app-color-border: #d9dee3;
+  --app-color-border-strong: #c2c9d0;
+  --app-color-text: #1d2126;
+  --app-color-text-soft: #5b636c;
+  --app-color-text-mute: #8b939c;
   --app-color-danger: #d23b4c;
   --app-color-success: #13875d;
   --app-color-warn: #c18a2e;
   --app-color-info: #7c5cd6;
   --app-color-cyan: #0e9aa7;
-  --app-muted-bg: #f2f4f6;
-  --app-active-bg: #eaf4f8;
-  --app-chrome-bg: #f8f9fa;
+  --app-muted-bg: #f1f3f5;
+  --app-active-bg: #e5eaf0;
+  --app-chrome-bg: #f7f8f9;
   --app-shadow-panel: 0 12px 28px rgba(24, 33, 43, 0.14);
+  /* 卡片（工具链/思考块等）专用浅底：与纯白主区拉开一级 */
+  --app-card-bg: #f8fafb;
+  /* 用户气泡：Codex 的浅蓝 pill（两主题各自定义） */
+  --app-user-bubble-bg: #dcecfb;
   --app-radius-md: 7px;
   font-family: "Segoe UI", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif;
   font-synthesis: none;
@@ -43,39 +48,63 @@
   --app-color-bg: #0f1012;
   --app-color-surface: #1e2124;
   --app-color-surface-solid: #1e2124;
-  --app-color-border: #2a2d31;
-  --app-color-border-strong: #3a3e44;
+  --app-color-border: #343a41;
+  --app-color-border-strong: #4a525b;
   --app-color-text: #e8eaed;
   --app-color-text-soft: #a6acb4;
-  --app-color-text-mute: #70757c;
+  --app-color-text-mute: #7a8088;
   --app-color-danger: #ef6674;
   --app-color-success: #56c99c;
   --app-color-warn: #e0a94e;
   --app-color-info: #a78bfa;
   --app-color-cyan: #4dd0e1;
-  --app-muted-bg: #24262a;
-  --app-active-bg: #2a2d32;
+  --app-muted-bg: #26292e;
+  --app-active-bg: #2d3138;
   --app-chrome-bg: #17181b;
   --app-shadow-panel: 0 12px 28px rgba(0, 0, 0, 0.5);
+  --app-card-bg: #1e2124;
+  --app-user-bubble-bg: #243044;
 }
 
-/* ---------- 深色细节覆写（Codex：层级更分明、强调色收敛） ---------- */
+/* ---------- 浅色细节覆写（Codex：冷白，hover/active 必须有明确可感的对比） ---------- */
+:root:not([data-theme='dark']) .window-titlebar { background: #fbfbfc; }
+:root:not([data-theme='dark']) .sidebar { background: #f7f8f9; border-right-color: #e3e7eb; }
+:root:not([data-theme='dark']) .session-nav button:hover { background: #e9eef4; }
+:root:not([data-theme='dark']) .session-nav button.active { background: #dde5ee; }
+:root:not([data-theme='dark']) .session-nav button.active > svg { color: var(--app-color-text-soft); }
+:root:not([data-theme='dark']) .session-nav button.active span { color: var(--app-color-text); font-weight: 600; }
+:root:not([data-theme='dark']) .sidebar-settings:hover,
+:root:not([data-theme='dark']) .sidebar-rail-button:hover { background: #e9eef4; }
+:root:not([data-theme='dark']) .sidebar-settings.active { background: #dde5ee; color: var(--app-color-text); }
+:root:not([data-theme='dark']) .sidebar-rail-button.active { background: #dde5ee; color: var(--app-color-text); }
+/* composer 卡片：浅灰底 + 可感知描边（Codex 输入区） */
+:root:not([data-theme='dark']) .composer { background: #f5f6f8; border-color: #d3d8dd; }
+:root:not([data-theme='dark']) .composer:focus-within { border-color: var(--app-color-primary); }
+/* 侧栏分组标题（Codex 的"项目"小标题，两主题共用） */
+.sidebar-group-label {
+  padding: 10px 8px 5px; color: var(--app-color-text-mute);
+  font-size: 0.667rem; font-weight: 650; letter-spacing: 0.02em;
+}
+.sidebar-group-label:first-child { padding-top: 2px; }
+.sidebar-group { display: grid; gap: 2px; }
+
+/* ---------- 深色细节覆写（Codex：层级更分明、hover/active 对比必须可感） ---------- */
 :root[data-theme='dark'] .window-titlebar { background: #101113; }
 /* 侧栏比主区更深一级，选中/激活用中性灰 pill，不用蓝色底 */
-:root[data-theme='dark'] .sidebar { background: #131417; border-right-color: #1f2226; }
-:root[data-theme='dark'] .session-nav button:hover { background: #1e2125; }
-:root[data-theme='dark'] .session-nav button.active { background: #26292e; }
+:root[data-theme='dark'] .sidebar { background: #131417; border-right-color: #23272d; }
+:root[data-theme='dark'] .session-nav button:hover { background: #23272d; }
+:root[data-theme='dark'] .session-nav button.active { background: #2e333b; }
 :root[data-theme='dark'] .session-nav button.active > svg { color: var(--app-color-text-soft); }
 :root[data-theme='dark'] .session-nav button.active span { color: var(--app-color-text); font-weight: 600; }
-:root[data-theme='dark'] .sidebar-settings:hover, :root[data-theme='dark'] .sidebar-rail-button:hover { background: #1e2125; }
-:root[data-theme='dark'] .sidebar-settings.active { background: #26292e; color: var(--app-color-text); }
-:root[data-theme='dark'] .sidebar-rail-button.active { background: #26292e; color: var(--app-color-text); }
+:root[data-theme='dark'] .sidebar-settings:hover, :root[data-theme='dark'] .sidebar-rail-button:hover { background: #23272d; }
+:root[data-theme='dark'] .sidebar-settings.active { background: #2e333b; color: var(--app-color-text); }
+:root[data-theme='dark'] .sidebar-rail-button.active { background: #2e333b; color: var(--app-color-text); }
 /* 新建会话：Codex 的"新对话"是普通行而非彩色按钮，深色下收敛为中性按钮 */
 :root[data-theme='dark'] .new-session-button { color: #e8eaed; border-color: #33373d; background: #22252a; }
 :root[data-theme='dark'] .new-session-button:hover { background: #2a2e34; border-color: #3a3e44; }
-/* composer 卡片：比主区亮一级、描边更淡；聚焦只加深描边不着蓝色 */
-:root[data-theme='dark'] .composer { background: #202327; border-color: #2f3339; }
-:root[data-theme='dark'] .composer:focus-within { border-color: #41464e; }
+/* composer 卡片：比主区亮一级、描边可见；聚焦回到强调蓝 */
+:root[data-theme='dark'] .composer { background: #202327; border-color: #3a4149; }
+:root[data-theme='dark'] .composer:focus-within { border-color: var(--app-color-primary); }
 /* 用户消息气泡：中性深灰底，替代浅色蓝底 */
 :root[data-theme='dark'] .message-user .bubble { background: #26292e; border-color: #34383e; }
 /* 发送按钮：Codex 的饱和蓝（唯一大面积强调色） */
@@ -83,13 +112,6 @@
 :root[data-theme='dark'] .composer-send:hover:not(:disabled) { background: #5f9af8; }
 :root[data-theme='dark'] .composer-send.stop { background: #e5545f; }
 :root[data-theme='dark'] .composer-send.stop:hover { background: #ef6674; }
-/* 侧栏分组标题（Codex 的"项目"小标题） */
-.sidebar-group-label {
-  padding: 10px 8px 5px; color: var(--app-color-text-mute);
-  font-size: 0.667rem; font-weight: 650; letter-spacing: 0.02em;
-}
-.sidebar-group-label:first-child { padding-top: 2px; }
-.sidebar-group { display: grid; gap: 2px; }
 /* 会话来源图标（Telegram/QQ/MCP 会话）：默认继承行内 svg 的 mute 色 */
 
 /* ---------- 基础 ---------- */
@@ -139,12 +161,16 @@ h1, h2, h3, p { margin: 0; }
 .brand { display: flex; align-items: center; gap: 10px; padding: 0 8px 14px; }
 .brand-mark { width: 34px; height: 34px; flex: 0 0 auto; display: block; border-radius: 8px; }
 .brand strong { min-width: 0; font-size: 1.133rem; font-weight: 650; line-height: 1.35; }
+/* 新建会话：Codex 的"新对话"是普通行（不加粗填充），右侧 + 徽标悬停淡入 */
 .new-session-button {
-  display: flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px; margin-bottom: 12px;
-  color: #fff; border: 1px solid var(--app-color-primary-strong); border-radius: 6px;
-  background: var(--app-color-primary); font-size: 0.8rem; font-weight: 650; cursor: pointer;
+  position: relative; display: flex; align-items: center; gap: 7px; min-height: 36px; margin-bottom: 6px;
+  padding: 0 10px; color: var(--app-color-text-soft);
+  border: 0; border-radius: 7px; background: transparent;
+  font-size: 0.833rem; font-weight: 550; cursor: pointer; text-align: left;
 }
-.new-session-button:hover { background: var(--app-color-primary-strong); }
+.new-session-button:hover { color: var(--app-color-text); background: var(--app-muted-bg); }
+.new-session-plus { position: absolute; right: 10px; color: var(--app-color-text-mute); opacity: 0; transition: opacity .12s; }
+.new-session-button:hover .new-session-plus { opacity: 1; }
 .session-nav { display: grid; grid-template-columns: minmax(0, 1fr); gap: 2px; flex: 1; min-height: 0; align-content: start; overflow-x: hidden; overflow-y: auto; padding-right: 2px; }
 .session-nav button {
   min-height: 40px; display: flex; align-items: center; gap: 9px;
@@ -157,13 +183,14 @@ h1, h2, h3, p { margin: 0; }
 .session-nav button.active { background: var(--app-active-bg); }
 .session-nav button.active > svg { color: var(--app-color-primary-strong); }
 .session-nav button.active span { color: var(--app-color-text); font-weight: 600; }
+/* 删除按钮常驻可见（hover 增强）：藏起来等于没有，人性化优先 */
 .session-delete {
-  flex: 0 0 auto; width: 20px; height: 20px; display: grid; place-items: center;
+  flex: 0 0 auto; width: 22px; height: 22px; display: grid; place-items: center;
   color: var(--app-color-text-mute); border: 0; border-radius: 4px; background: transparent;
-  opacity: 0; cursor: pointer;
+  opacity: 0.5; cursor: pointer; transition: opacity .12s, color .12s, background .12s;
 }
-.session-nav button:hover .session-delete { opacity: 1; }
-.session-delete:hover { color: var(--app-color-danger); background: var(--app-muted-bg); }
+.session-nav button:hover .session-delete { opacity: 0.9; }
+.session-delete:hover { color: var(--app-color-danger); background: var(--app-muted-bg); opacity: 1; }
 /* 运行中的会话：图标位置显示转圈动画（复用 app-spin，多会话可并行转圈） */
 .session-spinner {
   width: 14px; height: 14px; flex: 0 0 auto; margin: 0 1px;
@@ -212,8 +239,8 @@ h1, h2, h3, p { margin: 0; }
 /* ---------- 聊天视图 ---------- */
 .chat-view { min-width: 0; min-height: 0; display: flex; flex-direction: column; background: var(--app-color-bg); }
 .chat-topbar {
-  height: 52px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
-  gap: 12px; padding: 0 18px; border-bottom: 1px solid var(--app-color-border); background: var(--app-color-bg);
+  height: 56px; flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between;
+  gap: 12px; padding: 0 20px; border-bottom: 1px solid var(--app-color-border); background: var(--app-color-bg);
 }
 .chat-topbar-left { display: flex; align-items: center; gap: 8px; min-width: 0; }
 .chat-session-label { color: var(--app-color-text-mute); font-size: 0.733rem; }
@@ -313,19 +340,19 @@ h1, h2, h3, p { margin: 0; }
 }
 .scroll-to-bottom:hover { color: var(--app-color-primary-strong); border-color: var(--app-color-primary); }
 .scroll-to-bottom:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 2px; }
-.chat-empty { padding: 90px 0 40px; text-align: center; }
-.chat-empty .empty-mark { display: block; width: 52px; height: 52px; margin: 0 auto 14px; border-radius: 12px; }
-.chat-empty h2 { font-size: 1.067rem; font-weight: 650; }
-.chat-empty p { margin-top: 7px; color: var(--app-color-text-soft); font-size: 0.867rem; }
+/* 空会话 hero：Codex 的大标题式引导（标题随工作目录变化，由组件注入 workspace） */
+.chat-empty { padding: 110px 0 40px; text-align: center; }
+.chat-empty .empty-mark { display: block; width: 44px; height: 44px; margin: 0 auto 20px; border-radius: 10px; opacity: 0.85; }
+.chat-empty h2 { font-size: 1.6rem; font-weight: 650; letter-spacing: -0.015em; line-height: 1.45; }
+.chat-empty p { margin-top: 12px; color: var(--app-color-text-mute); font-size: 0.867rem; }
 .chat-empty small { display: block; margin-top: 4px; color: var(--app-color-text-mute); font-size: 0.733rem; }
 
-/* 消息 */
+/* 消息：用户消息为 Codex 的圆角浅蓝 pill，两端对称圆角 */
 .message-user { display: flex; justify-content: flex-end; }
 .message-user .bubble {
-  max-width: 85%; padding: 9px 13px; color: var(--app-color-text);
-  border: 1px solid color-mix(in srgb, var(--app-color-primary) 22%, transparent);
-  border-radius: var(--app-radius-md) var(--app-radius-md) 2px var(--app-radius-md);
-  background: var(--app-color-primary-soft); font-size: 0.933rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
+  max-width: 85%; padding: 8px 14px; color: var(--app-color-text);
+  border-radius: 14px; background: var(--app-user-bubble-bg);
+  font-size: 0.933rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word;
 }
 
 /* 用户消息图片附件 */
@@ -366,7 +393,7 @@ h1, h2, h3, p { margin: 0; }
 .assistant-status.error { color: var(--app-color-danger); font-weight: 600; }
 
 /* 深度思考块（reasoning 内容；默认折叠只显示最新一行，点击展开全文） */
-.thinking-block { overflow: hidden; border: 1px solid color-mix(in srgb, var(--app-color-primary) 18%, var(--app-color-border)); border-radius: 6px; background: color-mix(in srgb, var(--app-color-primary) 3%, var(--app-color-surface)); }
+.thinking-block { overflow: hidden; border: 1px solid color-mix(in srgb, var(--app-color-primary) 35%, var(--app-color-border)); border-radius: 6px; background: color-mix(in srgb, var(--app-color-primary) 6%, var(--app-color-surface)); }
 .thinking-block-header {
   display: flex; align-items: center; gap: 7px; width: 100%; padding: 6px 10px;
   border: 0; background: transparent; cursor: pointer; text-align: left; font-size: 0.733rem;
@@ -394,7 +421,7 @@ h1, h2, h3, p { margin: 0; }
 .tool-call-pre { margin: 0; max-height: 320px; overflow: auto; color: var(--app-color-text-soft); font-family: Consolas, Monaco, monospace; font-size: 0.733rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
 /* 工具调用链（连续纯工具轮聚合为一行横向节点；点击节点在链下展开详情） */
-.tool-chain { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
+.tool-chain { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-card-bg); }
 .tool-chain-scroll { overflow-x: auto; scrollbar-width: thin; }
 .tool-chain-nodes { display: flex; align-items: center; gap: 14px; width: max-content; min-width: 100%; padding: 4px 12px; }
 .tool-chain-node {
@@ -417,7 +444,7 @@ h1, h2, h3, p { margin: 0; }
 .tool-chain-node-name.full { max-width: none; }
 .tool-chain-node-error { flex: 0 0 auto; color: var(--app-color-danger); }
 /* 链下固定详情面板：只显示选中节点的参数 + 返回 */
-.tool-chain-detail { margin-top: 6px; overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
+.tool-chain-detail { margin-top: 6px; overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-card-bg); }
 .tool-chain-detail-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px 0; font-size: 0.733rem; }
 .tool-chain-detail .tool-call-body { border-top: 0; }
 
@@ -441,7 +468,10 @@ h1, h2, h3, p { margin: 0; }
  *        ├─ 图片预览 / 错误提示
  *        ├─ .chat-textarea（唯一吸收拖拽高度变化的元素）
  *        └─ .composer-toolbar（底部工具栏，固定尺寸，不随拖拽变化） */
-.chat-input-area { position: relative; flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0; background: var(--app-chrome-bg); padding: 12px 18px 16px; }
+.chat-input-area {
+  position: relative; flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
+  background: var(--app-chrome-bg); padding: 12px 18px 16px;
+}
 .chat-input-resizer {
   position: absolute; top: -3px; left: 0; right: 0; height: 6px;
   cursor: row-resize; z-index: 5;

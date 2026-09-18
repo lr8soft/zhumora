@@ -4,7 +4,7 @@ import { FolderOpen, MinusCircle, Scissors, Shrink, XCircle } from 'lucide-react
 
 import { useAppStore } from '../store'
 import ChatComposer from './ChatComposer'
-import MessageViewport from './MessageViewport'
+import MessageViewport, { EmptyConversationHero } from './MessageViewport'
 
 export default function ChatView() {
   const { t } = useTranslation()
@@ -45,18 +45,14 @@ export default function ChatView() {
     return (
       <div className="chat-view">
         <div className="chat-messages" style={{ flex: 1 }}>
-          <div className="chat-empty">
-            <img className="empty-mark" src="./logo.png" alt="" />
-            <h2>{t('app.name')}</h2>
-            <p>{t('chat.createSessionToStart')}</p>
-            <button
-              className="btn-primary"
-              style={{ marginTop: 16 }}
-              onClick={() => void useAppStore.getState().createSession()}
-            >
-              {t('chat.newSession')}
-            </button>
-          </div>
+          <EmptyConversationHero workspacePath={settings.workspacePath} />
+          <button
+            className="btn-primary"
+            style={{ marginTop: 20 }}
+            onClick={() => void useAppStore.getState().createSession()}
+          >
+            {t('chat.newSession')}
+          </button>
         </div>
       </div>
     )
