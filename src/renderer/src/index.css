@@ -348,18 +348,7 @@ h1, h2, h3, p { margin: 0; }
 .thinking-block-body code, .thinking-block-body pre { font-family: Consolas, Monaco, monospace; font-size: 0.767rem; }
 .thinking-block-body pre { padding: 8px; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-muted-bg); overflow-x: auto; }
 
-/* 工具调用（默认折叠：只显示 状态点 + 工具名 + 状态，展开后才显示参数与返回） */
-.tool-call { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
-.tool-call-header {
-  display: flex; align-items: center; gap: 8px; width: 100%; padding: 6px 10px;
-  border: 0; background: transparent; cursor: pointer; text-align: left; font-size: 0.733rem;
-}
-.tool-call-header:disabled { cursor: default; }
-.tool-call .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--app-color-warn); animation: app-pulse 1.1s ease-in-out infinite; }
-.tool-call.done .dot { background: var(--app-color-success); animation: none; }
-.tool-call.error .dot { background: var(--app-color-danger); animation: none; }
-.tool-call-header > svg { flex: 0 0 auto; color: var(--app-color-text-mute); }
-.tool-call-name { flex: 0 1 auto; min-width: 0; overflow: hidden; color: var(--app-color-text); font-family: Consolas, Monaco, monospace; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+/* 工具调用状态文字与展开体（链详情面板复用） */
 .tool-call-status { flex: 0 0 auto; display: flex; align-items: center; gap: 3px; color: var(--app-color-text-mute); font-size: 0.7rem; }
 .tool-call-status.running { color: var(--app-color-warn); }
 .tool-call-status.done { color: var(--app-color-success); }
@@ -368,6 +357,34 @@ h1, h2, h3, p { margin: 0; }
 .tool-call-section-label { padding: 7px 0 3px; color: var(--app-color-text-mute); font-size: 0.667rem; font-weight: 650; text-transform: uppercase; letter-spacing: 0.04em; }
 .tool-call-section-label.error { color: var(--app-color-danger); }
 .tool-call-pre { margin: 0; max-height: 320px; overflow: auto; color: var(--app-color-text-soft); font-family: Consolas, Monaco, monospace; font-size: 0.733rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
+
+/* 工具调用链（连续纯工具轮聚合为一行横向节点；点击节点在链下展开详情） */
+.tool-chain { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
+.tool-chain-scroll { overflow-x: auto; scrollbar-width: thin; }
+.tool-chain-nodes { display: flex; align-items: center; gap: 14px; width: max-content; min-width: 100%; padding: 4px 12px; }
+.tool-chain-node {
+  position: relative; display: flex; align-items: center; gap: 6px; padding: 3px 6px;
+  border: 1px solid transparent; border-radius: 5px; background: transparent;
+  cursor: pointer; color: var(--app-color-text); font-size: 0.733rem;
+}
+.tool-chain-node:hover { background: var(--app-muted-bg); }
+.tool-chain-node:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 1px; }
+.tool-chain-node.selected { border-color: var(--app-color-primary); background: var(--app-color-active-bg); }
+/* 节点之间的连接线（首尾不画） */
+.tool-chain-node + .tool-chain-node::before {
+  content: ''; position: absolute; left: -14px; top: 50%; transform: translateY(-50%);
+  width: 14px; height: 1px; background: var(--app-color-border-strong);
+}
+.tool-chain-node .dot { width: 6px; height: 6px; flex: 0 0 auto; border-radius: 50%; background: var(--app-color-warn); animation: app-pulse 1.1s ease-in-out infinite; }
+.tool-chain-node.done .dot { background: var(--app-color-success); animation: none; }
+.tool-chain-node.error .dot { background: var(--app-color-danger); animation: none; }
+.tool-chain-node-name { max-width: 150px; overflow: hidden; color: var(--app-color-text); font-family: Consolas, Monaco, monospace; font-weight: 600; text-overflow: ellipsis; white-space: nowrap; }
+.tool-chain-node-name.full { max-width: none; }
+.tool-chain-node-error { flex: 0 0 auto; color: var(--app-color-danger); }
+/* 链下固定详情面板：只显示选中节点的参数 + 返回 */
+.tool-chain-detail { margin-top: 6px; overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
+.tool-chain-detail-header { display: flex; align-items: center; gap: 8px; padding: 6px 10px 0; font-size: 0.733rem; }
+.tool-chain-detail .tool-call-body { border-top: 0; }
 
 /* 工具结果 */
 .tool-result { overflow: hidden; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }

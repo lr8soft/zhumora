@@ -1,9 +1,11 @@
 import React, { useEffect, useMemo, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ChevronDown, ChevronRight, ChevronUp, Brain, Terminal, Wrench, XCircle, Archive } from 'lucide-react'
-import type { UIMessage, ToolCall } from '@shared/types'
+import { ChevronDown, ChevronRight, ChevronUp, Brain, Terminal, XCircle, Archive } from 'lucide-react'
+import type { UIMessage } from '@shared/types'
 import { COMPACT_SUMMARY_PREFIX } from '@shared/types'
+import { buildToolChainNodes } from '../timeline'
 import MarkdownView from './MarkdownView'
+import { ToolCallChainView } from './ToolCallChain'
 
 interface Props {
   message: UIMessage
@@ -83,15 +85,13 @@ function MessageBubble({ message, toolStatuses, toolResults, retryStatus }: Prop
         </div>
       ) : null}
 
-      {/* 工具调用列表（结果合并进各自的折叠块，默认收起不显示返回信息） */}
-      {message.toolCalls?.map(tc => (
-        <ToolCallRow
-          key={tc.id}
-          toolCall={tc}
-          status={toolStatuses?.[tc.id]}
-          result={toolResults?.[tc.id]}
+      {/* 工具调用：同一轮里的 tool_calls（并行调用占多格）渲染为一条横向链条，
+          点击节点在链下详情面板看参数 + 返回；与跨轮工具链行共用同一节点视图 */}
+      {message.toolCalls && message.toolCalls.length > 0 ? (
+        <ToolCallChainView
+          nodes={buildToolChainNodes(message.toolCalls, toolStatuses, toolResults)}
         />
-      ))}
+      ) : null}
     </div>
   )
 }
@@ -178,61 +178,6 @@ function ThinkingBlock({ reasoning, streaming }: { reasoning: string; streaming:
       {expanded && (
         <div className="thinking-block-body" ref={bodyRef}>
           <MarkdownView content={reasoning} />
-        </div>
-      )}
-    </div>
-  )
-}
-
-/* ---------- 工具调用折叠块 ----------
- * 默认折叠：只显示 状态点 + 工具名 + 状态（不显示参数和返回信息），
- * 点击展开看完整参数 + 执行结果。工具结果消息由 ChatView 聚合后传入，
- * 不再在时间线里单独占据大块，保持对话流紧凑。
- */
-function ToolCallRow({ toolCall, status, result }: {
-  toolCall: ToolCall
-  status?: 'done' | 'error'
-  result?: { content: string; isError: boolean }
-}) {
-  const { t } = useTranslation()
-  const [expanded, setExpanded] = useState(false)
-  const statusClass = status === 'done' ? 'done' : status === 'error' ? 'error' : 'running'
-  const statusLabel = status === 'done'
-    ? t('chat.tool.done')
-    : status === 'error'
-      ? t('chat.tool.error')
-      : t('chat.tool.running')
-
-  const hasBody = !!(result || toolCall.function.arguments)
-
-  return (
-    <div className={`tool-call ${statusClass}`}>
-      <button className="tool-call-header" onClick={() => hasBody && setExpanded(!expanded)} disabled={!hasBody}>
-        <span className="dot" />
-        <Wrench size={12} />
-        <span className="tool-call-name">{toolCall.function.name}</span>
-        <span className={`tool-call-status ${statusClass}`}>
-          {status === 'error' && <XCircle size={11} />}
-          {statusLabel}
-        </span>
-        {hasBody && (expanded ? <ChevronDown size={12} /> : <ChevronRight size={12} />)}
-      </button>
-      {expanded && (
-        <div className="tool-call-body">
-          {toolCall.function.arguments && (
-            <>
-              <div className="tool-call-section-label">{t('chat.tool.args')}</div>
-              <pre className="tool-call-pre">{toolCall.function.arguments}</pre>
-            </>
-          )}
-          {result && (
-            <>
-              <div className={`tool-call-section-label ${result.isError ? 'error' : ''}`}>
-                {result.isError ? t('chat.tool.error') : t('chat.tool.result')}
-              </div>
-              <pre className="tool-call-pre">{result.content}</pre>
-            </>
-          )}
         </div>
       )}
     </div>

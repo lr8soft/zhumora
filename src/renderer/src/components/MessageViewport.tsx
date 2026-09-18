@@ -7,6 +7,7 @@ import type { UIMessage } from '@shared/types'
 import { useAppStore } from '../store'
 import { buildTimelineRows, type TimelineRow } from '../timeline'
 import MessageBubble from './MessageBubble'
+import ToolCallChain from './ToolCallChain'
 
 const EMPTY_MESSAGES: UIMessage[] = []
 const VIEWPORT_PADDING = { top: 360, bottom: 520 }
@@ -93,6 +94,7 @@ const TimelineRowView = React.memo(function TimelineRowView({ row }: { row: Time
       />
     )
   }
+  if (row.type === 'chain') return <ToolCallChain row={row} />
   if (row.type === 'compaction') return <CompactFoldedMarker />
   return (
     <div className="retry-status">
@@ -110,6 +112,10 @@ function sameTimelineRow(previous: { row: TimelineRow }, next: { row: TimelineRo
   const b = next.row
   if (a.type !== b.type || a.key !== b.key) return false
   if (a.type === 'compaction' && b.type === 'compaction') return true
+  if (a.type === 'chain' && b.type === 'chain') {
+    // key 取首个成员 id（稳定），revision 覆盖节点结果落位/状态翻转/成员追加
+    return a.revision === b.revision
+  }
   if (a.type === 'retry' && b.type === 'retry') {
     return a.status.failedAttempt === b.status.failedAttempt && a.status.maxRetries === b.status.maxRetries
   }

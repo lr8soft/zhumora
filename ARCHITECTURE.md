@@ -297,7 +297,10 @@ stateDiagram-v2
 
 - `ChatComposer` 持有未发送文字、待发送附件和输入区菜单等短生命周期 UI 状态。键盘输入只允许重渲染 composer，不得把草稿状态提升到消息列表 owner，也不得写入 main/数据库。
 - `MessageViewport` 按显式 `sessionId` 订阅该会话的消息、重试和压缩投影，负责消息列表派生数据与滚动。它不读取 composer 草稿，后台会话更新也不得触发当前 viewport。长历史由 Virtuoso 按动态高度虚拟化；row key 必须来自权威消息 ID 或显式派生事件 key，不能使用数组位置。
-- `buildTimelineRows` 是消息 cache 到展示时间线的纯投影：只负责合并 tool 展示、插入压缩/重试行，不拥有或改写消息。虚拟列表只渲染投影结果；DB 和 renderer session cache 仍保存完整历史。
+- 工具调用展示是两层纯投影，共享同一节点视图（`ToolCallChainView`，节点 = 一次 `toolCall`，横向滚动 + 链下固定详情面板）：
+  - **单消息并行链**：`MessageBubble` 把一条 assistant 消息内的 `toolCalls`（并行调用占多格）渲染为一条横向链条；该消息的正文与 reasoning 块照常独立展示。这是主力路径——reasoning 类 provider 的每个工具轮几乎都携带 reasoning/content，靠跨轮聚合组不成链。
+  - **跨轮工具链**：`buildTimelineRows` 把连续的**纯工具轮**（有 `toolCalls`、无正文、无 reasoning 的 assistant 消息）聚合为一条链行（`ToolChainTimelineRow`），对会发纯工具轮的 provider 进一步压缩垂直空间。行 key 取首个成员 id 保持稳定，结果落位/状态翻转/成员追加走 revision 变化重渲染。
+- 两层都不拥有或改写消息：节点状态只按 `toolCall.id → role=tool 消息` 精确映射；虚拟列表只渲染投影结果；DB 和 renderer session cache 仍保存完整历史。节点选中、详情展开、横向滚动跟随都是组件短生命周期 UI 状态，不进 store，不新增 IPC/持久化状态。
 - 自动跟随输出只在用户已经位于底部时开启；用户上翻阅读后，新 token 不得强制抢回滚动位置。切换会话时按该会话的末尾初始化 viewport。
 - `ChatView` 只组合 header、通知、viewport 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。
 
