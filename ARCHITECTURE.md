@@ -16,7 +16,7 @@
 
 Zhumora 只有一套会话消息与 Agent 运行用例：`SessionService`。它同时提供会话创建、查询、重命名、工作目录、删除和消息读取等核心会话 API；Avatar/TTS 等按会话保存的展示配置仍由各自适配器负责。
 
-Electron UI、Telegram、QQ 都只是输入/输出适配器。它们可以处理各自的连接、鉴权、消息格式和发送队列，但不得自行组装 Agent、维护会话运行状态、写入会话消息或实现权限策略。
+Electron UI、Telegram、QQ、对外 MCP 服务器（外部编排器）都只是输入/输出适配器。它们可以处理各自的连接、鉴权、消息格式和发送队列，但不得自行组装 Agent、维护会话运行状态、写入会话消息或实现权限策略。
 
 必须始终成立：
 
@@ -36,6 +36,7 @@ flowchart TB
     UI[React UI]
     TG[Telegram Adapter]
     QQ[QQ Adapter]
+    MCPIN[MCP Inbound Server<br/>外部编排器 loopback HTTP]
     AV[Avatar Adapter]
     TTS[TTS Adapter]
   end
@@ -72,6 +73,7 @@ flowchart TB
   UI --> IPC --> SS
   TG --> BQ --> BA --> SS
   QQ --> BQ --> BA
+  MCPIN --> BQ --> BA
 
   SS --> HIST
   SS --> CTX
@@ -88,6 +90,7 @@ flowchart TB
   EH --> IPC --> UI
   EH --> TG
   EH --> QQ
+  EH --> MCPIN
   EH --> AV
   EH --> TTS
 
@@ -112,6 +115,9 @@ flowchart TB
 | 工具权限请求生命周期 | `PermissionBroker` | UI/Bot presenter 仅负责展示和回传结果 |
 | Bot 同一外部会话 FIFO | `BotMessageQueue` | 只保证传输顺序、传递 AbortSignal；不拥有 Agent 状态 |
 | Bot 外部身份到 session 映射 | `SessionService` 存储边界 | Bot 适配器不得缓存第二份 session/run 映射 |
+| 对外 MCP 服务器生命周期 | `McpServerManager` | 启动/停止/token/端口；不拥有会话与运行状态 |
+| 外部编排器的任务状态 | `McpTaskSession`（taskProtocol 纯模块） | 等待/状态翻译；完成/权限/终态；子 agent 复用 |
+| 外部编排器的权限裁决 | `PermissionBroker` + 模式门禁 | 仅 delegate+normal+非 alwaysConfirm 可外部批准；危险级恒归人 |
 | renderer 消息缓存 | Zustand | 是数据库历史的投影，不是事实来源 |
 | 进程服务构造和实现注入 | `composition.ts` | `runAgent`、provider、context、store、tools 在这里注入 |
 
@@ -189,6 +195,19 @@ Bot 层禁止拥有：
 
 `/stop` 中止队列当前正在处理的输入，其 AbortSignal 会连接到 `SessionService` 对应 run。最终的会话中止、权限清理和全局事件由会话服务完成。
 
+### MCP 入站：外部编排器与 Zhumora 对话
+
+`McpServerManager`（组合根构造）让外部编排器（Claude Code、Codex 等）把 Zhumora 当一个"可对话的协作者"。它是第四个输入适配器，与 Bot 走完全相同的链路：`McpInboundService`（编排）→ `BotMessageQueue`（同会话 FIFO）→ `BotSessionAdapter` → `SessionService`。
+
+约束：
+
+- 传输是 loopback-only 的 MCP streamable-http 服务（`127.0.0.1` + Bearer token），由 `src/main/mcpServer/transport.ts` 拥有；`zhumora_chat` / `zhumora_respond` / `zhumora_status` 三个工具的 schema 与 JSON-RPC 路由也在该层。
+- 外部 conversation（MCP 协议会话）到 Zhumora session 的映射走 `SessionService.resolveExternalSession('mcp', 'inbound', conversationKey, title)` 存储边界；同一编排器会话永远落到同一 Zhumora session（上下文可累积），不同编排器会话互相隔离。
+- 任务状态由 `src/main/agent/taskProtocol.ts` 的 `McpTaskSession` 纯模块拥有：运行中 / 等待权限 / 完成 / 失败 / 中止。`zhumora_chat` 投递消息后至多等待 `wait_ms`，到期返回 `running` 转后台；任务终态保留在会话上，`zhumora_status` 轮询取回。内部子 agent 工具复用同一模块，不复制等待/状态逻辑。
+- 权限呈现者恒注册（`DelegatePermissionPresenter`），两种模式下编排器都能看到 `awaiting_permission`。能否裁决由 `McpInboundService.respond` 的门禁控制：仅 `permissionMode='delegate'` 且工具为 `normal` 级且非 `alwaysConfirm` 时可被外部批准；`dangerous` 与能力边界变更永远留给 Zhumora 桌面 UI 的人类。裁决唯一入口是 `PermissionBroker.respond`，与 UI 呈现者共用 first-response-wins；外部无法裁决的请求保持挂起，不得被伪造为已拒绝。
+- 外部会话使用 `inputSource='external'` 与固定的 `sourcePrompt`（声明对方是编排器而非人）；运行事件经全局 `SessionEventHub` 广播，侧边栏像 Bot 会话一样实时可见。
+- 服务器生命周期（启动/停止/token）归 `McpServerManager`；设置经 `normalizeMcpServerSettings` 归一化，语义等价不重启，token 变化触发重启使旧 token 立即失效。token 留空时自动生成且不回写设置（只存在于运行中的传输层）。
+
 ## 6. 会话并发与生命周期
 
 ```mermaid
@@ -265,6 +284,8 @@ stateDiagram-v2
 | `src/main/bot/sessionAdapter.ts` | 外部消息转换后调用 Session API |
 | `src/main/bot/messageQueue.ts` | 外部 conversation 的 FIFO 和 transport abort |
 | `src/main/telegram/`、`src/main/qq/` | 平台协议适配，不实现会话规则 |
+| `src/main/mcpServer/` | 对外 MCP 入站：loopback 传输、Bearer 鉴权、任务编排；不 import runner/store，不实现会话规则 |
+| `src/main/agent/taskProtocol.ts` | 会话即服务的等待与状态翻译（纯模块，无 Electron/DB 依赖） |
 | `src/main/ipc/` | 输入校验、调用 Session API、事件映射 |
 | `src/main/store/` | SQLite repository 和迁移，不实现 Agent 决策 |
 | `src/main/composition.ts` | 唯一组合根和具体实现注入 |
@@ -317,6 +338,8 @@ stateDiagram-v2
 3. 将标准化消息交给 `BotSessionAdapter`。
 4. 不修改 runner，不创建新的 active session map，不直接访问消息 repository。
 5. 增加平台适配测试和“同 conversation 串行、不同 conversation 并行、中止隔离”测试。
+
+对外 MCP 服务器（§5 的 MCP 入站）属于同一类适配器：`McpInboundService` 只编排“conversation → 任务状态”，会话与运行规则仍全部落在 `SessionService` 与 `PermissionBroker`，不得为外部编排器复制第二套 Agent 执行链。
 
 ### 新增会话入口
 

@@ -11,6 +11,7 @@
 import { create } from 'zustand'
 import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort } from '@shared/types'
 import { DEFAULT_AVATAR_WINDOW_SIZE } from '@shared/avatarWindow'
+import { DEFAULT_MCP_SERVER_SETTINGS } from '@shared/mcpServer'
 
 export type { ReasoningEffort }
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
@@ -630,6 +631,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settings: {
     providers: [],
     mcpServers: [],
+    mcpServer: { ...DEFAULT_MCP_SERVER_SETTINGS },
     telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
     qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],
@@ -644,6 +646,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   settingsDraft: {
     providers: [],
     mcpServers: [],
+    mcpServer: { ...DEFAULT_MCP_SERVER_SETTINGS },
     telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
     qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
     skills: [],

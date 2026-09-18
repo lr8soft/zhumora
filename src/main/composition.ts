@@ -28,6 +28,7 @@ import { getFetch } from './net/fetch'
 import type { AvatarWindowManager } from './avatar/windowManager'
 import { createAvatarTools } from './tools/avatar'
 import { TtsManager } from './tts/manager'
+import { McpServerManager } from './mcpServer/server'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -42,6 +43,8 @@ export interface ApplicationServices {
   permissions: PermissionBroker
   sessions: SessionService
   bots: BotPlatformManager
+  /** 对外 MCP 服务器（入站）：外部编排器把 Zhumora 当协作者。 */
+  mcpServer: McpServerManager
   avatar: AvatarWindowManager
   tts: TtsManager
   desktopControl: DesktopControlCoordinator
@@ -69,6 +72,7 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     log
   })
   const botSessions = new BotSessionAdapter({ sessions })
+  const mcpServer = new McpServerManager(sessions, botSessions, permissions, toolRegistry, db.getSettings().mcpServer)
   const telegram = new TelegramBotService(botSessions, permissions)
   const qq = new QQBotService(botSessions, permissions, { getFetch })
   const bots = new BotPlatformManager([
@@ -87,5 +91,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, sessions, bots, avatar, tts, desktopControl }
+  return { tools: toolRegistry, permissions, sessions, bots, mcpServer, avatar, tts, desktopControl }
 }

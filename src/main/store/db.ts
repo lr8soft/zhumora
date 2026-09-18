@@ -13,6 +13,7 @@ import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared
 import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
 import { normalizeTtsModels, resolveDefaultTtsModelId } from '../../shared/tts'
 import { normalizeBrowserTarget, normalizeCustomBrowserPath } from '../../shared/browser'
+import { normalizeMcpServerSettings } from '../../shared/mcpServer'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -242,6 +243,7 @@ function defaultSettings(): AppSettings {
       }
     ],
     mcpServers: [],
+    mcpServer: normalizeMcpServerSettings(undefined),
     telegramBot: normalizeTelegramBotConfig(undefined),
     qqBot: normalizeQQBotConfig(undefined),
     skills: [],
@@ -285,6 +287,7 @@ export function normalizeSettings(input: unknown): AppSettings {
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     providers: Array.isArray(raw.providers) ? raw.providers : defaults.providers,
     mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
+    mcpServer: normalizeMcpServerSettings(raw.mcpServer),
     telegramBot: normalizeTelegramBotConfig(raw.telegramBot),
     qqBot: normalizeQQBotConfig(raw.qqBot),
     skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,

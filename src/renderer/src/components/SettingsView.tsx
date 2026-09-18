@@ -10,6 +10,7 @@ import { UsageSettings } from './settings/UsageSettings'
 import { GeneralSettings } from './settings/GeneralSettings'
 import { TelegramSettings } from './settings/TelegramSettings'
 import { QQSettings } from './settings/QQSettings'
+import { McpServerSettings } from './settings/McpServerSettings'
 import { AvatarSettings } from './settings/AvatarSettings'
 import { TtsSettings } from './settings/TtsSettings'
 
@@ -90,6 +91,10 @@ export default function SettingsView() {
           <QQSettings
             config={settingsDraft.qqBot}
             onChange={(qqBot) => useAppStore.getState().updateSettingsDraft({ qqBot })}
+          />
+          <McpServerSettings
+            config={settingsDraft.mcpServer}
+            onChange={(mcpServer) => useAppStore.getState().updateSettingsDraft({ mcpServer })}
           />
         </div>}
         {settingsTab === 'avatar' && <AvatarSettings

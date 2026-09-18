@@ -237,6 +237,14 @@ const api = {
   },
 
   // ============================================================
+  // 对外 MCP 服务器（入站，只读状态）
+  // ============================================================
+  mcpServer: {
+    status: (): Promise<{ state: 'stopped' | 'connecting' | 'connected' | 'failed'; url: string | null; token: string | null; error: string | null }> =>
+      ipcRenderer.invoke('mcpServer:status')
+  },
+
+  // ============================================================
   // Memory — longterm-skill
   // ============================================================
   memory: {

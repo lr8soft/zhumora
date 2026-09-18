@@ -116,6 +116,9 @@ app.whenReady().then(async () => {
   void services.bots.configureAll(settings).catch(err => {
     log('error', `Failed to start Bot platform(s): ${err instanceof Error ? err.message : String(err)}`)
   })
+  void services.mcpServer.configure(settings.mcpServer).catch(err => {
+    log('error', `Failed to start MCP server: ${err instanceof Error ? err.message : String(err)}`)
+  })
 
   app.on('activate', () => {
     if (BrowserWindow.getAllWindows().length === 0) createWindow()
@@ -128,6 +131,7 @@ app.on('window-all-closed', () => {
 
 app.on('before-quit', () => {
   void applicationServices?.bots.stopAll()
+  void applicationServices?.mcpServer.stop()
   void applicationServices?.sessions.stopAll()
   applicationServices?.permissions.dispose()
   applicationServices?.avatar.dispose()

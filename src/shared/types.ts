@@ -187,6 +187,27 @@ export interface QQBotConfig {
   approveMode: AutoApproveMode
 }
 
+/**
+ * 对外 MCP 入站服务器（Zhumora 被外部编排器接入）配置。
+ * 与出站 McpServerConfig（mcpServers 列表项）是两个独立概念，勿混用。
+ * 归一化在 shared/mcpServer.ts。
+ */
+export interface McpServerInboundConfig {
+  enabled: boolean
+  /** Bearer token；空为自动生成（每次重新启用生成新值）。 */
+  token: string
+  /** 外部客户端会话在侧边栏的显示名前缀。 */
+  clientLabel: string
+  /** MCP 协议版本号。 */
+  protocolVersion: string
+  /** ui：权限只由桌面 UI 裁决；delegate：外部编排器可裁决 normal 级。 */
+  permissionMode: 'ui' | 'delegate'
+  /** 外部客户端会话使用的三档工具批准模式。 */
+  approveMode: AutoApproveMode
+  /** 监听端口（仅 127.0.0.1）；0 = 自动分配；端口被占时自动回退到临时端口。 */
+  port: number
+}
+
 /** Skill 配置 */
 export interface SkillConfig {
   id: string
@@ -229,6 +250,8 @@ export interface AppSettings {
   schemaVersion?: number
   providers: ProviderConfig[]
   mcpServers: McpServerConfig[]
+  /** 对外 MCP 服务器：让外部编排器（Claude Code / Codex）把 Zhumora 当协作者。 */
+  mcpServer: McpServerInboundConfig
   telegramBot: TelegramBotConfig
   qqBot: QQBotConfig
   skills: SkillConfig[]

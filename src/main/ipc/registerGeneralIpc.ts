@@ -78,6 +78,9 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     void services.bots.applySettings(settings, previous, certModeChanged).catch(error => {
       console.error('Bot platform reconfigure error:', error)
     })
+    void services.mcpServer.applySettings(settings, previous).catch(error => {
+      console.error('MCP server reconfigure error:', error)
+    })
     await services.avatar.applySettings(settings, previous)
     services.tts.applySettings(settings, previous)
     reconcileAvatarSessions(services.avatar, settings)
@@ -177,4 +180,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     await disconnectMcpServer(id)
     return true
   })
+
+  // 对外 MCP 服务器（入站）状态：只读，不触发任何重连。
+  ipcMain.handle('mcpServer:status', () => services.mcpServer.status())
 }

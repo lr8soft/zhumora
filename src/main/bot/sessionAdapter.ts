@@ -33,7 +33,8 @@ export class BotSessionAdapter {
       localEvents: message.events,
       permissionPresenters: message.permissionPresenters,
       permissionTimeoutMs: message.permissionTimeoutMs,
-      sourcePrompt: `You are replying through ${message.channel} to ${message.senderName}. Use plain text and keep the response concise.`,
+      sourcePrompt: message.sourcePrompt
+        ?? `You are replying through ${message.channel} to ${message.senderName}. Use plain text and keep the response concise.`,
       inputSource: 'external'
     })
     // handle.completion 有界（见 SessionRunHandle 注释）：卡死的 runner 不会

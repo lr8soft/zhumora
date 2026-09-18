@@ -10,7 +10,8 @@
 
 ## 统一会话系统强制约束
 
-- `SessionService` 是会话消息、核心会话 CRUD、外部会话映射和 Agent 运行的唯一应用 API。UI、Telegram、QQ 以及未来入口都只是它的适配器；Avatar/TTS 的按会话展示配置仍归各自适配器。
+- `SessionService` 是会话消息、核心会话 CRUD、外部会话映射和 Agent 运行的唯一应用 API。UI、Telegram、QQ、对外 MCP 服务器（`src/main/mcpServer/`）以及未来入口都只是它的适配器；Avatar/TTS 的按会话展示配置仍归各自适配器。
+- 对外 MCP 服务器是纯输入适配器：`McpInboundService` 只编排“外部 conversation → 任务状态”（`taskProtocol` 纯模块），会话走 `BotSessionAdapter → SessionService`，权限裁决唯一入口是 `PermissionBroker`；仅 delegate 模式且 normal 级且非 alwaysConfirm 的工具可被外部编排器批准，dangerous 与能力边界变更必须留给桌面 UI 的人类。外部无法裁决的请求保持挂起，禁止伪造为已拒绝。
 - 只有 `SessionService` 可以调用注入的 Agent executor；`composition.ts` 只负责导入 `runAgent` 并注入。IPC、Bot、工具和展示模块不得直接调用 `runAgent`。
 - 活跃运行、AbortController 和 approve mode 只能由 `SessionService` 按 `sessionId` 持有。禁止在 IPC 或 Bot 中维护第二套 `activeSessions`、`runningSessions`、`abortControllers`。
 - 同一 session 必须互斥，不同 session 必须可并行。不得引入进程级 Agent 全局锁。

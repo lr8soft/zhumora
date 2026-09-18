@@ -17,6 +17,8 @@ export interface BotSessionMessage {
   events: AgentEventSink
   permissionPresenters?: PermissionPresenter[]
   permissionTimeoutMs?: number
+  /** 覆盖默认的渠道来源提示（MCP 入站用它声明"对方是编排器而非人"）。 */
+  sourcePrompt?: string
 }
 
 export interface BotSessionResult {
