@@ -479,6 +479,8 @@ h1, h2, h3, p { margin: 0; }
 }
 .btn-ghost:hover:not(:disabled) { color: var(--app-color-text); background: var(--app-muted-bg); }
 .btn-ghost:disabled { opacity: .45; cursor: not-allowed; }
+.mcp-json-header { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.mcp-json-header .btn-ghost { min-height: 28px; padding: 0 10px; font-size: 0.733rem; flex: 0 0 auto; }
 .btn-danger {
   display: inline-flex; align-items: center; justify-content: center; gap: 7px; min-height: 34px;
   padding: 0 14px; color: #fff; border: 1px solid var(--app-color-danger); border-radius: 6px;
