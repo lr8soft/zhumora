@@ -20,6 +20,7 @@ import {
   delegateAllowsExternal,
   isTerminalMcpTaskStatus
 } from '../src/main/agent/taskProtocol.ts'
+import { ensureMcpServerToken, generateMcpServerToken } from '../src/shared/mcpServer.ts'
 
 // ---------- fakes（与 sessionService.test.ts 同一模式） ----------
 
@@ -167,6 +168,35 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
     await new Promise(r => setTimeout(r, 10))
   }
   throw new Error(`task for ${key} did not settle within 4s`)
+}
+
+// ---------- token 稳定性（storage 边界规则） ----------
+// token 永不随应用重启自动轮换：存储边界在首次启用时生成一次固定值并落库，
+// 之后只有用户显式重生成才轮换。
+
+{
+  // 生成器：base64url（无 +/=），32 字符（24 字节），两次调用不同
+  const a = generateMcpServerToken()
+  const b = generateMcpServerToken()
+  assert.match(a, /^[A-Za-z0-9_-]{32}$/, 'token is 24 bytes of base64url')
+  assert.notEqual(a, b)
+
+  const base = { enabled: true, token: '', clientLabel: 'T', permissionMode: 'ui', approveMode: 'manual', port: 0 }
+  const fixed = ensureMcpServerToken(base)
+  assert.notEqual(fixed.token, '', 'first enable fixes a non-empty token')
+  assert.notEqual(fixed, base, 'a new settings object is returned for persistence')
+
+  // 已有 token 永不自动轮换：同一引用返回（跨重启读到的都是库里那个值）
+  assert.equal(ensureMcpServerToken(fixed), fixed, 'an existing token is never rotated (same reference)')
+  // 用户清空 token 再保存 → 保存瞬间重新固定一个新值（而非留空等运行时随机）
+  const regenerated = ensureMcpServerToken({ ...fixed, token: '' })
+  assert.notEqual(regenerated.token, fixed.token, 'clearing + saving generates a fresh fixed token')
+
+  // 禁用态永不生成（不产生无主密钥）
+  const disabled = { ...base, enabled: false }
+  assert.equal(ensureMcpServerToken(disabled), disabled, 'disabled settings return the same reference (never touched)')
+  const disabledWithToken = { ...disabled, token: 'x' }
+  assert.equal(ensureMcpServerToken(disabledWithToken), disabledWithToken, 'a disabled token is never rotated')
 }
 
 // ---------- taskProtocol 纯函数 ----------
@@ -382,6 +412,10 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   // 鉴权
   const noAuth = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   assert.equal(noAuth.status, 401)
+  // 标准 401 必须带 WWW-Authenticate: Bearer——客户端（Codex 等）据此把失败
+  // 归因为凭据问题而不是连接问题；裸 token 与缺 token 走同一条拒绝路径。
+  assert.ok((noAuth.headers.get('www-authenticate') || '').toLowerCase().startsWith('bearer'),
+    '401 must carry WWW-Authenticate: Bearer')
   const badAuth = await rpc({ jsonrpc: '2.0', id: 1, method: 'ping' }, { Authorization: 'Bearer wrong' })
   assert.equal(badAuth.status, 401)
 
@@ -499,6 +533,42 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   await transport.stop()
   assert.equal(transport.status(), 'stopped')
   assert.equal(transport.port(), null)
+  await inbound.stop()
+}
+
+// 回归：客户端持有 GET SSE 长连接时 stop() 必须返回（曾经死锁）。
+// streamable-http 客户端 initialize 后会一直开着 GET SSE 流，那是 active
+// socket；stop 先关协议会话（级联结束 SSE 流）再关 HTTP server，顺序反了
+// httpServer.close() 就永远等不到。token/端口变更重启依赖 stop 有界。
+{
+  const inbound = makeInbound('ui')
+  const transport = createMcpTransport({
+    service: inbound,
+    getSettings: () => ({ enabled: true, token: 'sse-token', clientLabel: 'T', permissionMode: 'ui', approveMode: 'manual', port: 0 }),
+    port: () => 0
+  })
+  await transport.start()
+  const port = transport.port()!
+  const base = `http://127.0.0.1:${port}/mcp`
+  const init = await fetch(base, {
+    method: 'POST',
+    headers: { 'Content-Type': 'application/json', Accept: 'application/json, text/event-stream', Authorization: 'Bearer sse-token' },
+    body: JSON.stringify({ jsonrpc: '2.0', id: 1, method: 'initialize', params: { protocolVersion: '2025-06-18', capabilities: {}, clientInfo: { name: 'sse-hold', version: '1' } } })
+  })
+  assert.equal(init.status, 200)
+  const sid = init.headers.get('mcp-session-id')!
+  // 打开 SSE GET 并保持（不消费、不关闭）——模拟 Codex/Claude Code 的连接行为
+  const ssePromise = fetch(base, {
+    headers: { Accept: 'text/event-stream', Authorization: 'Bearer sse-token', 'Mcp-Session-Id': sid }
+  })
+  await new Promise(r => setTimeout(r, 200))
+  const stopResult = await Promise.race([
+    transport.stop().then(() => 'resolved'),
+    new Promise(r => setTimeout(() => r('timeout'), 4000))
+  ])
+  assert.equal(stopResult, 'resolved', 'stop() must resolve while a client SSE stream is still open')
+  assert.equal(transport.port(), null)
+  await ssePromise.catch(() => {}) // 连接被服务器关闭 → fetch 抛错，属预期
   await inbound.stop()
 }
 

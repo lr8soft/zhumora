@@ -206,7 +206,7 @@ Bot 层禁止拥有：
 - 任务状态由 `src/main/agent/taskProtocol.ts` 的 `McpTaskSession` 纯模块拥有：运行中 / 等待权限 / 完成 / 失败 / 中止。`zhumora_chat` 投递消息后至多等待 `wait_ms`，到期返回 `running` 转后台；任务终态保留在会话上，`zhumora_status` 轮询取回。内部子 agent 工具复用同一模块，不复制等待/状态逻辑。
 - 权限呈现者恒注册（`DelegatePermissionPresenter`），两种模式下编排器都能看到 `awaiting_permission`。能否裁决由 `McpInboundService.respond` 的门禁控制：仅 `permissionMode='delegate'` 且工具为 `normal` 级且非 `alwaysConfirm` 时可被外部批准；`dangerous` 与能力边界变更永远留给 Zhumora 桌面 UI 的人类。裁决唯一入口是 `PermissionBroker.respond`，与 UI 呈现者共用 first-response-wins；外部无法裁决的请求保持挂起，不得被伪造为已拒绝。
 - 外部会话使用 `inputSource='external'` 与固定的 `sourcePrompt`（声明对方是编排器而非人）；运行事件经全局 `SessionEventHub` 广播，侧边栏像 Bot 会话一样实时可见。
-- 服务器生命周期（启动/停止/token）归 `McpServerManager`；设置经 `normalizeMcpServerSettings` 归一化，语义等价不重启，token 变化触发重启使旧 token 立即失效。token 留空时自动生成且不回写设置（只存在于运行中的传输层）。固定端口被占用时启动失败并向设置页报告，禁止静默切换端口使既有客户端配置失效；端口为 `0` 时才允许自动分配。
+- 服务器生命周期（启动/停止/token）归 `McpServerManager`；设置经 `normalizeMcpServerSettings` 归一化，语义等价不重启，token 变化触发重启使旧 token 立即失效。**token 稳定性（不变量：`enabled ⇒ token 非空`）**：token 由存储边界 `normalizeSettings → ensureMcpServerToken`（`shared/mcpServer.ts`）在首次启用时生成一次并随 settings 落库，此后**永不随应用重启自动轮换**——自动轮换会让外部客户端（Codex 等）已粘贴的配置集体 401。唯一轮换途径是用户显式重生成（保存后旧 token 立即失效）；用户清空 token 字段再保存等价于重生成。运行层 `McpServerManager` 只消费 settings 里的 token，`randomBytes` 回退仅覆盖绕过存储边界的内存配置（单测直构）。固定端口被占用时启动失败并向设置页报告，禁止静默切换端口使既有客户端配置失效；端口为 `0` 时才允许自动分配。
 
 ## 6. 会话并发与生命周期
 

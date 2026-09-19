@@ -1,6 +1,7 @@
 import { useEffect, useMemo, useState } from 'react'
 import { Copy, KeyRound, Network, PlugZap } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
+import { generateMcpServerToken } from '@shared/mcpServer'
 import type { AutoApproveMode, McpServerInboundConfig } from '@shared/types'
 
 interface Props {
@@ -13,6 +14,7 @@ export function McpServerSettings({ config, onChange }: Props) {
   const [portDraft, setPortDraft] = useState(String(config.port))
   const [tokenCopied, setTokenCopied] = useState(false)
   const [jsonCopied, setJsonCopied] = useState(false)
+  const [codexCopied, setCodexCopied] = useState(false)
   const [status, setStatus] = useState<{ state: string; url: string | null; token: string | null; error: string | null } | null>(null)
 
   useEffect(() => {
@@ -32,15 +34,14 @@ export function McpServerSettings({ config, onChange }: Props) {
     onChange({ ...config, port })
   }
 
-  // 生效令牌：手动值优先；空 = 自动模式，取运行中服务器回显的值
+  // 生效令牌：settings 里的固定值；空（未保存的启用草稿）时回退运行中
+  // 服务器的回显值（仅覆盖单测等绕过存储边界的路径）。token 一经生成就
+  // 落库固定，重启应用不变。
   const effectiveToken = config.token || (status?.state === 'connected' ? status.token : null)
 
-  // 真正生成一个令牌（与主进程同规格：24 字节 base64url）写入草稿
+  // 显式轮换：生成新值写入草稿，保存后旧 token 立即失效（外部客户端需重配）
   const generateToken = () => {
-    const bytes = new Uint8Array(24)
-    crypto.getRandomValues(bytes)
-    const token = btoa(String.fromCharCode(...bytes)).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
-    onChange({ ...config, token })
+    onChange({ ...config, token: generateMcpServerToken() })
   }
 
   const copyToken = async () => {
@@ -52,28 +53,45 @@ export function McpServerSettings({ config, onChange }: Props) {
     } catch { /* clipboard unavailable */ }
   }
 
+  // Authorization 值必须带 "Bearer " 前缀（协议要求）：裸 token 会被服务器
+  // 401 拒绝。所有生成的客户端配置都必须写全 `Bearer <token>`。
+  const authorizationValue = effectiveToken ? `Bearer ${effectiveToken}` : null
+
   const jsonConfig = useMemo(() => {
     // url 由主进程回报（含真实端口）；connected 时端口必然已解析
     const url = status?.state === 'connected' ? status.url : null
-    if (!url || !effectiveToken) return null
+    if (!url || !authorizationValue) return null
     return JSON.stringify({
       mcpServers: {
         zhumora: {
           url,
-          headers: { Authorization: `Bearer ${effectiveToken ?? ''}` }
+          headers: { Authorization: authorizationValue }
         }
       }
     }, null, 2)
-  }, [status, effectiveToken])
+  }, [status, authorizationValue])
 
-  const copyJson = async () => {
-    if (!jsonConfig) return
+  const codexConfig = useMemo(() => {
+    const url = status?.state === 'connected' ? status.url : null
+    if (!url || !authorizationValue) return null
+    return [
+      '[mcp_servers.zhumora]',
+      'url = ' + JSON.stringify(url),
+      '',
+      '[mcp_servers.zhumora.http_headers]',
+      'Authorization = ' + JSON.stringify(authorizationValue)
+    ].join('\n')
+  }, [status, authorizationValue])
+
+  const copyText = async (text: string, setter: (v: boolean) => void) => {
     try {
-      await navigator.clipboard.writeText(jsonConfig)
-      setJsonCopied(true)
-      setTimeout(() => setJsonCopied(false), 1600)
+      await navigator.clipboard.writeText(text)
+      setter(true)
+      setTimeout(() => setter(false), 1600)
     } catch { /* clipboard unavailable */ }
   }
+  const copyJson = () => copyText(jsonConfig ?? '', setJsonCopied)
+  const copyCodex = () => copyText(codexConfig ?? '', setCodexCopied)
 
   const approvalHintKey = ({
     manual: 'chat.approveManualHint',
@@ -237,9 +255,6 @@ export function McpServerSettings({ config, onChange }: Props) {
             {status?.url && <span className="mono">{status.url}</span>}
             {status?.error && <span style={{ color: 'var(--app-color-danger)' }}>{status.error}</span>}
           </p>
-          {status?.state === 'connected' && config.token === '' && (
-            <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.mcpServer.autoTokenNote')}</p>
-          )}
 
           {jsonConfig ? (
             <div className="form-field" style={{ marginTop: 12 }}>
@@ -255,6 +270,20 @@ export function McpServerSettings({ config, onChange }: Props) {
             </div>
           ) : (
             <p className="form-hint" style={{ marginTop: 12 }}>{t('settings.mcpServer.jsonNotReady')}</p>
+          )}
+
+          {codexConfig && (
+            <div className="form-field" style={{ marginTop: 12 }}>
+              <div className="mcp-json-header">
+                <label className="form-label">{t('settings.mcpServer.codexConfig')}</label>
+                <button className="btn-ghost" type="button" onClick={copyCodex}>
+                  <Copy size={13} />
+                  {codexCopied ? t('settings.mcpServer.copied') : t('settings.mcpServer.copyCodex')}
+                </button>
+              </div>
+              <pre className="tool-call-pre">{codexConfig}</pre>
+              <p className="form-hint">{t('settings.mcpServer.codexHint')}</p>
+            </div>
           )}
         </section>
       )}

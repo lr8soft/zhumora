@@ -4,8 +4,34 @@ import type { AutoApproveMode, McpServerInboundConfig } from './types'
  * 对外 MCP 服务器（Zhumora 作为 MCP Server 被外部编排器接入）归一化。
  * 类型是 McpServerInboundConfig（shared/types.ts）；连接生命周期归 main 进程
  * 适配器（src/main/mcpServer/），本文件只放纯函数与默认值。
+ * 注意：本文件会被打进 renderer bundle，禁止引入 node 内置模块
+ * （token 生成用 globalThis.crypto，main/renderer/node 测试三处通用）。
  */
 export type McpServerSettings = McpServerInboundConfig
+
+/**
+ * 生成对外 MCP 服务器 token：24 字节 base64url（32 字符）。
+ * 与历史值同规格，保证新旧 token 在客户端配置里形状一致。
+ */
+export function generateMcpServerToken(): string {
+  const bytes = new Uint8Array(24)
+  globalThis.crypto.getRandomValues(bytes)
+  let binary = ''
+  for (const byte of bytes) binary += String.fromCharCode(byte)
+  return btoa(binary).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '')
+}
+
+/**
+ * token 稳定性规则（存储边界 normalizeSettings 调用，唯一自动生成点）：
+ * 启用且无 token 时生成一个**固定值**，随 settings 落库。token 永不随应用
+ * 重启自动轮换——轮换会让外部客户端（Codex 等）已粘贴的配置集体 401。
+ * 只有用户显式重生成才换值（旧 token 立即失效）。
+ * 纯函数：禁用态或非空 token 原样返回（同一引用）。
+ */
+export function ensureMcpServerToken(settings: McpServerInboundConfig): McpServerInboundConfig {
+  if (!settings.enabled || settings.token) return settings
+  return { ...settings, token: generateMcpServerToken() }
+}
 
 /** 外部会话的来源提示：告诉 Zhumora agent 消息来自哪个编排器，而不是把对方当人。 */
 export const MCP_SOURCE_PROMPT = [

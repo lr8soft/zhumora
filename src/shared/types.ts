@@ -202,7 +202,11 @@ export interface QQBotConfig {
  */
 export interface McpServerInboundConfig {
   enabled: boolean
-  /** Bearer token；空为自动生成（每次重新启用生成新值）。 */
+  /**
+   * Bearer token。存储边界（normalizeSettings → ensureMcpServerToken）
+   * 保证启用时恒有固定值：首次启用生成一次并落库，永不随重启自动轮换。
+   * 只有用户在设置里显式清空/重生成才轮换，旧 token 立即失效。
+   */
   token: string
   /** 外部客户端会话在侧边栏的显示名前缀。 */
   clientLabel: string

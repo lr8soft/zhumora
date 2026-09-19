@@ -3,6 +3,9 @@
 // 对应 mcp/client.ts（出站）的入站版本：
 //   configure 按归一化后的设置启动/停止 loopback HTTP 传输；
 //   设置等价（equivalent）则不动，token 变化触发重启使旧 token 立即失效。
+// token 稳定性：存储边界（db.normalizeSettings）保证生产路径上启用时
+// settings 里恒有固定 token（首次启用生成一次并落库，永不随重启轮换）；
+// 运行层只消费它，|| 回退仅覆盖绕过存储边界的内存配置（单测直构）。
 // 不持有会话/运行状态：编排规则在 service.ts，传输在 transport.ts。
 // ============================================================
 import { randomBytes } from 'node:crypto'
@@ -85,16 +88,16 @@ export class McpServerManager {
     // Reconfiguration invalidates protocol sessions and their conversation keys.
     // Stop accepting requests and abort/settle in-flight delegated tasks together.
     await this.stopRuntime()
-    const token = normalized.token || randomBytes(24).toString('base64url')
-    // token 为空（自动生成）时不回写 settings 表：值只存在于运行中的传输层，
-    // 重启应用会生成新 token，避免把未保存的密钥写进用户配置。
-    this.effectiveToken = token
-    const effective = { ...normalized, token }
+    // 存储边界（db.normalizeSettings → ensureMcpServerToken）保证：生产路径上
+    // 启用时 settings.token 恒为固定值（首次启用时生成一次并落库，永不随
+    // 重启轮换）。这里的 || 回退只覆盖绕过存储边界的内存配置（单测直接
+    // 构造 manager 传空 token），生成运行期 token 且不回写数据库。
+    this.effectiveToken = normalized.token || randomBytes(24).toString('base64url')
+    const effective = { ...normalized, token: this.effectiveToken }
     this.service.updateSettings(effective)
     const transport = createMcpTransport({
       service: this.service,
-      // 鉴权只信 effectiveToken：设置里的 token 与生效值恒等（手动值直接采用，
-      // 空值采用自动生成的值），无需在两个来源间切换。
+      // 鉴权只信 effectiveToken：设置里的 token 与生效值恒等。
       getSettings: () => ({ ...this.settings, token: this.effectiveToken ?? '' }),
       port: () => effective.port
     })

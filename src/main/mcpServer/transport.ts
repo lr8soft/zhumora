@@ -75,15 +75,28 @@ export function createMcpTransport(options: {
 
   const stop = async (): Promise<void> => {
     stopping = true
-    const current = httpServer
-    httpServer = null
-    if (current) {
-      current.closeIdleConnections?.()
-      await new Promise<void>(resolve => current.close(() => resolve()))
-    }
+    // 必须先关协议会话再关 HTTP server：streamable-http 客户端（Codex/Claude Code）
+    // initialize 后会长期持有 GET SSE 流，那是 active socket，closeIdleConnections
+    // 不碰它、httpServer.close() 会一直等它结束；而结束它的 server.close() 会级联
+    // 清理 SDK 里的全部 SSE 流。顺序反了就是死锁——token/端口变更触发的重启
+    // 永远停在旧服务器上，新 token 不生效，外部客户端持续 401。
     const active = [...sessions.values()]
     sessions.clear()
     await Promise.allSettled(active.map(session => session.server.close()))
+    const current = httpServer
+    httpServer = null
+    if (!current) return
+    current.closeIdleConnections?.()
+    await new Promise<void>((resolve, reject) => {
+      // 兜底：个别未受管的挂起连接（半开 TCP、异常挂起的请求体）也会卡住
+      // close 回调，1.5s 后强杀全部连接，保证 stop 有界。
+      const force = setTimeout(() => current.closeAllConnections?.(), 1500)
+      current.close(error => {
+        clearTimeout(force)
+        if (error) reject(error)
+        else resolve()
+      })
+    })
   }
 
   return {
@@ -100,7 +113,7 @@ export function createMcpTransport(options: {
       return
     }
     if (!authorized(req, options.getSettings().token)) {
-      sendJson(res, 401, { error: 'Invalid or missing Bearer token.' })
+      sendJson(res, 401, { error: 'Invalid or missing Bearer token.' }, 'Bearer')
       return
     }
     if (!isMcpPath(req.url)) {
@@ -315,12 +328,18 @@ function sendJsonRpcError(res: http.ServerResponse, status: number, code: number
   sendJson(res, status, { jsonrpc: '2.0', id: null, error: { code, message } })
 }
 
-function sendJson(res: http.ServerResponse, status: number, body: unknown): void {
+function sendJson(res: http.ServerResponse, status: number, body: unknown, authRealm?: string): void {
   const payload = JSON.stringify(body)
-  res.writeHead(status, {
+  const headers: Record<string, string> = {
     'Content-Type': 'application/json',
-    'Content-Length': Buffer.byteLength(payload)
-  })
+    'Content-Length': String(Buffer.byteLength(payload))
+  }
+  if (authRealm) {
+    // 标准 401 要带 WWW-Authenticate：让客户端明确这是 Bearer 凭据问题，
+    // 而不是泛泛的 HTTP 401（MCP 客户端的报错文案会引用它）。
+    headers['WWW-Authenticate'] = `Bearer realm="${authRealm}"`
+  }
+  res.writeHead(status, headers)
   res.end(payload)
 }
 
