@@ -228,6 +228,25 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   assert.deepEqual(await nonBlocking.wait(0), { status: 'running' },
     'wait_ms=0 is a non-blocking status snapshot, not an unbounded waiter')
 
+  const streamed = createMcpTaskSession('task-stream')
+  const update = streamed.waitForUpdate(0, 1000)
+  streamed.sink.toolCall?.('s', 'm', {
+    id: 'tc1', type: 'function', function: { name: 'read_file', arguments: '{"path":"a.txt"}' }
+  })
+  const updateSnapshot = await update
+  assert.equal(updateSnapshot.taskId, 'task-stream')
+  assert.equal(updateSnapshot.activities[0]?.type, 'tool_call', 'activity wakes an event-driven waiter')
+  const cursor = updateSnapshot.cursor
+  streamed.sink.reasoning?.('s', 'm', 'private thought')
+  streamed.sink.token?.('s', 'm', 'visible output')
+  const publicSnapshot = streamed.snapshot(cursor)
+  assert.deepEqual(publicSnapshot.activities.map(event => event.type), ['assistant_output'],
+    'reasoning is hidden from returned activity unless explicitly requested')
+  assert.deepEqual(streamed.snapshot(cursor, { includeReasoning: true }).activities.map(event => event.type),
+    ['reasoning', 'assistant_output'])
+  streamed.settle({ status: 'completed', reply: 'done' })
+  assert.equal(streamed.snapshot().activities.at(-1)?.type, 'completed', 'completion is an explicit activity callback')
+
   assert.equal(delegateAllowsExternal('normal', false), true)
   assert.equal(delegateAllowsExternal('dangerous', false), false, 'dangerous is never external-decidable')
   assert.equal(delegateAllowsExternal('normal', true), false, 'alwaysConfirm tools are never external-decidable')
@@ -245,6 +264,22 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   assert.notEqual(first, other, 'different conversations get different sessions')
   assert.ok(first.startsWith('mcp:inbound:conv-a'), 'external identity is stored under the session service boundary')
   assert.deepEqual(inbound.status('unknown'), { status: 'busy' }, 'idle conversation reports busy, not a fake running task')
+  await inbound.stop()
+}
+
+{
+  // chat 可立即转后台；zhumora_wait 对应的 service 原语保持一个调用直至终态，
+  // 不需要编排器每 30 秒轮询 status。
+  const inbound = makeInbound('ui')
+  const initial = await inbound.chat('callback', 'background work', 0)
+  assert.equal(initial.status, 'running')
+  const snapshot = inbound.snapshot('callback')!
+  assert.equal(snapshot.taskId, 'task-1')
+  const callback = inbound.waitForTask('callback', snapshot.taskId, snapshot.cursor, 5000, 'terminal')
+  await releaseWhenReady(inbound.resolveSessionId('callback'))
+  const completed = await callback
+  assert.equal(completed.status.status, 'completed')
+  assert.equal(completed.activities.at(-1)?.type, 'completed')
   await inbound.stop()
 }
 
@@ -409,6 +444,20 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
       body: JSON.stringify(body)
     })
 
+  const rpcMessages = async (response: Response): Promise<Array<Record<string, unknown>>> => {
+    const text = await response.text()
+    if ((response.headers.get('content-type') || '').includes('application/json')) {
+      return [JSON.parse(text) as Record<string, unknown>]
+    }
+    return text.split(/\r?\n/)
+      .filter(line => line.startsWith('data: '))
+      .map(line => JSON.parse(line.slice(6)) as Record<string, unknown>)
+  }
+  const rpcBody = async (response: Response): Promise<any> => {
+    const messages = await rpcMessages(response)
+    return [...messages].reverse().find(message => 'result' in message || 'error' in message)
+  }
+
   // 鉴权
   const noAuth = await fetch(base, { method: 'POST', headers: { 'Content-Type': 'application/json' }, body: '{}' })
   assert.equal(noAuth.status, 401)
@@ -427,7 +476,7 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   assert.equal(initResponse.status, 200)
   const sessionHeader = initResponse.headers.get('mcp-session-id')
   assert.ok(sessionHeader, 'initialize returns Mcp-Session-Id')
-  const initBody = (await initResponse.json()) as { result: { protocolVersion: string; serverInfo: { name: string }; instructions: string } }
+  const initBody = (await rpcBody(initResponse)) as { result: { protocolVersion: string; serverInfo: { name: string }; instructions: string } }
   assert.equal(initBody.result.protocolVersion, '2025-06-18', 'the SDK negotiates a supported protocol version')
   assert.equal(initBody.result.serverInfo.name, 'zhumora')
   assert.ok(initBody.result.instructions.includes('zhumora_chat'))
@@ -439,21 +488,27 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
 
   // tools/list
   const listResponse = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, sessionHeaders)
-  const listBody = (await listResponse.json()) as { result: { tools: { name: string }[] } }
+  const listBody = (await rpcBody(listResponse)) as { result: { tools: { name: string }[] } }
   assert.deepEqual(listBody.result.tools.map(t => t.name).sort(),
-    ['zhumora_chat', 'zhumora_respond', 'zhumora_status'])
+    ['zhumora_chat', 'zhumora_respond', 'zhumora_status', 'zhumora_wait'])
+
+  // prompt 是给支持 prompts 的 host 的显式 subagent 工作流；关键规则同时存在于
+  // instructions 和 tool description，避免 host 不自动注入 prompt 时模型看不见。
+  const promptsResponse = await rpc({ jsonrpc: '2.0', id: 21, method: 'prompts/list' }, sessionHeaders)
+  const promptsBody = (await rpcBody(promptsResponse)) as { result: { prompts: { name: string; description?: string }[] } }
+  assert.equal(promptsBody.result.prompts[0]?.name, 'delegate-to-zhumora')
 
   // tools/call zhumora_status（空闲 → busy）
   const statusResponse = await rpc({
     jsonrpc: '2.0', id: 3, method: 'tools/call',
     params: { name: 'zhumora_status', arguments: {} }
   }, sessionHeaders)
-  const statusBody = (await statusResponse.json()) as { result: { content: { text: string }[] } }
+  const statusBody = (await rpcBody(statusResponse)) as { result: { content: { text: string }[] } }
   assert.equal(JSON.parse(statusBody.result.content[0].text).status, 'busy')
 
   // 未知方法 → JSON-RPC -32601
   const unknown = await rpc({ jsonrpc: '2.0', id: 4, method: 'nope' }, sessionHeaders)
-  const unknownBody = (await unknown.json()) as { error: { code: number } }
+  const unknownBody = (await rpcBody(unknown)) as { error: { code: number } }
   assert.equal(unknownBody.error.code, -32601)
 
   // 完整委托链路：zhumora_chat 走 SessionService → complete 回传
@@ -461,9 +516,18 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   setTimeout(() => releaseSession(firstSessionId), 80)
   const chatResponse = await rpc({
     jsonrpc: '2.0', id: 5, method: 'tools/call',
-    params: { name: 'zhumora_chat', arguments: { message: 'hello from transport', wait_ms: 5000 } }
+    params: {
+      name: 'zhumora_chat',
+      arguments: { message: 'hello from transport', wait_ms: 5000 },
+      _meta: { progressToken: 'progress-1' }
+    }
   }, sessionHeaders)
-  const chatBody = (await chatResponse.json()) as { result: { content: { text: string }[] } }
+  const chatMessages = await rpcMessages(chatResponse)
+  assert.ok(chatMessages.some(message => message.method === 'notifications/progress'),
+    'a request-scoped MCP progress notification is delivered before the final tool result')
+  const chatBody = [...chatMessages].reverse().find(message => 'result' in message) as unknown as {
+    result: { content: { text: string }[] }
+  }
   const chatResult = JSON.parse(chatBody.result.content[0].text)
   assert.equal(chatResult.status, 'completed')
   assert.equal(chatResult.reply, `done:${firstSessionId}`, 'Mcp-Session-Id is the stable external conversation key')
@@ -477,7 +541,7 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   for (let i = 0; i < 200 && !releases.has(firstSessionId); i++) await new Promise(r => setTimeout(r, 10))
   releaseSession(firstSessionId)
   const second = await secondPromise
-  const secondResult = JSON.parse(((await second.json()) as { result: { content: { text: string }[] } }).result.content[0].text)
+  const secondResult = JSON.parse(((await rpcBody(second)) as { result: { content: { text: string }[] } }).result.content[0].text)
   assert.equal(secondResult.status, 'completed')
   const history = service.getMessages(firstSessionId)
   assert.equal(history.filter(m => m.role === 'user').length, 2, 'both delegated messages share one session history')
@@ -505,12 +569,32 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
     nonBlockingCall(sessionHeaders, 'parallel one', 8),
     nonBlockingCall(secondSessionHeaders, 'parallel two', 9)
   ])
-  const firstRunning = JSON.parse(((await firstRunningResponse.json()) as { result: { content: { text: string }[] } }).result.content[0].text)
-  const secondRunning = JSON.parse(((await secondRunningResponse.json()) as { result: { content: { text: string }[] } }).result.content[0].text)
+  const firstRunning = JSON.parse(((await rpcBody(firstRunningResponse)) as { result: { content: { text: string }[] } }).result.content[0].text)
+  const secondRunning = JSON.parse(((await rpcBody(secondRunningResponse)) as { result: { content: { text: string }[] } }).result.content[0].text)
   assert.equal(firstRunning.status, 'running')
   assert.equal(secondRunning.status, 'running')
   const secondSessionId = `mcp:inbound:${secondSessionHeader}`
+  const callbackResponsePromise = rpc({
+    jsonrpc: '2.0', id: 22, method: 'tools/call',
+    params: {
+      name: 'zhumora_wait',
+      arguments: {
+        task_id: firstRunning.task_id,
+        after_cursor: firstRunning.cursor,
+        wait_ms: 5000,
+        return_on: 'terminal'
+      },
+      _meta: { progressToken: 'callback-progress' }
+    }
+  }, sessionHeaders)
+  await tick(30) // 让 wait handler 先订阅活动，再释放 runner
   await releaseWhenReady(firstSessionId)
+  const callbackMessages = await rpcMessages(await callbackResponsePromise)
+  assert.ok(callbackMessages.some(message => message.method === 'notifications/progress'),
+    'zhumora_wait streams activity while one callback request remains pending')
+  const callbackBody = [...callbackMessages].reverse().find(message => 'result' in message) as any
+  const callbackResult = JSON.parse(callbackBody.result.content[0].text)
+  assert.equal(callbackResult.status, 'completed', 'zhumora_wait delivers the terminal callback without status polling')
   await releaseWhenReady(secondSessionId)
   assert.equal((await awaitTerminal(inbound, sessionHeader)).status, 'completed')
   assert.equal((await awaitTerminal(inbound, secondSessionHeader)).status, 'completed')

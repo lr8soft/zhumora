@@ -116,7 +116,7 @@ flowchart TB
 | Bot 同一外部会话 FIFO | `BotMessageQueue` | 只保证传输顺序、传递 AbortSignal；不拥有 Agent 状态 |
 | Bot 外部身份到 session 映射 | `SessionService` 存储边界 | Bot 适配器不得缓存第二份 session/run 映射 |
 | 对外 MCP 服务器生命周期 | `McpServerManager` | 启动/停止/token/端口；不拥有会话与运行状态 |
-| 外部编排器的任务状态 | `McpTaskSession`（taskProtocol 纯模块） | 等待/状态翻译；完成/权限/终态；子 agent 复用 |
+| 外部编排器的任务状态 | `McpTaskSession`（taskProtocol 纯模块） | 等待/状态翻译；有界活动游标；完成/权限/终态；子 agent 复用 |
 | 外部编排器的权限裁决 | `PermissionBroker` + 模式门禁 | 仅 delegate+normal+非 alwaysConfirm 可外部批准；危险级恒归人 |
 | renderer 消息缓存 | Zustand | 是数据库历史的投影，不是事实来源 |
 | 进程服务构造和实现注入 | `composition.ts` | `runAgent`、provider、context、store、tools 在这里注入 |
@@ -201,9 +201,12 @@ Bot 层禁止拥有：
 
 约束：
 
-- 传输是 loopback-only 的 MCP streamable-http 服务（`127.0.0.1` + Bearer token），由 `src/main/mcpServer/transport.ts` 拥有；Streamable HTTP、JSON-RPC、协议版本协商和 `Mcp-Session-Id` 生命周期使用官方 `@modelcontextprotocol/sdk`，本地代码只负责鉴权、session 路由和 `zhumora_chat` / `zhumora_respond` / `zhumora_status` 工具适配。禁止重新手写一套 MCP 协议状态机。
+- 传输是 loopback-only 的 MCP streamable-http 服务（`127.0.0.1` + Bearer token），由 `src/main/mcpServer/transport.ts` 拥有；Streamable HTTP、JSON-RPC、协议版本协商和 `Mcp-Session-Id` 生命周期使用官方 `@modelcontextprotocol/sdk`，本地代码只负责鉴权、session 路由和 `zhumora_chat` / `zhumora_wait` / `zhumora_respond` / `zhumora_status` 工具适配。禁止重新手写一套 MCP 协议状态机。
 - MCP 协议的 `Mcp-Session-Id` 是外部 conversation 的唯一键；不得使用 `clientInfo.name`、客户端名称或缺失 session 时的全局 `default` 代替。未知/过期 session 必须拒绝，DELETE 关闭时清理映射。该 conversation 到 Zhumora session 的映射走 `SessionService.resolveExternalSession('mcp', 'inbound', conversationKey, title)` 存储边界；同一 MCP session 永远落到同一 Zhumora session（上下文可累积），不同 MCP session 互相隔离。
-- 任务状态由 `src/main/agent/taskProtocol.ts` 的 `McpTaskSession` 纯模块拥有：运行中 / 等待权限 / 完成 / 失败 / 中止。`zhumora_chat` 投递消息后至多等待 `wait_ms`，到期返回 `running` 转后台；任务终态保留在会话上，`zhumora_status` 轮询取回。内部子 agent 工具复用同一模块，不复制等待/状态逻辑。
+- 对外可发现性同时放在三层：initialize `instructions`（声明 Zhumora 是可主动委托的 subagent）、`delegate-to-zhumora` MCP prompt（支持 prompts 的 host 可显式取用）和每个 tool 的强工作流描述（即使 host 不注入 prompt，模型仍能看到）。三层都要求“一次投递、跟进至终态、不得把 running 当完成”。
+- 任务状态由 `src/main/agent/taskProtocol.ts` 的 `McpTaskSession` 纯模块拥有：运行中 / 等待权限 / 完成 / 失败 / 中止。`zhumora_chat` 投递消息后至多等待 `wait_ms`，到期返回 `running` 转后台；调用方随后用返回的 `task_id + cursor` 调用 `zhumora_wait`。`zhumora_wait` 默认保持一个有界请求直到终态、权限请求或超时，它是兼容稳定 MCP 客户端的完成回调路径；`zhumora_status` 只保留作瞬时诊断/兼容查询，提示词禁止定时轮询。任务终态和有界活动环保留在会话上，断线重连后仍可取回。内部子 agent 工具复用同一模块，不复制等待/状态逻辑。
+- 活跃的 `zhumora_chat` / `zhumora_wait` 请求通过官方 `notifications/progress` 发送 request-scoped SSE 进度；最终工具结果仍是同一 JSON-RPC 请求的权威完成响应。当前稳定协议没有可移植的“工具返回后再异步回调模型”语义，实验性 MCP Tasks 也不是所有客户端都协商，因此不得只依赖 Tasks 或私有通知。后台任务用 `zhumora_wait` 的长等待恢复同一语义。
+- 外部活动流是 `SessionService` 本次运行 local sink 的只读、有界投影：assistant/reasoning 分块，tool call/result 和恢复事件结构化，使用 task 内单调 cursor；环形缓冲、单事件长度、单次返回事件数和字符数均有限制，reasoning 默认不随工具结果返回。它不得持久化第二份消息、不得替代 `SessionEventHub`、不得把无限 token 流一次性塞给外部编排器。
 - 权限呈现者恒注册（`DelegatePermissionPresenter`），两种模式下编排器都能看到 `awaiting_permission`。能否裁决由 `McpInboundService.respond` 的门禁控制：仅 `permissionMode='delegate'` 且工具为 `normal` 级且非 `alwaysConfirm` 时可被外部批准；`dangerous` 与能力边界变更永远留给 Zhumora 桌面 UI 的人类。裁决唯一入口是 `PermissionBroker.respond`，与 UI 呈现者共用 first-response-wins；外部无法裁决的请求保持挂起，不得被伪造为已拒绝。
 - 外部会话使用 `inputSource='external'` 与固定的 `sourcePrompt`（声明对方是编排器而非人）；运行事件经全局 `SessionEventHub` 广播，侧边栏像 Bot 会话一样实时可见。
 - 服务器生命周期（启动/停止/token）归 `McpServerManager`；设置经 `normalizeMcpServerSettings` 归一化，语义等价不重启，token 变化触发重启使旧 token 立即失效。**token 稳定性（不变量：`enabled ⇒ token 非空`）**：token 由存储边界 `normalizeSettings → ensureMcpServerToken`（`shared/mcpServer.ts`）在首次启用时生成一次并随 settings 落库，此后**永不随应用重启自动轮换**——自动轮换会让外部客户端（Codex 等）已粘贴的配置集体 401。唯一轮换途径是用户显式重生成（保存后旧 token 立即失效）；用户清空 token 字段再保存等价于重生成。运行层 `McpServerManager` 只消费 settings 里的 token，`randomBytes` 回退仅覆盖绕过存储边界的内存配置（单测直构）。固定端口被占用时启动失败并向设置页报告，禁止静默切换端口使既有客户端配置失效；端口为 `0` 时才允许自动分配。
@@ -284,8 +287,8 @@ stateDiagram-v2
 | `src/main/bot/sessionAdapter.ts` | 外部消息转换后调用 Session API |
 | `src/main/bot/messageQueue.ts` | 外部 conversation 的 FIFO 和 transport abort |
 | `src/main/telegram/`、`src/main/qq/` | 平台协议适配，不实现会话规则 |
-| `src/main/mcpServer/` | 对外 MCP 入站：loopback 传输、Bearer 鉴权、任务编排；不 import runner/store，不实现会话规则 |
-| `src/main/agent/taskProtocol.ts` | 会话即服务的等待与状态翻译（纯模块，无 Electron/DB 依赖） |
+| `src/main/mcpServer/` | 对外 MCP 入站：`transport.ts` 管 loopback/Bearer/session，`protocol.ts` 管工具、提示词与进度映射，`service.ts` 管任务编排；不 import runner/store，不实现会话规则 |
+| `src/main/agent/taskProtocol.ts`、`taskActivity.ts` | 会话即服务的等待、状态翻译与有界活动游标（纯模块，无 Electron/DB 依赖） |
 | `src/main/ipc/` | 输入校验、调用 Session API、事件映射 |
 | `src/main/store/` | SQLite repository 和迁移，不实现 Agent 决策 |
 | `src/main/composition.ts` | 唯一组合根和具体实现注入 |

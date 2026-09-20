@@ -7,6 +7,20 @@
 import type { AgentEventSink } from './persistedCallbacks.ts'
 import type { PermissionPresenter, PermissionRequest, PermissionResolution } from './permissionBroker.ts'
 import type { PermissionLevel } from '../tools/registry.ts'
+import {
+  createMcpTaskActivityLog,
+  truncateTaskActivityText,
+  type McpTaskActivityListener,
+  type McpTaskSnapshot,
+  type McpTaskSnapshotOptions
+} from './taskActivity.ts'
+
+export type {
+  McpTaskActivity,
+  McpTaskActivityListener,
+  McpTaskSnapshot,
+  McpTaskSnapshotOptions
+} from './taskActivity.ts'
 
 /** 运行对外状态。terminal 状态：completed / failed / aborted / busy。 */
 export type McpTaskStatus =
@@ -25,6 +39,7 @@ export interface McpTaskPermission {
 }
 
 export interface McpTaskSession {
+  readonly taskId: string
   /** 交给本次运行的 local sink：complete 事件是最终回复的权威来源。 */
   readonly sink: AgentEventSink
   /** 当前状态快照。 */
@@ -34,6 +49,12 @@ export interface McpTaskSession {
    * 有界性来自底层 run 的有界 settle（见 SessionRunHandle.completion）。
    */
   wait(waitMs?: number): Promise<McpTaskStatus>
+  /** 等到游标前进、终态/权限出现或超时；用于事件驱动的长轮询，而非定时轮询。 */
+  waitForUpdate(afterCursor: number, waitMs?: number, includeReasoning?: boolean): Promise<McpTaskSnapshot>
+  /** 获取 afterCursor 之后的有界增量。 */
+  snapshot(afterCursor?: number, options?: McpTaskSnapshotOptions): McpTaskSnapshot
+  /** 订阅活动；仅供当前 MCP tool request 转成 notifications/progress。 */
+  subscribe(listener: McpTaskActivityListener): () => void
   /** 终态幂等：第一次 settle 生效，之后返回既有终态。 */
   settle(final: McpTaskStatus): McpTaskStatus
   markPermission(permission: McpTaskPermission): void
@@ -63,10 +84,13 @@ interface TaskWaiter {
   timer?: ReturnType<typeof setTimeout>
 }
 
-export function createMcpTaskSession(): McpTaskSession {
+export function createMcpTaskSession(taskId = 'task'): McpTaskSession {
   let finalStatus: McpTaskStatus | null = null
   const pendingPermissions = new Map<string, McpTaskPermission>()
   const waiters = new Set<TaskWaiter>()
+  const activity = createMcpTaskActivityLog()
+  const streamedAssistantMessages = new Set<string>()
+  const streamedReasoningMessages = new Set<string>()
 
   const status = (): McpTaskStatus => {
     if (finalStatus) return finalStatus
@@ -84,12 +108,18 @@ export function createMcpTaskSession(): McpTaskSession {
 
   const settle = (final: McpTaskStatus): McpTaskStatus => {
     if (finalStatus) return finalStatus
+    activity.flush()
     finalStatus = final
     // 先通知呈现者再清空：呈现者的 resolve 清理依赖 pending 里还有该请求，
     // 否则它们的 pending 集合会残留幽灵条目（重复 present 时误判"仍在等待"）。
     for (const permission of pendingPermissions.values()) {
       clearPermission(permission)
     }
+    if (final.status === 'completed') activity.publish({ type: 'completed' })
+    else if (final.status === 'failed') activity.publish({
+      type: 'failed', error: truncateTaskActivityText(final.error, 500)
+    })
+    else if (final.status === 'aborted') activity.publish({ type: 'aborted' })
     wake()
     return final
   }
@@ -114,7 +144,85 @@ export function createMcpTaskSession(): McpTaskSession {
     })
   }
 
+  const snapshot = (afterCursor = 0, options: McpTaskSnapshotOptions = {}): McpTaskSnapshot => {
+    return activity.snapshot(taskId, status(), afterCursor, options)
+  }
+
+  const waitForUpdate = async (
+    afterCursor: number,
+    waitMs?: number,
+    includeReasoning = false
+  ): Promise<McpTaskSnapshot> => {
+    const deadline = waitMs !== undefined && waitMs > 0 ? Date.now() + waitMs : undefined
+    while (true) {
+      activity.flush()
+      const current = status()
+      const visible = activity.snapshot(taskId, current, afterCursor, {
+        includeReasoning, maxEvents: 1, maxChars: 4000
+      }).activities.length > 0
+      if (visible || isTerminalMcpTaskStatus(current) || current.status === 'awaiting_permission'
+        || (waitMs !== undefined && waitMs <= 0)) return snapshot(afterCursor, { includeReasoning })
+      const remaining = deadline === undefined ? undefined : Math.max(0, deadline - Date.now())
+      if (remaining === 0) return snapshot(afterCursor, { includeReasoning })
+      await activity.waitForChange(activity.cursor(), remaining)
+    }
+  }
+
   const sink: AgentEventSink = {
+    token: (_sessionId, messageId, token) => {
+      streamedAssistantMessages.add(messageId)
+      activity.appendText('assistant_output', token)
+    },
+    reasoning: (_sessionId, messageId, token) => {
+      streamedReasoningMessages.add(messageId)
+      activity.appendText('reasoning', token)
+    },
+    assistantEnd: (_sessionId, messageId, content, _toolCalls, reasoning) => {
+      activity.flush()
+      if (content && !streamedAssistantMessages.has(messageId)) activity.appendText('assistant_output', content)
+      if (reasoning && !streamedReasoningMessages.has(messageId)) activity.appendText('reasoning', reasoning)
+      activity.flush()
+      streamedAssistantMessages.delete(messageId)
+      streamedReasoningMessages.delete(messageId)
+    },
+    toolCall: (_sessionId, _messageId, toolCall) => {
+      activity.flush()
+      activity.publish({
+        type: 'tool_call',
+        toolCallId: toolCall.id,
+        toolName: toolCall.function.name,
+        arguments: truncateTaskActivityText(toolCall.function.arguments, 2000)
+      })
+    },
+    toolResult: (_message, toolCallId, toolName, result, isError, durationMs) => {
+      activity.flush()
+      activity.publish({
+        type: 'tool_result', toolCallId, toolName,
+        content: truncateTaskActivityText(result, 3000), isError, durationMs
+      })
+    },
+    retry: (_sessionId, failedAttempt, maxRetries, error) => {
+      activity.flush()
+      activity.publish({
+        type: 'retry', failedAttempt, maxRetries,
+        error: truncateTaskActivityText(error.message, 500)
+      })
+    },
+    truncated: (_sessionId, kind, reason) => {
+      activity.flush()
+      activity.publish({ type: 'truncated', kind, reason })
+    },
+    compact: (_sessionId, info) => {
+      activity.flush()
+      activity.publish({
+        type: 'compaction', beforeTokens: info.beforeTokens, afterTokens: info.afterTokens,
+        compressedCount: info.compressedCount, keptCount: info.keptCount
+      })
+    },
+    error: (_sessionId, error) => settle({
+      status: 'failed', error: truncateTaskActivityText(error.message, 500)
+    }),
+    aborted: () => settle({ status: 'aborted' }),
     // complete 携带整轮最终文本；运行以 complete 结束即任务交付。
     complete: (_sessionId, _messageId, content) => {
       settle({ status: 'completed', reply: content })
@@ -122,13 +230,19 @@ export function createMcpTaskSession(): McpTaskSession {
   }
 
   return {
+    taskId,
     sink,
     status,
     wait,
+    waitForUpdate,
+    snapshot,
+    subscribe: activity.subscribe,
     settle,
     markPermission: permission => {
       if (finalStatus) return
+      activity.flush()
       pendingPermissions.set(permission.permissionId, permission)
+      activity.publish({ type: 'permission', permission })
       wake()
     },
     clearPermission,

@@ -3,7 +3,7 @@
 // 外部编排器（Claude Code / Codex 等）把 Zhumora 当一个"可对话的协作者"：
 //   zhumora_chat  → 一条委托消息（BotSessionAdapter → SessionService 唯一运行入口）
 //   zhumora_respond → 按用户授权裁决权限请求（仅 delegate 模式 + normal 级）
-//   zhumora_status → 轮询 运行中 / 等待权限 / 终态
+//   zhumora_wait → 事件驱动等待 + 完成回调；zhumora_status → 瞬时诊断快照
 // 传输（loopback HTTP + Bearer）在 transport.ts；本文件只做会话编排。
 // 约束（ARCHITECTURE.md 第 5/12 节）：本模块是纯输入适配器——
 // 不 import runner/store，不持有 active runs / abort controllers / approve modes，
@@ -22,8 +22,11 @@ import {
   createMcpTaskSession,
   DelegatePermissionPresenter,
   delegateAllowsExternal,
+  type McpTaskActivityListener,
   type McpTaskPermission,
   type McpTaskSession,
+  type McpTaskSnapshot,
+  type McpTaskSnapshotOptions,
   type McpTaskStatus
 } from '../agent/taskProtocol.ts'
 import type { ToolRegistry } from '../tools/registry.ts'
@@ -42,8 +45,9 @@ interface Conversation {
   title: string
   /** 当前任务（running / awaiting_permission 期间非 null）。 */
   task: McpTaskSession | null
-  /** 上一任务的终态结果：任务对象清理后，编排器轮询 zhumora_status 仍能取回最终回复。 */
-  lastResult: McpTaskStatus | null
+  /** 上一任务：保留终态和有界活动环，供完成回调/断线重连后取回。 */
+  lastTask: McpTaskSession | null
+  nextTaskNumber: number
 }
 
 export class McpInboundService {
@@ -79,7 +83,12 @@ export class McpInboundService {
   }
 
   /** 投递一条委托消息。已有运行中任务时立即返回其状态（不排队第二条）。 */
-  async chat(conversationKey: string, text: string, waitMs?: number): Promise<McpTaskStatus> {
+  async chat(
+    conversationKey: string,
+    text: string,
+    waitMs?: number,
+    onActivity?: McpTaskActivityListener
+  ): Promise<McpTaskStatus> {
     const trimmed = typeof text === 'string' ? text.trim() : ''
     if (!trimmed) return { status: 'failed', error: 'Message text is required.' }
     if (trimmed.length > MAX_MESSAGE_CHARS) {
@@ -87,7 +96,7 @@ export class McpInboundService {
     }
     const conversation = this.conversation(conversationKey)
     if (conversation.task) return conversation.task.status()
-    const task = createMcpTaskSession()
+    const task = createMcpTaskSession(`task-${++conversation.nextTaskNumber}`)
     conversation.task = task
     // 投递到同会话 FIFO，但不 await 其完成：完成/失败由 task 的 complete 事件
     // 与 runTask 的 settle 驱动。chat 只"投递 + 至多等 waitMs"，超时即转后台，
@@ -97,7 +106,46 @@ export class McpInboundService {
         if (error instanceof AgentAbortedError) task.settle({ status: 'aborted' })
         else task.settle({ status: 'failed', error: safeError(error) })
       })
-    return task.wait(waitMs)
+    return this.waitWithActivity(task, waitMs, onActivity)
+  }
+
+  /** 当前或最近一次任务的有界快照；只查不建会话。 */
+  snapshot(
+    conversationKey: string,
+    afterCursor = 0,
+    options?: McpTaskSnapshotOptions
+  ): McpTaskSnapshot | null {
+    return this.currentTask(conversationKey)?.snapshot(afterCursor, options) ?? null
+  }
+
+  /**
+   * 事件驱动等待：terminal 模式一直等到完成/权限/超时；update 模式等游标前进。
+   * taskId 防止调用方把上一任务的 cursor 错套到下一任务。
+   */
+  async waitForTask(
+    conversationKey: string,
+    taskId: string,
+    afterCursor: number,
+    waitMs: number,
+    returnOn: 'terminal' | 'update',
+    snapshotOptions?: McpTaskSnapshotOptions,
+    onActivity?: McpTaskActivityListener
+  ): Promise<McpTaskSnapshot> {
+    const task = this.currentTask(conversationKey)
+    if (!task) throw new Error('No Zhumora task exists for this MCP session.')
+    if (task.taskId !== taskId) {
+      throw new Error(`Task ${taskId} is no longer current; current task is ${task.taskId}.`)
+    }
+    const unsubscribe = onActivity ? task.subscribe(onActivity) : undefined
+    try {
+      if (returnOn === 'update') {
+        await task.waitForUpdate(afterCursor, waitMs, snapshotOptions?.includeReasoning)
+      }
+      else await task.wait(waitMs)
+      return task.snapshot(afterCursor, snapshotOptions)
+    } finally {
+      unsubscribe?.()
+    }
   }
 
   /** 外部编排器裁决权限请求（zhumora_respond 的唯一路径 → PermissionBroker）。 */
@@ -124,11 +172,11 @@ export class McpInboundService {
     return task.status()
   }
 
-  /** 运行中 / 等待权限 / 终态（供 zhumora_status）。只查不建：轮询不产生会话。 */
+  /** 运行中 / 等待权限 / 终态（供瞬时 status 快照）。只查不建，不产生会话。 */
   status(conversationKey: string): McpTaskStatus {
     const conversation = this.conversations.get(conversationKey)
     if (!conversation) return { status: 'busy' }
-    return conversation.task?.status() ?? conversation.lastResult ?? { status: 'busy' }
+    return conversation.task?.status() ?? conversation.lastTask?.status() ?? { status: 'busy' }
   }
 
   /** 外部 conversation → Zhumora sessionId（首次访问时经 SessionService 映射并缓存）。 */
@@ -158,7 +206,8 @@ export class McpInboundService {
         sessionKey: session.id,
         title: session.title,
         task: null,
-        lastResult: null
+        lastTask: null,
+        nextTaskNumber: 0
       }
       this.conversations.set(conversationKey, conversation)
     }
@@ -201,9 +250,27 @@ export class McpInboundService {
       }
     } finally {
       // task 此刻必为终态（complete/aborted/failed 均已 settle）：
-      // 保留它让编排器在任务对象释放后仍能轮询到最终结果。
-      conversation.lastResult = task.status()
+      // 保留其终态与有界活动环，让编排器在任务对象释放后仍能收到完成回调。
+      conversation.lastTask = task
       conversation.task = null
+    }
+  }
+
+  private currentTask(conversationKey: string): McpTaskSession | null {
+    const conversation = this.conversations.get(conversationKey)
+    return conversation?.task ?? conversation?.lastTask ?? null
+  }
+
+  private async waitWithActivity(
+    task: McpTaskSession,
+    waitMs: number | undefined,
+    onActivity: McpTaskActivityListener | undefined
+  ): Promise<McpTaskStatus> {
+    const unsubscribe = onActivity ? task.subscribe(onActivity) : undefined
+    try {
+      return await task.wait(waitMs)
+    } finally {
+      unsubscribe?.()
     }
   }
 }

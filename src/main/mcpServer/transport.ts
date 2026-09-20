@@ -7,13 +7,13 @@
 import { randomUUID, timingSafeEqual } from 'node:crypto'
 import http from 'node:http'
 import type { AddressInfo } from 'node:net'
-import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { StreamableHTTPServerTransport } from '@modelcontextprotocol/sdk/server/streamableHttp.js'
 import { isInitializeRequest } from '@modelcontextprotocol/sdk/types.js'
-import { z } from 'zod'
 import type { McpServerSettings } from '../../shared/mcpServer.ts'
 import { log } from '../llm/logger.ts'
 import type { McpInboundService } from './service.ts'
+import { createMcpProtocolServer } from './protocol.ts'
 
 export interface McpTransportHandle {
   start(): Promise<void>
@@ -29,16 +29,6 @@ interface ProtocolSession {
 }
 
 const MAX_BODY_BYTES = 1024 * 1024
-const MAX_WAIT_MS = 10 * 60 * 1000
-const DEFAULT_WAIT_MS = 60_000
-
-const SERVER_INSTRUCTIONS = [
-  'Zhumora is a desktop AI agent on this Windows machine.',
-  'Delegate tasks with zhumora_chat and keep using the same MCP session for follow-up status and permission calls.',
-  'If zhumora_chat returns running, poll zhumora_status instead of sending the task again.',
-  'Only call zhumora_respond when the status says decidable_by_you=true; otherwise the human must decide in Zhumora.'
-].join(' ')
-
 export function createMcpTransport(options: {
   service: McpInboundService
   getSettings: () => McpServerSettings
@@ -155,15 +145,16 @@ export function createMcpTransport(options: {
 
   async function createProtocolSession(): Promise<ProtocolSession> {
     let transport!: StreamableHTTPServerTransport
-    const server = createProtocolServer(options, () => {
+    const server = createMcpProtocolServer(options, () => {
       if (!transport.sessionId) throw new Error('MCP session is not initialized.')
       return transport.sessionId
     })
     transport = new StreamableHTTPServerTransport({
       sessionIdGenerator: randomUUID,
-      // Zhumora has no server-initiated notifications; direct JSON keeps tool calls
-      // compatible with Codex while avoiding an unnecessary per-request SSE stream.
-      enableJsonResponse: true,
+      // Tool calls use request-scoped SSE so notifications/progress and the final
+      // JSON-RPC response share one MCP request. This is the stable MCP callback
+      // path; background recovery additionally uses zhumora_wait + task cursor.
+      enableJsonResponse: false,
       onsessioninitialized: sessionId => {
         sessions.set(sessionId, { transport, server })
       }
@@ -180,78 +171,6 @@ export function createMcpTransport(options: {
   function findSession(req: http.IncomingMessage): ProtocolSession | undefined {
     const sessionId = header(req, 'mcp-session-id')
     return sessionId ? sessions.get(sessionId) : undefined
-  }
-}
-
-function createProtocolServer(
-  options: { service: McpInboundService; getSettings: () => McpServerSettings },
-  conversationKey: () => string
-): McpServer {
-  const server = new McpServer(
-    { name: 'zhumora', version: '0.4.4' },
-    { instructions: SERVER_INSTRUCTIONS }
-  )
-
-  server.registerTool('zhumora_chat', {
-    description: [
-      'Send a delegated task or message to the Zhumora desktop agent. Zhumora runs a full',
-      'agent session (files, shell, browser, Windows desktop control, Office documents) and',
-      'returns its final reply. If the result is running, poll zhumora_status with the same',
-      'MCP session instead of sending a duplicate message.'
-    ].join(' '),
-    inputSchema: {
-      message: z.string().describe('The task or message to delegate.'),
-      wait_ms: z.number().finite().optional().describe(
-        `Maximum time to wait in milliseconds (default ${DEFAULT_WAIT_MS}, max ${MAX_WAIT_MS}). 0 returns immediately.`
-      )
-    }
-  }, async ({ message, wait_ms }) => {
-    const waitMs = Math.max(0, Math.min(wait_ms ?? DEFAULT_WAIT_MS, MAX_WAIT_MS))
-    return toToolResult(options, await options.service.chat(conversationKey(), message, waitMs))
-  })
-
-  server.registerTool('zhumora_respond', {
-    description: [
-      'Approve or deny a pending Zhumora permission request only when zhumora_status reports',
-      'decidable_by_you=true. Other requests must be decided by the human in the Zhumora UI.'
-    ].join(' '),
-    inputSchema: {
-      permission_id: z.string(),
-      allow: z.boolean(),
-      reason: z.string().optional().describe('Short justification recorded in Zhumora logs.')
-    }
-  }, async ({ permission_id, allow, reason }) => {
-    return toToolResult(options, options.service.respond(conversationKey(), permission_id, allow, reason))
-  })
-
-  server.registerTool('zhumora_status', {
-    description: 'Get the current Zhumora task status for this MCP session.',
-    inputSchema: {},
-    annotations: { readOnlyHint: true, idempotentHint: true, openWorldHint: false }
-  }, async () => toToolResult(options, options.service.status(conversationKey())))
-
-  return server
-}
-
-function toToolResult(
-  options: { service: McpInboundService; getSettings: () => McpServerSettings },
-  status: ReturnType<McpInboundService['status']>
-): { content: Array<{ type: 'text'; text: string }>; isError?: boolean } {
-  const canDecide = status.status === 'awaiting_permission'
-    ? options.service.canExternalDecide(status.permission)
-    : false
-  const payload = status.status === 'awaiting_permission'
-    ? {
-        ...status,
-        decidable_by_you: canDecide,
-        guidance: canDecide
-          ? 'You may call zhumora_respond with this permission_id.'
-          : 'This decision requires the human user in the Zhumora desktop UI. Poll zhumora_status until it changes.'
-      }
-    : status
-  return {
-    content: [{ type: 'text', text: JSON.stringify(payload, null, 2) }],
-    isError: status.status === 'failed' ? true : undefined
   }
 }
 
