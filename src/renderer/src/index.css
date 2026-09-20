@@ -86,7 +86,9 @@
   font-size: 0.667rem; font-weight: 650; letter-spacing: 0.02em;
 }
 .sidebar-group-label:first-child { padding-top: 2px; }
-.sidebar-group { display: grid; gap: 2px; }
+/* 列宽必须显式钳制（minmax(0,1fr)）：隐式 auto 列按 max-content 定宽，
+   长标题会把行撑出侧栏，把右侧删除按钮挤出可视区（同 .session-nav 的写法） */
+.sidebar-group { display: grid; gap: 2px; grid-template-columns: minmax(0, 1fr); }
 
 /* ---------- 深色细节覆写（Codex：层级更分明、hover/active 对比必须可感） ---------- */
 :root[data-theme='dark'] .window-titlebar { background: #101113; }
