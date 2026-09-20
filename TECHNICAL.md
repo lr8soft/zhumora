@@ -12,7 +12,7 @@ The application is split into three runtime boundaries:
 - **Preload** — controlled IPC bridge exposed through `contextBridge`
 - **Renderer** — React UI and client-side state
 
-The agent can use built-in local tools, browser automation, desktop capture, memory tools, and tools provided by MCP servers.
+The agent can use built-in local tools, browser automation, desktop capture, memory tools, and tools provided by MCP servers. Zhumora also exposes itself as an MCP server so external orchestrators can delegate work to it.
 
 ## 2. Technology stack
 
@@ -52,7 +52,7 @@ QQ ─────── BotMessageQueue ─┘          │                │
                                       └─ SessionEventHub ─► UI / Bot / Avatar / TTS
 ```
 
-`SessionService` is the only persistent-session application use case and the only module allowed to invoke the injected Agent executor. IPC, Telegram, and QQ are transport adapters over that API. The renderer does not receive unrestricted Electron IPC access; preload exposes a limited application API through `contextBridge`.
+`SessionService` is the only persistent-session application use case and the only module allowed to invoke the injected Agent executor. IPC, Telegram, QQ, and the inbound MCP server are transport adapters over that API. The renderer does not receive unrestricted Electron IPC access; preload exposes a limited application API through `contextBridge`.
 
 Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
@@ -313,7 +313,11 @@ The permission layer is part of the agent execution path rather than the rendere
 
 ## 8. MCP
 
-Zhumora can mount Model Context Protocol servers and expose their tools to the agent.
+Zhumora speaks MCP in both directions: it is an MCP client for outbound servers, and an MCP server that external orchestrators can drive.
+
+### Outbound servers
+
+Zhumora can mount Model Context Protocol servers and expose their tools to the agent. Mounted tools join the normal registry, so they go through the same permission checks as built-ins.
 
 Supported transports:
 
@@ -342,6 +346,36 @@ Environment variables use one `KEY=VALUE` entry per line.
 ### SSE
 
 Remote MCP servers can be configured with an SSE endpoint URL.
+
+### Inbound server (Zhumora as a subagent)
+
+`McpServerManager` (built in the composition root) starts a loopback-only Streamable HTTP MCP server from `src/main/mcpServer/`, so external orchestrators such as Claude Code and Codex can connect to Zhumora and delegate bounded tasks to it.
+
+Settings hold `enabled`, `token`, `clientLabel`, `permissionMode`, `approveMode`, and `port`, normalized in `src/shared/mcpServer.ts`. The access token is generated once when the server is first enabled and then persisted; it is never rotated automatically, because that would break every already-pasted client config with 401s. Only an explicit regeneration in Settings changes it (after saving, the old token stops working). A fixed port that is already in use fails loudly in Settings instead of silently moving, so existing client configs stay valid; only port `0` auto-allocates.
+
+Layering of the runtime:
+
+- `server.ts` — startup/stop/token lifecycle only, mirroring the outbound MCP client. Token or port changes restart the server; a semantically equivalent config does not.
+- `transport.ts` — the HTTP boundary: `127.0.0.1` binding, Bearer authentication, `Mcp-Session-Id` routing, JSON-RPC error shaping, request-body limits, and tool adaptation. Streamable HTTP, JSON-RPC, protocol negotiation, and session lifecycle come from the official `@modelcontextprotocol/sdk`; no second protocol state machine is hand-written. Protocol sessions are closed before the HTTP server, otherwise long-lived client SSE streams make `close()` hang.
+- `protocol.ts` — builds the MCP server and its tools. Discovery is layered: initialize `instructions`, a `delegate-to-zhumora` prompt for hosts that support prompts, and strong per-tool descriptions for hosts that inject neither.
+- `service.ts` — session orchestration with no HTTP: it delegates a message and adjudicates permission requests, but does not import the agent runner or storage and holds no active runs.
+
+Exposed tools:
+
+| Tool | Purpose |
+|---|---|
+| `zhumora_chat` | Delegate one bounded task; waits up to `wait_ms` and returns either the final answer or a `running` handle (`task_id` + cursor). |
+| `zhumora_wait` | Wait for a delegated task to reach a terminal state, a permission request, or the wait deadline; progress streams as `notifications/progress`. |
+| `zhumora_respond` | Adjudicate a pending permission request — only in delegate mode, only for normal-level tools. |
+| `zhumora_status` | Transient diagnostic snapshot of a task; not a polling channel. |
+
+Delegated work is an ordinary Zhumora session (`inputSource: 'external'`) whose sidebar title is `“client label · name”`, so it shares history, tool registry, compaction, and abort semantics with UI sessions and is visible live in the UI. Its system prompt states that the counterpart is an orchestrator rather than a human, so assumptions are spelled out and final replies are self-contained.
+
+Risk classification is unchanged. The permission presenter is always registered, in both modes, so a client can always see `awaiting_permission`; whether it may decide is gated to delegate mode plus normal-level, non-always-confirm tools. `dangerous` tools and capability-boundary changes always wait for a human in the desktop UI.
+
+Session- and message-level rules, the `Mcp-Session-Id` mapping to Zhumora sessions, and the task-state module are authoritative in [ARCHITECTURE.md](./ARCHITECTURE.md).
+
+For clients that only read raw headers (Codex, Claude Code CLI, …), pasting the generated config requires the value to include the `Bearer ` prefix; a bare token is rejected with 401.
 
 ## 9. Skills
 

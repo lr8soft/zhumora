@@ -23,6 +23,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Automate Chromium with Playwright
 - Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input
 - Extend tools through MCP servers
+- Serve as an MCP server that external orchestrators (Claude Code, Codex, …) can delegate tasks to
 - Load reusable skills from Markdown files
 - Local session history, long-term memory, and token usage records
 - Chat with the same agent from your phone through a Telegram bot or a QQ bot, with live progress updates
@@ -53,6 +54,18 @@ Zhumora can operate the Windows desktop directly:
 - **Verify** — attach a screenshot after state-changing actions so the agent can confirm the result; plain pointer moves skip capture unless requested
 
 This lets Zhumora drive native Windows apps that have no API or CLI — not just files, shell, and the browser.
+
+## As an MCP server for external orchestrators
+
+Zhumora is also an MCP server. External orchestrators such as Claude Code and Codex can treat it as a collaborator, hand it a bounded task, and let the same local agent do the work.
+
+Turn it on under **Settings → MCP Inbound**. The page shows the live status and endpoint, and generates client configs you can paste directly (JSON for Claude Desktop, Cursor, Cline, …; TOML for Codex).
+
+- **Loopback plus a token** — the server only listens on `127.0.0.1`, and clients authenticate with `Authorization: Bearer <token>`. The token is generated on first enable and persisted as-is, never rotated on app restart; re-copy the config after changing the token or port.
+- **A delegation is a session** — every delegated task becomes a Zhumora session in the sidebar, reporting progress and writing history exactly like a session you started at the desktop, and it can be aborted at any time.
+- **Follow through to the end** — the orchestrator posts work with `zhumora_chat` and waits with `zhumora_wait` (bounded long wait plus progress notifications), so it receives a self-contained final answer instead of mistaking `running` for done; results survive a dropped connection.
+- **Permissions stay yours** — with the default “UI only” mode the orchestrator only sees that a task is awaiting permission, and you approve or deny in Zhumora. With “delegate” enabled it may approve normal-level tools through `zhumora_respond` within the authority you give it; dangerous actions always wait for you.
+- **Diagnostics, not polling** — `zhumora_status` returns a transient snapshot of a task and is not a polling channel.
 
 ## Quick start
 
