@@ -342,6 +342,10 @@ h1, h2, h3, p { margin: 0; }
 }
 .scroll-to-bottom:hover { color: var(--app-color-primary-strong); border-color: var(--app-color-primary); }
 .scroll-to-bottom:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 2px; }
+/* 无任何会话时的空态：整列居中（margin:auto 居中，窗口过小时可滚动而非裁切） */
+.chat-view-empty { flex: 1; min-height: 0; overflow: auto; display: flex; }
+.empty-wrap { margin: auto; padding: 24px; }
+.empty-wrap .btn-primary { margin-top: 20px; }
 /* 空会话 hero：Codex 的大标题式引导（标题随工作目录变化，由组件注入 workspace） */
 .chat-empty { padding: 110px 0 40px; text-align: center; }
 .chat-empty .empty-mark { display: block; width: 44px; height: 44px; margin: 0 auto 20px; border-radius: 10px; opacity: 0.85; }
@@ -481,15 +485,19 @@ h1, h2, h3, p { margin: 0; }
 .chat-input-resizer::after { content: ''; position: absolute; inset: 2px 0; background: transparent; transition: background .15s; }
 .chat-input-resizer:hover::after { background: var(--app-color-primary); }
 .chat-input-resizer:active::after { background: var(--app-color-primary-strong); }
+/* 卡片不设 min-height：1 行文本 + 工具栏就是它的最小高度，
+   避免留白把卡片撑成"尴尬大小"；多行文本由 textarea 自身撑高 */
 .composer {
-  width: 100%; flex: 1; min-height: 108px;
+  width: 100%; flex: 1; min-height: 0;
   display: flex; flex-direction: column;
   border: 1px solid var(--app-color-border-strong, var(--app-color-border)); border-radius: 14px;
   background: var(--app-color-surface); box-shadow: var(--app-shadow-panel, 0 2px 12px rgba(0, 0, 0, .08));
 }
 .composer:focus-within { border-color: var(--app-color-primary); }
+/* 自适应模式 field-sizing:content 只按内容长高、不填剩余空间 →
+   min-height 不足撑满卡片时底部出现留白；flex-grow 让它吸收这部分空间 */
 .chat-textarea {
-  flex: 0 1 auto; min-height: 40px; max-height: 240px; field-sizing: content;
+  flex: 1 1 auto; min-height: 40px; max-height: 240px; field-sizing: content;
   overflow-y: auto; resize: none; padding: 13px 14px 4px;
   color: var(--app-color-text); border: 0; background: transparent;
   font-size: 0.933rem; line-height: 1.5; outline: 0; font-family: inherit;

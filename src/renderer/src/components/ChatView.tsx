@@ -44,15 +44,16 @@ export default function ChatView() {
   if (!activeSessionId) {
     return (
       <div className="chat-view">
-        <div className="chat-messages" style={{ flex: 1 }}>
-          <EmptyConversationHero workspacePath={settings.workspacePath} />
-          <button
-            className="btn-primary"
-            style={{ marginTop: 20 }}
-            onClick={() => void useAppStore.getState().createSession()}
-          >
-            {t('chat.newSession')}
-          </button>
+        <div className="chat-view-empty">
+          <div className="empty-wrap">
+            <EmptyConversationHero workspacePath={settings.workspacePath} />
+            <button
+              className="btn-primary"
+              onClick={() => void useAppStore.getState().createSession()}
+            >
+              {t('chat.newSession')}
+            </button>
+          </div>
         </div>
       </div>
     )
