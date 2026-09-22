@@ -344,7 +344,7 @@ h1, h2, h3, p { margin: 0; }
 .scroll-to-bottom:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 2px; }
 /* 无任何会话时的空态：整列居中（margin:auto 居中，窗口过小时可滚动而非裁切） */
 .chat-view-empty { flex: 1; min-height: 0; overflow: auto; display: flex; }
-.empty-wrap { margin: auto; padding: 24px; }
+.empty-wrap { margin: auto; padding: 24px; text-align: center; }
 .empty-wrap .btn-primary { margin-top: 20px; }
 /* 空会话 hero：Codex 的大标题式引导（标题随工作目录变化，由组件注入 workspace） */
 .chat-empty { padding: 110px 0 40px; text-align: center; }
