@@ -202,6 +202,7 @@ const api = {
       name: string
       description: string
       error?: string
+      warning?: string
     } | null> => ipcRenderer.invoke('skill:inspectPath', p)
   },
 

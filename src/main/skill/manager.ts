@@ -13,8 +13,26 @@ import { log } from '../llm/logger.ts'
 
 export const SKILL_SOURCE = 'skill'
 
-/** Agent Skills 规范：name 为 1-64 位 kebab-case，且必须与目录名一致 */
-const SKILL_NAME_RE = /^[a-z0-9]+(-[a-z0-9]+)*$/
+/**
+ * Agent Skills 规范（agentskills.io）的 name 约束：
+ * 1-64 个「unicode 小写字母、数字、连字符」，不得以连字符开头/结尾，
+ * 不得出现连续连字符，且必须与目录名一致。
+ * "unicode lowercase alphanumeric" = Unicode 小写字母（Ll）+ 无大小写体系的字母
+ * （Lo，如 CJK/假名/谚文，它们没有大写形态）+ 十进制数字（Nd）。
+ * 大小写语言中的大写字母（如 "PDF-Processing"）按规范拒绝。
+ */
+const SKILL_NAME_CHAR_RE = /^[\p{Ll}\p{Lo}\p{Nd}-]+$/u
+
+function isValidSkillName(name: string): boolean {
+  if (![...name].length || [...name].length > 64) return false
+  if (name.startsWith('-') || name.endsWith('-')) return false
+  if (name.includes('--')) return false
+  return SKILL_NAME_CHAR_RE.test(name)
+}
+
+function skillNameError(name: string): string {
+  return `Invalid skill name "${name}". The spec allows 1-64 unicode lowercase letters (any script, e.g. 中文, é) and digits joined by single hyphens — no leading/trailing or consecutive hyphens, no uppercase.`
+}
 
 interface BundledFile {
   relPath: string
@@ -37,6 +55,8 @@ export interface SkillInspection {
   name: string
   description: string
   error?: string
+  /** 非致命提示（如 name 与目录名不一致）：skill 仍加载，name 以 frontmatter 为准 */
+  warning?: string
 }
 
 let loadedSkills: LoadedSkill[] = []
@@ -115,12 +135,16 @@ export async function inspectSkillPath(p: string): Promise<SkillInspection> {
     }
     const parsed = parseSkillMd(raw)
     if (!parsed.name) return { valid: false, kind: 'folder', name: base, description: parsed.description, error: 'SKILL.md frontmatter is missing the required "name" field.' }
-    if (!SKILL_NAME_RE.test(parsed.name)) return { valid: false, kind: 'folder', name: base, description: parsed.description, error: `Invalid skill name "${parsed.name}". Use 1-64 lowercase letters, numbers, and hyphens (no leading/trailing or consecutive hyphens).` }
-    if (parsed.name !== base) return { valid: false, kind: 'folder', name: base, description: parsed.description, error: `Skill name "${parsed.name}" must match its folder name "${base}".` }
+    if (!isValidSkillName(parsed.name)) return { valid: false, kind: 'folder', name: base, description: parsed.description, error: skillNameError(parsed.name) }
     if (!parsed.description) return { valid: false, kind: 'folder', name: parsed.name, description: '', error: 'SKILL.md frontmatter is missing the required "description" field.' }
     if (parsed.description.length > 1024) return { valid: false, kind: 'folder', name: parsed.name, description: parsed.description, error: `description must be at most 1024 characters (currently ${parsed.description.length}).` }
     if (!parsed.content) return { valid: false, kind: 'folder', name: parsed.name, description: parsed.description, error: 'SKILL.md has no instruction content after the frontmatter.' }
-    return { valid: true, kind: 'folder', name: parsed.name, description: parsed.description }
+    // 目录名与 frontmatter name 不一致只降级为警告：Zhumora 由用户显式选路径加载，
+    // frontmatter name 是权威 ID（目录遍历型客户端才需要目录名匹配）。
+    const warning = parsed.name !== base
+      ? `Skill name "${parsed.name}" differs from its folder name "${base}". Loaded using the frontmatter name.`
+      : undefined
+    return { valid: true, kind: 'folder', name: parsed.name, description: parsed.description, warning }
   }
   // 单文件模式（兼容旧导入）：.md 文件名即 skill name
   if (!(p.toLowerCase().endsWith('.md'))) {
@@ -134,7 +158,7 @@ export async function inspectSkillPath(p: string): Promise<SkillInspection> {
   }
   const parsed = parseSkillMd(raw)
   const name = parsed.name || base
-  if (!SKILL_NAME_RE.test(name)) return { valid: false, kind: 'file', name, description: parsed.description, error: `Invalid skill name "${name}". Use 1-64 lowercase letters, numbers, and hyphens (no leading/trailing or consecutive hyphens).` }
+  if (!isValidSkillName(name)) return { valid: false, kind: 'file', name, description: parsed.description, error: skillNameError(name) }
   if (!parsed.description) return { valid: false, kind: 'file', name, description: '', error: 'Frontmatter is missing the required "description" field.' }
   if (parsed.description.length > 1024) return { valid: false, kind: 'file', name, description: parsed.description, error: `description must be at most 1024 characters (currently ${parsed.description.length}).` }
   if (!parsed.content) return { valid: false, kind: 'file', name, description: parsed.description, error: 'File has no instruction content after the frontmatter.' }

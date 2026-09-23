@@ -61,21 +61,44 @@ try {
   assert.equal(noDesc.valid, false)
   assert.match(noDesc.error || '', /description/)
 
-  // name 与目录名不匹配
+  // name 与目录名不一致：降级为警告，仍按 frontmatter name 加载（Zhumora 显式选路径）
   const mismatchDir = path.join(root, 'mismatch')
   await fs.mkdir(mismatchDir, { recursive: true })
   await fs.writeFile(path.join(mismatchDir, 'SKILL.md'), '---\nname: other-name\ndescription: Mismatched.\n---\n\nBody.\n')
   const mismatch = await inspectSkillPath(mismatchDir)
-  assert.equal(mismatch.valid, false)
-  assert.match(mismatch.error || '', /match/)
+  assert.equal(mismatch.valid, true)
+  assert.equal(mismatch.name, 'other-name')
+  assert.match(mismatch.warning || '', /differs from its folder name/)
 
-  // 非法 name（大写 / 下划线 / 连续连字符）
-  for (const badName of ['Bad-Name', 'bad_name', 'bad--name', '-lead', 'trail-']) {
+  // 用户真实场景：拼音目录 + 中文 frontmatter name（如 zhouyi/周易智慧）
+  const pinyinDir = path.join(root, 'zhouyi')
+  await fs.mkdir(pinyinDir, { recursive: true })
+  await fs.writeFile(path.join(pinyinDir, 'SKILL.md'), '---\nname: 周易智慧\ndescription: I Ching wisdom.\n---\n\nBody.\n')
+  const pinyin = await inspectSkillPath(pinyinDir)
+  assert.equal(pinyin.valid, true)
+  assert.equal(pinyin.name, '周易智慧')
+  assert.ok(pinyin.warning)
+  const loadedPinyin = await loadSkill(mkConfig('周易智慧', pinyinDir))
+  assert.ok(loadedPinyin)
+  assert.equal(loadedPinyin?.name, '周易智慧')
+
+  // 非法 name（大写 / 下划线 / 连续连字符 / 首尾连字符）
+  for (const badName of ['Bad-Name', 'bad_name', 'bad--name', '-lead', 'trail-', 'UPPER']) {
     const badDir = path.join(root, 'badname-' + Math.random().toString(36).slice(2, 8))
     await fs.mkdir(badDir, { recursive: true })
     await fs.writeFile(path.join(badDir, 'SKILL.md'), `---\nname: ${badName}\ndescription: Bad name.\n---\n\nBody.\n`)
     const bad = await inspectSkillPath(badDir)
     assert.equal(bad.valid, false, `expected invalid for name "${badName}"`)
+  }
+
+  // 合法 Unicode name（规范允许任意文字体系的小写/无大小写字母）
+  for (const uniName of ['周易智慧', '日本語-skill', 'héllo-wörld', 'skill-1']) {
+    const uniDir = path.join(root, uniName)
+    await fs.mkdir(uniDir, { recursive: true })
+    await fs.writeFile(path.join(uniDir, 'SKILL.md'), `---\nname: ${uniName}\ndescription: Unicode skill ${uniName}.\n---\n\nBody.\n`)
+    const uni = await inspectSkillPath(uniDir)
+    assert.equal(uni.valid, true, `expected valid for unicode name "${uniName}": ${uni.error}`)
+    assert.equal(uni.name, uniName)
   }
 
   // 无 SKILL.md 的目录

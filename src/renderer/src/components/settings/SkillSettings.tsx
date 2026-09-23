@@ -11,9 +11,11 @@ interface Props {
 export function SkillSettings({ skills, onChange }: Props) {
   const { t } = useTranslation()
   const [addError, setAddError] = useState('')
+  const [addNote, setAddNote] = useState('')
 
   const addSkill = async (pick: () => Promise<string | null>) => {
     setAddError('')
+    setAddNote('')
     const p = await pick()
     if (!p) return
     const inspection = await window.api.skill.inspectPath(p)
@@ -38,10 +40,12 @@ export function SkillSettings({ skills, onChange }: Props) {
         enabled: true
       }
     ])
+    if (inspection.warning) setAddNote(inspection.warning)
   }
 
   const removeSkill = (idx: number) => {
     setAddError('')
+    setAddNote('')
     onChange(skills.filter((_, i) => i !== idx))
   }
 
@@ -103,6 +107,11 @@ export function SkillSettings({ skills, onChange }: Props) {
       {addError && (
         <p className="form-hint" style={{ marginTop: 8, color: 'var(--app-color-danger, #d66)', whiteSpace: 'pre-wrap' }}>
           {addError}
+        </p>
+      )}
+      {addNote && (
+        <p className="form-hint" style={{ marginTop: 8, whiteSpace: 'pre-wrap' }}>
+          {addNote}
         </p>
       )}
     </div>
