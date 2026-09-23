@@ -10,6 +10,20 @@ export function configuredContextWindow(provider: ContextDetectionConfig, useCon
     : null
 }
 
+/**
+ * 探测结果是否应写回 contextWindow 配置字段。
+ * 显式手动值（contextWindow > 0）优先于探测（TECHNICAL.md）：
+ * 后台/隐式探测（requested=false）绝不覆盖手动值，只有用户显式点击
+ * "重新探测"（requested=true）才允许写回。
+ */
+export function shouldApplyDetectedContextWindow(
+  current: { contextWindow?: number },
+  requested: boolean
+): boolean {
+  const hasManualValue = (current.contextWindow ?? 0) > 0
+  return requested || !hasManualValue
+}
+
 export function contextDetectionCacheKey(provider: ContextDetectionConfig, model: string): string {
   return `${provider.baseUrl}::${model}::${provider.apiKey ? 'authenticated' : 'anonymous'}`
 }

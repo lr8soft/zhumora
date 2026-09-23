@@ -293,9 +293,13 @@ const api = {
   // Provider 上下文窗口探测
   // ============================================================
   provider: {
-    /** 探测上下文窗口（用户填/改 Base URL 时自动识别；返回检测到的 token 数） */
-    detectContextWindow: (provider: any, modelOverride?: string): Promise<{ detected?: number; error?: string }> =>
-      ipcRenderer.invoke('provider:context-window', provider, modelOverride),
+    /**
+     * 探测上下文窗口（用户填/改 Base URL 时自动识别；返回检测到的 token 数）。
+     * requested=true 表示用户显式请求（点"重新探测"），此时结果可覆盖手动值；
+     * 否则（自动探测）已有手动值时不返回 detected，避免探测结果冲掉手动配置。
+     */
+    detectContextWindow: (provider: any, modelOverride?: string, requested?: boolean): Promise<{ detected?: number; error?: string }> =>
+      ipcRenderer.invoke('provider:context-window', provider, modelOverride, requested),
     /** 拉取模型列表（OpenAI 兼容 GET /models；主进程缓存 5 分钟，force 强刷） */
     listModels: (provider: any, force?: boolean): Promise<{ models: { id: string; name?: string; ownedBy?: string }[]; error?: string }> =>
       ipcRenderer.invoke('provider:models', provider, force)

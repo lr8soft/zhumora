@@ -3,6 +3,7 @@ import { promises as fsPromises } from 'node:fs'
 import type { AppSettings } from '../../shared/types'
 import * as db from '../store/db'
 import { detectProviderContextWindow } from '../agent/context'
+import { shouldApplyDetectedContextWindow } from '../agent/contextDetectionPolicy'
 import { listProviderModels } from '../llm/models'
 import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '../mcp/client'
 import { reloadSkills, inspectSkillPath, type SkillInspection } from '../skill/manager'
@@ -150,9 +151,12 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
       return { error: error instanceof Error ? error.message : String(error) }
     }
   })
-  ipcMain.handle('provider:context-window', async (_event, provider: AppSettings['providers'][0], modelOverride?: string) => {
+  ipcMain.handle('provider:context-window', async (_event, provider: AppSettings['providers'][0], modelOverride?: string, requested?: boolean) => {
     try {
-      return { detected: await detectProviderContextWindow(provider, modelOverride) }
+      const detected = await detectProviderContextWindow(provider, modelOverride)
+      // 显式手动值优先于探测（TECHNICAL.md）：非用户显式请求时不覆盖已配置值
+      if (!shouldApplyDetectedContextWindow(provider, requested === true)) return {}
+      return { detected }
     } catch (error) {
       return { error: (error as Error).message }
     }
