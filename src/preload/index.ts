@@ -191,6 +191,20 @@ const api = {
     }
   },
 
+  // ============================================================
+  // Skills
+  // ============================================================
+  skill: {
+    /** 添加前校验路径：目录需含合规 SKILL.md，或单个 .md 文件 */
+    inspectPath: (p: string): Promise<{
+      valid: boolean
+      kind: 'folder' | 'file'
+      name: string
+      description: string
+      error?: string
+    } | null> => ipcRenderer.invoke('skill:inspectPath', p)
+  },
+
   bot: {
     test: (channel: string, config: unknown): Promise<{ ok?: boolean; bot?: { name: string; username?: string }; error?: string }> =>
       ipcRenderer.invoke('bot:test', channel, config)

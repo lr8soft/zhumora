@@ -12,6 +12,7 @@ import { disposeDesktopAdapter } from './desktop/adapter'
 import { createApplicationServices } from './composition'
 import type { ApplicationServices } from './composition'
 import { reloadSkills } from './skill/manager'
+import { refreshSkillTool } from './skill/skillTool'
 import { AvatarAssetStore } from './avatar/assetStore'
 import { AvatarWindowManager } from './avatar/windowManager'
 import { reconcileAvatarSessions } from './ipc/registerAvatarIpc'
@@ -107,6 +108,7 @@ app.whenReady().then(async () => {
   const settings = getSettings()
   reconcileAvatarSessions(avatar, settings)
   await reloadSkills(settings.skills)
+  refreshSkillTool()
   if (settings.mcpServers?.length > 0) {
     log('info', `Auto-connecting ${settings.mcpServers.length} MCP server(s) on startup`)
     reconnectAllMcpServers(settings.mcpServers).catch((err) => {

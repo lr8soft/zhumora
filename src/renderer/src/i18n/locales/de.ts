@@ -258,8 +258,11 @@ export default {
       copied: 'Kopiert'
     },
     skills: {
-      hint: 'Laden Sie SKILL.md-Dateien, um spezialisierte Prompts in den Agent zu injizieren.',
-      addSkill: '+ Skill hinzufügen (.md-Datei auswählen)',
+      hint: 'Skills sind Ordner (oder einzelne .md-Dateien) mit einem SKILL.md. Es werden nur Name und Beschreibung injiziert; der Agent lädt den Volltext bei Bedarf über das `skill`-Tool.',
+      addFolder: '+ Skill-Ordner hinzufügen (enthält SKILL.md)',
+      addFile: '+ .md-Datei hinzufügen',
+      invalidPath: 'Ungültiger Skill: SKILL.md nicht gefunden oder Frontmatter fehlt/ist ungültig.',
+      duplicate: 'Ein Skill namens „{{name}}“ wurde bereits hinzugefügt.',
       on: 'An',
       off: 'Aus',
       remove: 'Entfernen'

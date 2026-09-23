@@ -258,8 +258,11 @@ export default {
       copied: 'Copied'
     },
     skills: {
-      hint: 'Load Skill definitions (SKILL.md files) to inject specialized prompts into the agent.',
-      addSkill: '+ Add Skill (pick .md file)',
+      hint: 'Skills are folders (or single .md files) with a SKILL.md that define specialized instructions. Only name + description are injected; the agent loads full content on demand via the `skill` tool.',
+      addFolder: '+ Add Skill Folder (contains SKILL.md)',
+      addFile: '+ Add .md File',
+      invalidPath: 'Invalid skill: no SKILL.md found or frontmatter is missing/invalid.',
+      duplicate: 'A skill named "{{name}}" is already added.',
       on: 'On',
       off: 'Off',
       remove: 'Remove'

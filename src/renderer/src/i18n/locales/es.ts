@@ -258,8 +258,11 @@ export default {
       copied: 'Copiado'
     },
     skills: {
-      hint: 'Carga archivos SKILL.md para inyectar prompts especializados al agente.',
-      addSkill: '+ Añadir Skill (seleccionar .md)',
+      hint: 'Los skills son carpetas (o archivos .md sueltos) con un SKILL.md. Solo se inyectan name y description; el agente carga el contenido completo bajo demanda con la herramienta `skill`.',
+      addFolder: '+ Añadir carpeta de Skill (con SKILL.md)',
+      addFile: '+ Añadir archivo .md',
+      invalidPath: 'Skill no válido: SKILL.md no encontrado o frontmatter incompleto/inválido.',
+      duplicate: 'Ya existe un skill llamado «{{name}}».',
       on: 'On',
       off: 'Off',
       remove: 'Eliminar'

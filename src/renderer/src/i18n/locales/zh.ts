@@ -267,8 +267,11 @@ export default {
       copied: '已复制'
     },
     skills: {
-      hint: '加载 Skill 定义文件 (SKILL.md) 以注入专用提示词到 Agent。',
-      addSkill: '+ 添加 Skill (选择 .md 文件)',
+      hint: 'Skill 是包含 SKILL.md 的文件夹（或单个 .md 文件）。系统提示词只注入名称和描述，Agent 通过 `skill` 工具按需加载完整指令。',
+      addFolder: '+ 添加 Skill 文件夹（含 SKILL.md）',
+      addFile: '+ 添加 .md 文件',
+      invalidPath: '无效的 Skill：未找到 SKILL.md 或 frontmatter 缺失/不合规。',
+      duplicate: '已存在名为 "{{name}}" 的 Skill。',
       on: '开',
       off: '关',
       remove: '移除'

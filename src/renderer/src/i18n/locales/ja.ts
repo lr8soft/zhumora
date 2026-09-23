@@ -258,8 +258,11 @@ export default {
       copied: 'コピーしました'
     },
     skills: {
-      hint: 'SKILL.md ファイルをロードしてエージェントに専門プロンプトを注入。',
-      addSkill: '+ スキルを追加 (.md ファイルを選択)',
+      hint: 'スキルは SKILL.md を含むフォルダ（または単一の .md ファイル）です。name と description のみが注入され、エージェントは `skill` ツールで必要時に全文を読み込みます。',
+      addFolder: '+ スキルフォルダを追加 (SKILL.md 入り)',
+      addFile: '+ .md ファイルを追加',
+      invalidPath: '無効なスキル：SKILL.md が見つからないか、frontmatter が不足/無効です。',
+      duplicate: '「{{name}}」という名前のスキルは既に追加されています。',
       on: 'オン',
       off: 'オフ',
       remove: '削除'

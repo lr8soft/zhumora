@@ -5,7 +5,8 @@ import * as db from '../store/db'
 import { detectProviderContextWindow } from '../agent/context'
 import { listProviderModels } from '../llm/models'
 import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '../mcp/client'
-import { reloadSkills } from '../skill/manager'
+import { reloadSkills, inspectSkillPath, type SkillInspection } from '../skill/manager'
+import { refreshSkillTool } from '../skill/skillTool'
 import { logCertModeChanged } from '../net/fetch'
 import { equivalentConfigList } from './settingsChange'
 import { validateStandaloneSvg } from '../../shared/diagram'
@@ -63,6 +64,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     if (skillsChanged) {
       try {
         await reloadSkills(settings.skills)
+        refreshSkillTool()
       } catch (error) {
         console.error('Skills reload error:', error)
       }
@@ -96,6 +98,11 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
       filters: [{ name: 'Skill files', extensions: ['md'] }]
     })
     return result.canceled ? null : result.filePaths[0]
+  })
+  /** 添加 Skill 前校验路径（目录含 SKILL.md 或单个 .md 文件，frontmatter 合规）。 */
+  ipcMain.handle('skill:inspectPath', async (_event, p: unknown): Promise<SkillInspection | null> => {
+    if (typeof p !== 'string' || !p) return null
+    return inspectSkillPath(p)
   })
   /** 保存 Mermaid 图表为图片文件（SVG / PNG / JPEG）。
    *  format=svg 时 content 是 renderer 组装好的独立 SVG 文本（含源码注释头），utf8 写入；
