@@ -1,6 +1,6 @@
 import { desktopCapturer, screen as electronScreen } from 'electron'
 import type { Display } from 'electron'
-import { getDesktopAdapter } from '../desktop/adapter'
+import { getDesktopAdapter, supportsDesktopAutomation } from '../desktop/adapter'
 import { displayPointToPhysical, screenshotPointToScreen, type ScreenshotCoordinateFrame } from '../desktop/coordinates'
 import type {
   DesktopActionName,
@@ -391,7 +391,14 @@ function optionalBoolean(value: unknown): boolean | undefined {
   return typeof value === 'boolean' ? value : undefined
 }
 
+/**
+ * 平台能力分裂点：观察工具各平台都注册（Linux 走 Electron 截屏），
+ * 动作工具（键盘/鼠标/UI 组件操作）依赖 Terminator，仅 Windows 注册。
+ */
 export function createDesktopTools(control: DesktopControlCoordinator) {
+  if (!supportsDesktopAutomation()) {
+    return [{ name: DESKTOP_OBSERVE_TOOL_NAME, handler: desktopObserveTool }]
+  }
   return [
     { name: DESKTOP_OBSERVE_TOOL_NAME, handler: desktopObserveTool },
     ...createDesktopInputTools(desktopActionTool.execute, control)

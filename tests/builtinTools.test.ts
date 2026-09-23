@@ -71,22 +71,31 @@ try {
   )
 
   assert.deepEqual(
-    resolveBrowserCandidates('chrome', ' C:\\Browser\\browser.exe ').map(candidate => candidate.key),
+    resolveBrowserCandidates('chrome', ' C:\\Browser\\browser.exe ', 'win32').map(candidate => candidate.key),
     ['chrome', 'msedge', 'custom:C:\\Browser\\browser.exe']
   )
   assert.deepEqual(
-    resolveBrowserCandidates('msedge', ' C:\\Browser\\browser.exe ').map(candidate => candidate.key),
+    resolveBrowserCandidates('msedge', ' C:\\Browser\\browser.exe ', 'win32').map(candidate => candidate.key),
     ['msedge', 'chrome', 'custom:C:\\Browser\\browser.exe']
   )
   assert.deepEqual(
-    resolveBrowserCandidates('custom', ' C:\\Browser\\browser.exe ').map(candidate => candidate.key),
+    resolveBrowserCandidates('custom', ' C:\\Browser\\browser.exe ', 'win32').map(candidate => candidate.key),
     ['custom:C:\\Browser\\browser.exe', 'chrome', 'msedge']
   )
   assert.deepEqual(
-    resolveBrowserCandidates('custom', '  ').map(candidate => candidate.key),
+    resolveBrowserCandidates('custom', '  ', 'win32').map(candidate => candidate.key),
     ['chrome', 'msedge']
   )
   assert.equal(browserConfigurationKey('msedge', ' C:\\Browser\\browser.exe '), 'msedge:C:\\Browser\\browser.exe')
+  // Edge (msedge) 是 Windows 渠道：Linux 候选链不含它，偏好 msedge 落到 chrome
+  assert.deepEqual(
+    resolveBrowserCandidates('chrome', '/usr/bin/chromium', 'linux').map(candidate => candidate.key),
+    ['chrome', 'custom:/usr/bin/chromium']
+  )
+  assert.deepEqual(
+    resolveBrowserCandidates('msedge', ' ', 'linux').map(candidate => candidate.key),
+    ['chrome']
+  )
 
   console.log('builtinTools tests passed')
 } finally {

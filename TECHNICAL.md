@@ -250,10 +250,23 @@ Available browser tools currently include:
 
 Desktop control is exposed through a platform-neutral `DesktopAdapter`. The
 current `WindowsTerminatorAdapter` uses Terminator for Windows UI Automation,
-semantic element targeting, mouse input, and keyboard input. macOS and Linux
-have explicit adapter slots but are not implemented yet.
+semantic element targeting, mouse input, and keyboard input.
 
-The model-facing API contains two tools:
+Platform capability split:
+
+- Windows: full adapter (`TerminatorProcessAdapter`) with all tools registered.
+- Linux: `LinuxScreenshotAdapter` — UI tree access and input injection are not
+  available (Terminator ships Windows-only binaries), so the desktop control
+  capability is cut down to Electron screenshot observation. Only
+  `desktop_observe` is registered on Linux (`mode=screen`); the input tools
+  (`desktop_key`, `desktop_type`, `desktop_mouse`, `desktop_action`) are not
+  registered. The split point is `supportsDesktopAutomation()` in
+  `src/main/desktop/adapter.ts` and `createDesktopTools()` in
+  `src/main/tools/desktop.ts`; the browser candidate list likewise drops the
+  Windows-only `msedge` channel on Linux.
+- macOS: still an explicit unimplemented slot.
+
+The model-facing API on Windows contains two tool families:
 
 - `desktop_observe` lists applications, reads a window accessibility tree, and
   optionally attaches a display screenshot.
@@ -523,10 +536,15 @@ The UI supports:
 
 ### Requirements
 
-- Windows 10 / 11
+- Windows 10 / 11, or Ubuntu Linux (x64)
 - Node.js 22.12+
 - Node.js 24 LTS recommended
 - npm
+- Linux: a graphical session (Wayland/X11) for the app itself; fontconfig
+  (`fc-list`, standard on Ubuntu) for the office font tools
+
+Note: on Linux the desktop control capability is limited to screenshots
+(see 6.3); Windows keeps the full Terminator-based UI automation.
 
 Install dependencies:
 
@@ -550,6 +568,12 @@ Package Windows installer:
 
 ```bash
 npm run build:win
+```
+
+Package Linux (AppImage + deb):
+
+```bash
+npm run build:linux
 ```
 
 The installer is written to `release/`.
@@ -579,6 +603,8 @@ npm install
 
 ## 19. Current scope
 
-Zhumora is currently Windows-focused.
+Zhumora is currently Windows-first, with a Linux (Ubuntu x64) build whose
+desktop control is limited to screenshots; everything else (files, shell,
+ripgrep, office, browser, MCP, bots, storage) is platform-neutral.
 
 The architecture already separates model access, agent execution, browser automation, desktop capture, MCP, memory, storage, and the renderer, so these components can evolve independently without turning the README into an implementation manual.

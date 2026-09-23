@@ -8,6 +8,12 @@ import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } fr
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 
 const api = {
+  /**
+   * 主进程真实平台。renderer 里 Electron 的 process shim 恒为 'win32'，
+   * 需要平台判断（如 Linux 无 msedge 渠道）时必须用这个值。
+   */
+  platform: process.platform,
+
   // ============================================================
   // Session 管理
   // ============================================================

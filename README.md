@@ -1,6 +1,6 @@
 # Zhumora 智能体
 
-**开源的 Windows 桌面 AI 智能体。**
+**开源的桌面 AI 智能体（Windows / Ubuntu Linux）。**
 
 Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏览器和桌面。程序本体以本地运行为主，同时支持 MCP、Skills、长期记忆和权限控制。
 
@@ -22,7 +22,7 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 - 通过按格式划分的内置工具读写 Word、Excel、PowerPoint 和 PDF 文件
 - 执行终端命令
 - 使用 Playwright 自动化 Chromium
-- 通过无障碍元素、截图、鼠标和键盘观察并控制 Windows 应用
+- 通过无障碍元素、截图、鼠标和键盘观察并控制 Windows 应用（Linux 上桌面控制仅保留截图观察）
 - 通过 MCP 扩展工具
 - 自身也是 MCP 服务器，可供 Claude Code、Codex 等外部编排器接入并委托任务
 - 从 Markdown 文件加载 Skills
@@ -55,6 +55,8 @@ Zhumora 可以直接操作 Windows 桌面：
 
 这让 Zhumora 能够驱动没有 API 或命令行的原生 Windows 应用，而不仅仅是文件、终端和浏览器。
 
+> Linux 版本：无障碍树和输入注入依赖 Windows 专有的 Terminator 库，因此桌面控制仅保留**截图观察**（`desktop_observe` 的 `screen` 模式）；文件、终端、浏览器等其余能力不受影响。
+
 ## 作为 MCP 服务器：接住外部编排器的委托
 
 Zhumora 本身也是一个 MCP 服务器。Claude Code、Codex 等外部编排器可以把它当作协作者，把成块的任务委托进来，由同一个本地 Agent 执行。
@@ -71,7 +73,7 @@ Zhumora 本身也是一个 MCP 服务器。Claude Code、Codex 等外部编排�
 
 ### 环境要求
 
-- Windows 10 / 11
+- Windows 10 / 11，或 Ubuntu Linux（x64）
 - Node.js 22.12+（推荐 Node.js 24 LTS）
 - npm
 
@@ -97,6 +99,12 @@ npm run build
 
 ```bash
 npm run build:win
+```
+
+### 打包 Linux（AppImage / deb）
+
+```bash
+npm run build:linux
 ```
 
 安装包输出到 `release/`。

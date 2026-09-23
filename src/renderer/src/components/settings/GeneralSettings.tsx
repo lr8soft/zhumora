@@ -15,6 +15,8 @@ export function GeneralSettings() {
   // 草稿模式：所有设置改动都写入草稿（Save 才入库）；
   // 主题/字号/语言同时即时预览（Cancel 时由 store 恢复基线快照）
   const { settingsDraft, updateSettingsDraft, theme, setTheme, fontSize, setFontSize } = useAppStore()
+  // msedge 渠道是 Windows 专有；Linux 上隐藏该选项（renderer 的 process.platform 不可信）
+  const showEdgeOption = window.api.platform === 'win32'
   const isUnlimited = (settingsDraft.maxRetries ?? 5) === -1
   const isRoundsUnlimited = (settingsDraft.maxRounds ?? 20) === 0
 
@@ -244,7 +246,7 @@ export function GeneralSettings() {
             onChange={(e) => updateSettingsDraft({ browserTarget: e.target.value as BrowserTarget })}
           >
             <option value="chrome">{t('settings.general.browserChrome')}</option>
-            <option value="msedge">{t('settings.general.browserEdge')}</option>
+            {showEdgeOption && <option value="msedge">{t('settings.general.browserEdge')}</option>}
             <option value="custom">{t('settings.general.browserCustom')}</option>
           </select>
         </div>

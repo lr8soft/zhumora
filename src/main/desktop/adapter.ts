@@ -5,7 +5,13 @@ import {
   TerminatorProcessAdapter,
   type DesktopWorkerProcess
 } from './processAdapter'
-import type { DesktopAdapter } from './types'
+import type {
+  DesktopActionRequest,
+  DesktopActionResult,
+  DesktopAdapter,
+  DesktopObservation,
+  DesktopObserveRequest
+} from './types'
 
 let adapterPromise: Promise<DesktopAdapter> | null = null
 
@@ -22,6 +28,8 @@ export async function disposeDesktopAdapter(): Promise<void> {
   await adapter.dispose()
 }
 
+export const supportsDesktopAutomation = (): boolean => process.platform === 'win32'
+
 async function createDesktopAdapter(): Promise<DesktopAdapter> {
   switch (process.platform) {
     case 'win32':
@@ -32,10 +40,42 @@ async function createDesktopAdapter(): Promise<DesktopAdapter> {
     case 'darwin':
       throw new Error('[UNSUPPORTED_PLATFORM] macOS desktop control adapter is not implemented yet.')
     case 'linux':
-      throw new Error('[UNSUPPORTED_PLATFORM] Linux desktop control adapter is not implemented yet.')
+      return new LinuxScreenshotAdapter()
     default:
       throw new Error(`[UNSUPPORTED_PLATFORM] Desktop control is not supported on ${process.platform}.`)
   }
+}
+
+/**
+ * Linux 没有 Terminator（UIA 无障碍树 + 输入注入是 Windows 专有），桌面控制
+ * 只保留 Electron 截屏观察；动作类工具在 composition 层按平台不注册。
+ */
+export class LinuxScreenshotAdapter implements DesktopAdapter {
+  readonly name = 'linux-electron-screenshot'
+  readonly platform = 'linux' as const
+
+  observe(request: DesktopObserveRequest, signal?: AbortSignal): Promise<DesktopObservation> {
+    void request
+    void signal
+    return Promise.resolve({
+      backend: this.name,
+      platform: this.platform,
+      frameId: '',
+      monitors: [],
+      message:
+        'Linux: UI access (window tree) and input injection (desktop_key/desktop_type/desktop_action) '
+        + 'are not available. Use mode=screen (Electron screenshot) for visual observation.'
+    })
+  }
+
+  action(_request: DesktopActionRequest, _signal?: AbortSignal): Promise<DesktopActionResult> {
+    return Promise.reject(new Error(
+      '[UNSUPPORTED_PLATFORM] Desktop input is only available on Windows. '
+      + 'Linux keeps Electron screenshot observation only.'
+    ))
+  }
+
+  async dispose(): Promise<void> {}
 }
 
 function spawnTerminatorWorker(): DesktopWorkerProcess {

@@ -49,6 +49,8 @@ export interface DesktopObservation {
   tree?: string
   targets?: DesktopTarget[]
   targetCount?: number
+  /** 平台能力说明（如 Linux 无 UI 树/输入注入时告知模型可用能力） */
+  message?: string
 }
 
 export type DesktopActionName =

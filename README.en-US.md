@@ -1,6 +1,6 @@
 # Zhumora Agent
 
-A open source desktop AI agent for Windows.
+An open source desktop AI agent for Windows and Ubuntu Linux.
 
 Zhumora connects to OpenAI-compatible models and can work with your files, terminal, browser, and desktop. It is designed as a local-first agent runtime with support for MCP, skills, memory, and user-controlled permissions.
 
@@ -21,7 +21,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 - Read and write Word, Excel, PowerPoint, and PDF artifacts with format-specific built-in tools
 - Run terminal commands
 - Automate Chromium with Playwright
-- Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input
+- Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input (on Linux, desktop control keeps screenshot observation only)
 - Extend tools through MCP servers
 - Serve as an MCP server that external orchestrators (Claude Code, Codex, …) can delegate tasks to
 - Load reusable skills from Markdown files
@@ -55,6 +55,8 @@ Zhumora can operate the Windows desktop directly:
 
 This lets Zhumora drive native Windows apps that have no API or CLI — not just files, shell, and the browser.
 
+> On Linux the accessibility tree and input injection rely on the Windows-only Terminator library, so desktop control is limited to **screenshot observation** (`desktop_observe` in `screen` mode); all other capabilities (files, shell, browser, …) are unaffected.
+
 ## As an MCP server for external orchestrators
 
 Zhumora is also an MCP server. External orchestrators such as Claude Code and Codex can treat it as a collaborator, hand it a bounded task, and let the same local agent do the work.
@@ -71,7 +73,7 @@ Turn it on under **Settings → MCP Inbound**. The page shows the live status an
 
 ### Requirements
 
-- Windows 10 / 11
+- Windows 10 / 11, or Ubuntu Linux (x64)
 - Node.js 22.12+ (Node.js 24 LTS recommended)
 - npm
 
@@ -99,7 +101,13 @@ npm run build
 npm run build:win
 ```
 
-The Windows installer is written to `release/`.
+### Package for Linux (AppImage / deb)
+
+```bash
+npm run build:linux
+```
+
+The installer is written to `release/`.
 
 ## Model configuration
 
