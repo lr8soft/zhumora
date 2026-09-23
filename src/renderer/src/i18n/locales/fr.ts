@@ -254,6 +254,7 @@ export default {
       codexConfig: 'Configuration client Codex / TOML',
       copyCodex: 'Copier le TOML',
       codexHint: 'Ajoutez à ~/.codex/config.toml (Windows : C:\\Users\\<vous>\\.codex\\config.toml). Redémarrez le client après un changement de jeton ou de port.',
+
       copied: 'Copié'
     },
     skills: {

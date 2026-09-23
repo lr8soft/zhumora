@@ -254,6 +254,7 @@ export default {
       codexConfig: 'Codex / TOML クライアント設定',
       copyCodex: 'TOML をコピー',
       codexHint: '~/.codex/config.toml（Windows：C:\\Users\\<あなた>\\.codex\\config.toml）に追記します。トークンやポートを変更した後はクライアントを再起動してください。',
+
       copied: 'コピーしました'
     },
     skills: {

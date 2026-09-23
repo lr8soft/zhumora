@@ -20,7 +20,7 @@ import {
   delegateAllowsExternal,
   isTerminalMcpTaskStatus
 } from '../src/main/agent/taskProtocol.ts'
-import { ensureMcpServerToken, generateMcpServerToken } from '../src/shared/mcpServer.ts'
+import { ensureMcpServerToken, generateMcpServerToken, SERVER_INSTRUCTIONS } from '../src/shared/mcpServer.ts'
 
 // ---------- fakes（与 sessionService.test.ts 同一模式） ----------
 
@@ -197,6 +197,28 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
   assert.equal(ensureMcpServerToken(disabled), disabled, 'disabled settings return the same reference (never touched)')
   const disabledWithToken = { ...disabled, token: 'x' }
   assert.equal(ensureMcpServerToken(disabledWithToken), disabledWithToken, 'a disabled token is never rotated')
+}
+
+// ---------- 委托契约文本：initialize instructions 与工具描述各自锁死 ----------
+// 多数 host 不会把 MCP initialize instructions 可靠注入模型上下文（opencode 无此
+// 通道；Codex 仅新版支持且不消费 prompts），对它们真正被看见的文字是 tools/list 的
+// name+description。所以委托意愿三要素（同机能力、典型任务示例、负范围声明）必须
+// 同时出现在 instructions 和 zhumora_chat 描述里；两处措辞独立维护，断言各自
+// 锁住（下方 tools/list 断言覆盖工具描述一侧）。
+
+{
+  for (const token of ['zhumora_chat', 'zhumora_wait', 'zhumora_respond', 'zhumora_status', 'decidable_by_you']) {
+    assert.ok(SERVER_INSTRUCTIONS.includes(token), `instructions mention ${token}`)
+  }
+  assert.match(SERVER_INSTRUCTIONS, /proactively/, 'instructions ask for proactive delegation')
+  assert.match(SERVER_INSTRUCTIONS, /deliberately/, 'instructions state that the user enabled Zhumora on purpose')
+  // 委托意愿增强的三根支柱：
+  // 1) “同一台机器”让模型理解 Zhumora 操作的就是它的文件系统/应用（而非另一台机器）；
+  // 2) 具体任务示例给模型归类锚点（抽象场景描述不足以触发主动委托）；
+  // 3) 负范围声明（沙箱内任务自己做）消除边界不确定导致的默认保守。
+  assert.match(SERVER_INSTRUCTIONS, /same machine/i, 'instructions state Zhumora runs on the same machine')
+  assert.match(SERVER_INSTRUCTIONS, /Typical delegated tasks/, 'instructions give concrete task examples')
+  assert.match(SERVER_INSTRUCTIONS, /Do not delegate/, 'instructions draw the negative scope (sandbox-staying work)')
 }
 
 // ---------- taskProtocol 纯函数 ----------
@@ -488,9 +510,20 @@ const awaitTerminal = async (inbound: McpInboundService, key: string): Promise<R
 
   // tools/list
   const listResponse = await rpc({ jsonrpc: '2.0', id: 2, method: 'tools/list' }, sessionHeaders)
-  const listBody = (await rpcBody(listResponse)) as { result: { tools: { name: string }[] } }
+  const listBody = (await rpcBody(listResponse)) as { result: { tools: { name: string; description?: string }[] } }
   assert.deepEqual(listBody.result.tools.map(t => t.name).sort(),
     ['zhumora_chat', 'zhumora_respond', 'zhumora_status', 'zhumora_wait'])
+
+  // 只注入 tools/list 的 host（Codex、opencode）能看到的唯一文字就是这些描述：触发场景与
+  // “不得把 running 当完成”的规则必须写在 zhumora_chat 描述里，否则模型不知道何时主动委托。
+  const chatDescription = listBody.result.tools.find(tool => tool.name === 'zhumora_chat')?.description ?? ''
+  assert.match(chatDescription, /proactively/, 'chat description asks for proactive delegation')
+  assert.match(chatDescription, /GUI/, 'chat description names the real-machine triggers')
+  assert.match(chatDescription, /zhumora_wait/, 'chat description states the mandatory completion callback')
+  // 只注入 tools/list 的 host（Codex、opencode）看不见 instructions 和 prompt：
+  // 典型任务示例与负范围声明也必须写在描述里，否则模型没有归类锚点、边界不确定时默认保守。
+  assert.match(chatDescription, /Typical tasks/, 'chat description gives concrete task examples')
+  assert.match(chatDescription, /Do not use it for/, 'chat description draws the negative scope')
 
   // prompt 是给支持 prompts 的 host 的显式 subagent 工作流；关键规则同时存在于
   // instructions 和 tool description，避免 host 不自动注入 prompt 时模型看不见。

@@ -254,6 +254,7 @@ export default {
       codexConfig: 'Configuración de cliente Codex / TOML',
       copyCodex: 'Copiar TOML',
       codexHint: 'Añade a ~/.codex/config.toml (Windows: C:\\Users\\<tú>\\.codex\\config.toml). Reinicia el cliente tras cambiar el token o el puerto.',
+
       copied: 'Copiado'
     },
     skills: {

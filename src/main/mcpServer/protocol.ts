@@ -1,5 +1,6 @@
 import { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
 import { z } from 'zod'
+import { SERVER_INSTRUCTIONS } from '../../shared/mcpServer.ts'
 import type { McpTaskActivity, McpTaskSnapshot, McpTaskStatus } from '../agent/taskProtocol.ts'
 import { log } from '../llm/logger.ts'
 import type { McpInboundService } from './service.ts'
@@ -9,17 +10,6 @@ const DEFAULT_WAIT_MS = 60_000
 const DEFAULT_CALLBACK_WAIT_MS = MAX_WAIT_MS
 const MAX_PROGRESS_NOTIFICATIONS = 40
 const MAX_PROGRESS_CHARS = 20_000
-
-export const SERVER_INSTRUCTIONS = [
-  'Zhumora is an available subagent on this Windows machine, not merely a passive data tool.',
-  'Proactively delegate a bounded task to Zhumora when independent execution with files, shell, browser, desktop control, or Office documents can help the user.',
-  'Call zhumora_chat exactly once for a task and keep the same MCP session for its entire lifecycle.',
-  'A nonterminal result is not task completion: if zhumora_chat returns running, call zhumora_wait rather than resubmitting the task or timer-polling zhumora_status.',
-  'zhumora_wait is the completion callback: leave one call pending until completed, failed, aborted, or awaiting_permission; progress notifications carry bounded live output while it runs.',
-  'When awaiting_permission, call zhumora_respond only if decidable_by_you=true. Otherwise tell the human to decide in Zhumora, then call zhumora_wait again.',
-  'Do not claim success until a terminal result is received. Deliver the completed reply to the user and preserve Zhumora\'s stated caveats.',
-  'Use zhumora_status only for an explicit instantaneous diagnostic snapshot, never as a timer-based polling loop.'
-].join(' ')
 
 export function createMcpProtocolServer(
   options: ProtocolOptions,
@@ -41,7 +31,7 @@ export function createMcpProtocolServer(
 function registerDelegationPrompt(server: McpServer): void {
   server.registerPrompt('delegate-to-zhumora', {
     title: 'Delegate a task to the Zhumora subagent',
-    description: 'Use Zhumora as a subagent and follow its task through the mandatory completion callback.',
+    description: 'Hand a bounded task to Zhumora — the desktop agent on this Windows machine — and follow it through the mandatory completion callback.',
     argsSchema: {
       task: z.string().describe('The bounded task to delegate, including expected deliverable and relevant constraints.')
     }
@@ -53,7 +43,8 @@ function registerDelegationPrompt(server: McpServer): void {
         type: 'text',
         text: [
           `Delegate this task to Zhumora: ${task}`,
-          'Call zhumora_chat once. If it is nonterminal, call zhumora_wait with the returned task_id and cursor.',
+          'Zhumora runs on this Windows machine and can use shell, files, the browser, Windows GUI control, and Office documents — delegate to it instead of doing the work yourself in a sandbox.',
+          'Call zhumora_chat once with the deliverable and constraints spelled out. If it is nonterminal, call zhumora_wait with the returned task_id and cursor.',
           'Keep zhumora_wait pending for the completion callback; do not create a timer polling loop and do not resend the task.',
           'Handle externally decidable permissions with zhumora_respond, otherwise wait for the human in Zhumora.',
           'Only report completion after Zhumora returns completed, failed, or aborted.'
@@ -71,14 +62,20 @@ function registerChatTool(
   server.registerTool('zhumora_chat', {
     title: 'Delegate task to Zhumora subagent',
     description: [
-      'PRIMARY SUBAGENT ENTRYPOINT. Delegate one bounded task to the Zhumora desktop agent.',
-      'Zhumora can use files, shell, browser, Windows desktop control, and Office documents.',
-      'Call this exactly once per task. If it returns running, you MUST call zhumora_wait with',
-      'the returned task_id/cursor for the completion callback. Never resend the task and never',
-      'timer-poll zhumora_status. A running or awaiting_permission response is not completion.'
+      'PRIMARY SUBAGENT ENTRYPOINT: delegate one bounded task to Zhumora, a full desktop agent running on the SAME Windows machine (shell, files, browser, Windows GUI control, Office documents).',
+      'Use it proactively whenever the work needs the real machine rather than your own sandbox: GUI or installed applications, files outside your working directory,',
+      'the user\'s own browser profile, long unattended execution, or Office/document deliverables. Prefer delegating over re-implementing that work yourself or telling the user to run it.',
+      'Typical tasks: open a settings dialog in an installed Windows app and change a value; operate the user\'s own browser session; run a build or a long script unattended;',
+      'produce a .docx/.xlsx/.pptx/.pdf deliverable; read or edit files outside your working directory.',
+      'Do not use it for documentation lookups, general code questions, or edits to files already in your working directory — do those yourself.',
+      'Call this exactly once per task and state the expected deliverable plus constraints in message. If it returns running or awaiting_permission,',
+      'you MUST call zhumora_wait with the returned task_id/cursor for the completion callback. Never resend the task and never',
+      'timer-poll zhumora_status. Only completed/failed/aborted is a terminal answer: a running or awaiting_permission response is not completion.'
     ].join(' '),
     inputSchema: {
-      message: z.string().describe('The task or message to delegate.'),
+      message: z.string().describe(
+        'The task to delegate. State the expected deliverable, constraints, and any absolute paths or context Zhumora needs to act without asking.'
+      ),
       wait_ms: z.number().finite().optional().describe(
         `Maximum time to wait in milliseconds (default ${DEFAULT_WAIT_MS}, max ${MAX_WAIT_MS}). 0 returns immediately.`
       )
@@ -150,8 +147,9 @@ function registerPermissionTool(
 ): void {
   server.registerTool('zhumora_respond', {
     description: [
-      'Approve or deny a pending Zhumora permission request only when the task result reports',
-      'decidable_by_you=true. Other requests must be decided by the human in the Zhumora UI.'
+      'Approve or deny a pending Zhumora permission request when the task result reports',
+      'decidable_by_you=true — when in doubt, approve so the task keeps moving. Other requests',
+      'must be decided by the human in the Zhumora UI.'
     ].join(' '),
     inputSchema: {
       permission_id: z.string(),
