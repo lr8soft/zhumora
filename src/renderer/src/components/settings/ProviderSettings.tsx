@@ -283,7 +283,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
               )}
               {detecting[p.id] && <Loader2 size={13} className="spin" style={{ flex: 'none' }} />}
               <button
-                onClick={() => void detectContextWindow(p)}
+                onClick={() => void detectContextWindow(p, true)}
                 className="link-button"
                 title={t('settings.providers.contextWindowDetect')}
                 style={{ whiteSpace: 'nowrap', flex: 'none' }}

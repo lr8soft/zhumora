@@ -1,5 +1,10 @@
 import assert from 'node:assert/strict'
-import { configuredContextWindow, contextDetectionCacheKey, pickContextLength } from '../src/main/agent/contextDetectionPolicy.ts'
+import {
+  configuredContextWindow,
+  contextDetectionCacheKey,
+  pickContextLength,
+  shouldApplyDetectedContextWindow
+} from '../src/main/agent/contextDetectionPolicy.ts'
 
 const provider = {
   baseUrl: 'http://localhost:11434/v1/context-detection-test',
@@ -13,6 +18,34 @@ assert.notEqual(
   contextDetectionCacheKey({ ...provider, apiKey: '' }, 'large-context-model'),
   contextDetectionCacheKey(provider, 'large-context-model'),
   'anonymous fallback must not poison authenticated context detection'
+)
+
+// 手动值优先于探测：后台自动探测不得覆盖用户已填的 contextWindow，
+// 只有显式请求（"重新探测"按钮）才允许写回。
+assert.equal(
+  shouldApplyDetectedContextWindow({ contextWindow: 262_144 }, false),
+  false,
+  'background detection must not overwrite an explicit manual value'
+)
+assert.equal(
+  shouldApplyDetectedContextWindow({ contextWindow: 262_144 }, true),
+  true,
+  'an explicit re-detect request may overwrite the manual value'
+)
+assert.equal(
+  shouldApplyDetectedContextWindow({ contextWindow: 0 }, false),
+  true,
+  'background detection fills an empty (auto) field'
+)
+assert.equal(
+  shouldApplyDetectedContextWindow({}, false),
+  true,
+  'background detection fills an unset field'
+)
+assert.equal(
+  shouldApplyDetectedContextWindow({ contextWindow: 0 }, true),
+  true,
+  'an explicit re-detect request fills an empty field'
 )
 
 // pickContextLength：各后端 /v1/models 条目的上下文长度字段

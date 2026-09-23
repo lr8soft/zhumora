@@ -27,8 +27,12 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
     onChange(next, activeId)
   }
 
-  /** Ignore an old manual value and ask the endpoint for a fresh context size. */
-  const detectContextWindow = async (provider: ProviderConfig) => {
+  /**
+   * Ask the endpoint for a fresh context size.
+   * requested=true（用户显式点"重新探测"）→ 结果覆盖手动值；
+   * 缺省（后台自动探测）→ 已有手动值时主进程不返回 detected，不覆盖。
+   */
+  const detectContextWindow = async (provider: ProviderConfig, requested = false) => {
     const signature = signatureOf(provider)
     const requestKey = `${provider.id}\u0000${signature}`
     if (!provider.baseUrl || inFlight.current.has(requestKey)) return
@@ -36,7 +40,7 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
     inFlight.current.add(requestKey)
     setDetecting(state => ({ ...state, [provider.id]: true }))
     try {
-      const result = await window.api.provider.detectContextWindow(provider, provider.defaultModel)
+      const result = await window.api.provider.detectContextWindow(provider, provider.defaultModel, requested)
       const current = providersRef.current.find(item => item.id === provider.id)
       // A slow response must not overwrite a newer endpoint, credential, or model.
       if (current && signatureOf(current) === signatureOf(provider) && typeof result.detected === 'number') {
