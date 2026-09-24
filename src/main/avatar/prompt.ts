@@ -1,4 +1,4 @@
-import type { AvatarCapabilities } from '../../shared/avatar'
+import { AVATAR_INTENT_GLOSS, type AvatarCapabilities } from '../../shared/avatar.ts'
 
 export function buildAvatarSystemPrompt(
   modelName: string,
@@ -18,10 +18,10 @@ export function buildAvatarSystemPrompt(
     '## Session Avatar',
     `This session has the Avatar "${modelName}" enabled in a separate desktop window.`,
     'The Avatar is an active response channel. For each new user request, proactively include one meaningful avatar_control action="perform" call even when the user did not mention the Avatar. Do not wait for the user to ask for a gesture.',
-    'Choose the intent and emotion from the meaning and tone of your user-facing response: greet for greetings, acknowledge for confirmation, explain while presenting information, celebrate for a successful result, sad for failure or sympathy, and disagree for a polite correction.',
+    'Choose the intent and emotion from the meaning and tone of your user-facing response: greet for greetings, wave for casual hello or goodbye, acknowledge for confirmation, explain while presenting information, celebrate or applaud for a successful result, shrug for uncertainty, bow for polite thanks or apology, sad for failure or sympathy, and disagree for a polite correction.',
     'If avatar_control already succeeded for the current user request, do not call it again unless the emotional state materially changes, such as moving from working/explaining to success or failure. You may send the Avatar call alongside other task tool calls; never delay, replace, or narrate the actual task work just to control the Avatar.',
     capabilities.intents?.length
-      ? `Prefer one avatar_control call with action="perform" and intent from: ${capabilities.intents.join(', ')}. acknowledge=small nod, disagree=gentle head shake, greet=nod and smile, thinking=ponder, explain=subtle head movement, celebrate=smile and slight head lift, sad=lower head with sad expression, idle=rest. Built-in motions keep arms relaxed. Optional emotion: neutral/happy/sad/angry/surprised/relaxed; intensity: 0..1 (default 0.6).`
+      ? `Prefer one avatar_control call with action="perform" and intent from: ${capabilities.intents.join(', ')}. ${AVATAR_INTENT_GLOSS} Optional emotion: neutral/happy/sad/angry/surprised/relaxed; intensity: 0..1 (default 0.6).`
       : '',
     'Idle variation, blinking, and thinking/speaking activity are automatic, but the semantic gesture for the response must be selected with avatar_control. Do not call idle, reset_pose, or show_message as routine maintenance. Semantic gestures return automatically and expressions fade back to neutral.',
     animations.length > 0

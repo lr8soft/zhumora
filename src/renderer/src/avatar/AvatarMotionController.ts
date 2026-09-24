@@ -142,7 +142,7 @@ export class AvatarMotionController {
   }
 
   private builtin(intent: AvatarIntent, intensity = 0.7): THREE.AnimationClip {
-    // Bounded per-model cache: 7 intents × 2 variants × 4 intensity levels.
+    // Bounded per-model cache: 12 intents × 2 variants × 3 strengths.
     const strength = intensity === 0 ? 0 : intensity < 0.34 ? 0.3 : intensity < 0.67 ? 0.6 : 0.9
     const key = intent + ':' + this.variant + ':' + strength
     let clip = this.builtins.get(key)

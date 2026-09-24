@@ -281,7 +281,7 @@ export default {
     avatar: {
       intent: "Standardbewegung ersetzen",
       intentNone: "Nur direkt abspielen",
-      intentNames: {"idle":"Leerlauf","thinking":"Nachdenken","explain":"Erklären","acknowledge":"Nicken","disagree":"Kopfschütteln","greet":"Begrüßend nicken","celebrate":"Feiern","sad":"Traurig"},
+      intentNames: {"idle":"Leerlauf","thinking":"Nachdenken","explain":"Erklären","acknowledge":"Nicken","disagree":"Kopfschütteln","greet":"Begrüßend nicken","celebrate":"Feiern","sad":"Traurig","wave":"Winken","shrug":"Achselzucken","bow":"Verbeugen","applaud":"Klatschen"},
       windowSize: "Avatar-Fenstergröße",
       windowWidth: "Breite (240–960)",
       windowHeight: "Höhe (320–1440)",

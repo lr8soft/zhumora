@@ -281,7 +281,7 @@ export default {
     avatar: {
       intent: "Reemplazar movimiento",
       intentNone: "Solo reproducción directa",
-      intentNames: {"idle":"Espera","thinking":"Pensar","explain":"Explicar","acknowledge":"Asentir","disagree":"Negar","greet":"Saludar con la cabeza","celebrate":"Celebrar","sad":"Triste"},
+      intentNames: {"idle":"Espera","thinking":"Pensar","explain":"Explicar","acknowledge":"Asentir","disagree":"Negar","greet":"Saludar con la cabeza","celebrate":"Celebrar","sad":"Triste","wave":"Saludar con la mano","shrug":"Encogerse de hombros","bow":"Inclinarse","applaud":"Aplaudir"},
       windowSize: "Tamaño de ventana Avatar",
       windowWidth: "Ancho (240–960)",
       windowHeight: "Alto (320–1440)",

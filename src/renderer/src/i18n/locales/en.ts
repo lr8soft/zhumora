@@ -281,7 +281,7 @@ export default {
     avatar: {
       intent: "Replace built-in motion",
       intentNone: "Exact playback only",
-      intentNames: {"idle":"Idle","thinking":"Thinking","explain":"Explain","acknowledge":"Nod","disagree":"Shake head","greet":"Nod hello","celebrate":"Celebrate","sad":"Sad"},
+      intentNames: {"idle":"Idle","thinking":"Thinking","explain":"Explain","acknowledge":"Nod","disagree":"Shake head","greet":"Nod hello","celebrate":"Celebrate","sad":"Sad","wave":"Wave","shrug":"Shrug","bow":"Bow","applaud":"Applaud"},
       windowSize: "Avatar window size",
       windowWidth: "Width (240–960)",
       windowHeight: "Height (320–1440)",

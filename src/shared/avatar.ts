@@ -1,6 +1,8 @@
 export type AvatarAnimationSource = 'embedded' | 'vrma'
 
-export const AVATAR_INTENTS = ['idle', 'thinking', 'explain', 'acknowledge', 'disagree', 'greet', 'celebrate', 'sad'] as const
+export const AVATAR_INTENTS = ['idle', 'thinking', 'explain', 'acknowledge', 'disagree', 'greet', 'celebrate', 'sad', 'wave', 'shrug', 'bow', 'applaud'] as const
+/** Single source for intent wording; consumed by the tool schema and the system prompt. */
+export const AVATAR_INTENT_GLOSS = 'idle=rest, thinking=ponder, explain=subtle head movement, acknowledge=nod, disagree=shake head, greet=nod and smile, celebrate=smile and slight head lift, sad=lower head and sad expression, wave=wave one hand, shrug=raise shoulders, bow=bow politely, applaud=clap hands. Built-in motions stay upper-body and subtle.'
 export type AvatarIntent = typeof AVATAR_INTENTS[number]
 export const AVATAR_EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'relaxed'] as const
 export type AvatarEmotion = typeof AVATAR_EMOTIONS[number]

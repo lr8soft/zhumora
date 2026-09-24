@@ -290,7 +290,7 @@ export default {
     avatar: {
       intent: "替换内置动作",
       intentNone: "仅精确播放",
-      intentNames: {"idle":"待机","thinking":"思考","explain":"解释","acknowledge":"点头认同","disagree":"摇头否定","greet":"点头招呼","celebrate":"庆祝","sad":"伤心"},
+      intentNames: {"idle":"待机","thinking":"思考","explain":"解释","acknowledge":"点头认同","disagree":"摇头否定","greet":"点头招呼","celebrate":"庆祝","sad":"伤心","wave":"挥手","shrug":"耸肩","bow":"鞠躬","applaud":"鼓掌"},
       windowSize: "Avatar 窗口大小",
       windowWidth: "宽度（240–960）",
       windowHeight: "高度（320–1440）",

@@ -4,8 +4,9 @@ import { VRM, VRMHumanoid, VRMUtils, VRMExpression, VRMExpressionManager, type V
 import { AvatarMotionController } from '../src/renderer/src/avatar/AvatarMotionController.ts'
 import { AvatarExpressionController } from '../src/renderer/src/avatar/AvatarExpressionController.ts'
 import { AvatarClipAdapter } from '../src/renderer/src/avatar/AvatarClipAdapter.ts'
+import { AvatarLifeMotion } from '../src/renderer/src/avatar/AvatarLifeMotion.ts'
 import { mapScreenPointToAvatarLookTarget } from '../src/main/avatar/lookTarget.ts'
-import { AVATAR_INTENTS } from '../src/shared/avatar.ts'
+import { AVATAR_INTENTS, type AvatarIntent } from '../src/shared/avatar.ts'
 import { createBuiltinMotion } from '../src/renderer/src/avatar/motionClips.ts'
 import { createAvatarAgentEventSink } from '../src/main/avatar/agentEvents.ts'
 
@@ -14,7 +15,7 @@ assert.equal(mapScreenPointToAvatarLookTarget({ x: 99, y: 100 }, { x: 100, y: 10
 assert.equal(mapScreenPointToAvatarLookTarget({ x: 460, y: 100 }, { x: 100, y: 100, width: 360, height: 240 }), undefined)
 
 // Real VRMHumanoid conversion, including rotated authoring bones and both VRM versions.
-function fixture(version: '0' | '1', authorRotation = 0) {
+function fixture(version: '0' | '1', authorRotation = 0, withFingers = true) {
   const scene = new THREE.Group()
   const bones: Partial<VRMHumanBones> = {}
   const add = (name: VRMHumanBoneName, parent: VRMHumanBoneName | null, x: number, y: number) => {
@@ -32,12 +33,17 @@ function fixture(version: '0' | '1', authorRotation = 0) {
   add('head', 'neck', 0, 0.15)
   for (const side of ['left', 'right'] as const) {
     const x = (side === 'left' ? 1 : -1) * sign
+    add(`${side}Shoulder`, 'chest', x * 0.08, 0.12)
     add(`${side}UpperArm`, 'chest', x * 0.18, 0.1)
     add(`${side}LowerArm`, `${side}UpperArm`, x * 0.25, 0)
     add(`${side}Hand`, `${side}LowerArm`, x * 0.22, 0)
     add(`${side}UpperLeg`, 'hips', x * 0.1, -0.1)
     add(`${side}LowerLeg`, `${side}UpperLeg`, 0, -0.4)
     add(`${side}Foot`, `${side}LowerLeg`, 0, -0.4)
+    if (withFingers) {
+      add(`${side}IndexProximal`, `${side}Hand`, x * 0.08, 0)
+      add(`${side}IndexIntermediate`, `${side}IndexProximal`, x * 0.06, 0)
+    }
     // Authoring-axis twist around the arm keeps the world-space T-pose identical.
     bones[`${side}UpperArm`]!.node.rotation.x = authorRotation
   }
@@ -59,8 +65,10 @@ for (const version of ['0', '1'] as const) {
   for (const authorRotation of [0, Math.PI / 3]) {
     const f = fixture(version, authorRotation)
     const idleClip = createBuiltinMotion(f.vrm, 'idle')
+    const ARM_GESTURES: AvatarIntent[] = ['wave', 'applaud']
     for (const intent of AVATAR_INTENTS) {
       const clip = createBuiltinMotion(f.vrm, intent)
+      if (ARM_GESTURES.includes(intent)) continue
       for (const side of ['left', 'right'] as const) {
         for (const part of ['UpperArm', 'LowerArm', 'Hand'] as const) {
           const node = f.vrm.humanoid.getNormalizedBoneNode(`${side}${part}`)!
@@ -73,6 +81,19 @@ for (const version of ['0', '1'] as const) {
         }
       }
     }
+    // Arm gestures own their limb tracks; torso/shoulder gestures own their body bones.
+    const moves = (intent: AvatarIntent, bone: VRMHumanBoneName) => {
+      const node = f.vrm.humanoid.getNormalizedBoneNode(bone)!
+      const track = createBuiltinMotion(f.vrm, intent).tracks.find(t => t.name === `${node.uuid}.quaternion`)!
+      for (let i = 4; i < track.values.length; i += 4) {
+        for (let c = 0; c < 4; c++) if (Math.abs(track.values[i + c] - track.values[c]) > 1e-4) return true
+      }
+      return false
+    }
+    assert.ok(moves('wave', 'rightUpperArm'), 'wave raises the right arm')
+    assert.ok(moves('applaud', 'leftLowerArm'), 'applaud moves the forearms')
+    assert.ok(moves('shrug', 'leftShoulder'), 'shrug lifts the shoulders')
+    assert.ok(moves('bow', 'hips'), 'bow bends the torso')
     await f.controller.initialize()
     f.step(0.02)
     for (const side of ['left', 'right'] as const) {
@@ -80,6 +101,23 @@ for (const version of ['0', '1'] as const) {
       const hand = f.bones[`${side}Hand`]!.node.getWorldPosition(new THREE.Vector3())
       assert.ok(hand.y < shoulder.y - 0.3, version + ': hands must hang below shoulders')
     }
+    const restRightHand = f.bones.rightHand!.node.getWorldPosition(new THREE.Vector3())
+    await f.controller.perform('wave')
+    f.step(1.6)
+    const waved = f.bones.rightHand!.node.getWorldPosition(new THREE.Vector3())
+    assert.ok(waved.y > restRightHand.y + 0.1, 'wave raises the right hand: ' + waved.y + ' vs ' + restRightHand.y)
+    await f.controller.reset()
+    f.step(2)
+    const handGap = () => Math.abs(
+      f.bones.leftHand!.node.getWorldPosition(new THREE.Vector3()).x - f.bones.rightHand!.node.getWorldPosition(new THREE.Vector3()).x
+    )
+    const restGap = handGap()
+    await f.controller.perform('applaud')
+    f.step(1.3)
+    const clapGap = handGap()
+    assert.ok(clapGap < restGap - 0.1, 'applaud brings the hands together: ' + clapGap + ' vs ' + restGap)
+    await f.controller.reset()
+    f.step(2)
     const head = f.vrm.humanoid.getNormalizedBoneNode('head')!
     const before = head.quaternion.clone()
     await f.controller.perform('greet')
@@ -149,5 +187,43 @@ resolveClip(completed)
 await assert.rejects(pendingPlay, /superseded/, 'late asset loading cannot override a newer reset')
 raceMotion.dispose()
 assert.equal(race.mixer.stats.actions.inUse, 0, 'dispose stops all actions')
+
+// Life-motion overlay: present and subtle, and it must never accumulate on untracked bones.
+const lifeFixture = fixture('1')
+await lifeFixture.controller.initialize()
+const life = new AvatarLifeMotion(lifeFixture.vrm, () => 0.3)
+life.setActivity('speaking')
+const chestNode = lifeFixture.vrm.humanoid.getNormalizedBoneNode('chest')!
+const fingerNode = lifeFixture.vrm.humanoid.getNormalizedBoneNode('leftIndexProximal')!
+const fingerBase = fingerNode.quaternion.clone()
+for (let i = 0; i < 300; i++) {
+  life.undo()
+  lifeFixture.controller.update(1 / 60)
+  lifeFixture.vrm.update(1 / 60)
+  life.apply(1 / 60)
+}
+life.undo()
+const chestMixerPose = chestNode.quaternion.clone()
+life.apply(1 / 60)
+const overlay = chestNode.quaternion.angleTo(chestMixerPose)
+assert.ok(overlay > 1e-5 && overlay < 0.06, 'breathing overlay is present and subtle: ' + overlay)
+const fingerCurl = fingerNode.quaternion.angleTo(fingerBase)
+assert.ok(fingerCurl > 0.05 && fingerCurl < 0.5, 'finger flexion stays relaxed: ' + fingerCurl)
+life.undo()
+assert.ok(fingerNode.quaternion.angleTo(fingerBase) < 1e-6, 'overlays must not accumulate')
+life.dispose()
+lifeFixture.controller.dispose()
+
+// Missing optional bones (no fingers) and the VRM0 flip must degrade safely.
+const bare = fixture('0', 0, false)
+const bareLife = new AvatarLifeMotion(bare.vrm)
+for (let i = 0; i < 60; i++) {
+  bareLife.undo()
+  bare.controller.update(1 / 60)
+  bare.vrm.update(1 / 60)
+  bareLife.apply(1 / 60)
+}
+bareLife.dispose()
+bare.controller.dispose()
 
 console.log('avatar motion, rig compatibility, transitions and expression tests passed')

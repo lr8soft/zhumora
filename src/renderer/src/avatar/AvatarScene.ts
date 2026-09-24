@@ -12,6 +12,7 @@ import type { AvatarLookTarget } from '@shared/avatar'
 import { AvatarMotionController } from './AvatarMotionController'
 import { AvatarExpressionController } from './AvatarExpressionController'
 import { AvatarClipAdapter } from './AvatarClipAdapter'
+import { AvatarLifeMotion } from './AvatarLifeMotion'
 
 type AssetLoader = (assetId: string) => Promise<Uint8Array>
 
@@ -31,6 +32,7 @@ export class AvatarScene {
   private vrm: VRM | null = null
   private mixer: THREE.AnimationMixer | null = null
   private motion: AvatarMotionController | null = null
+  private life: AvatarLifeMotion | null = null
   private expressions: AvatarExpressionController | null = null
   private clipAdapter: AvatarClipAdapter | null = null
   private activity: AvatarActivity = 'idle'
@@ -92,6 +94,8 @@ export class AvatarScene {
     const motion = new AvatarMotionController(vrm, this.mixer, name => this.resolveClip(name), overrides)
     this.motion = motion
     this.expressions = vrm.expressionManager ? new AvatarExpressionController(vrm.expressionManager) : null
+    this.life = new AvatarLifeMotion(vrm)
+    this.life.setActivity(this.activity)
     this.embeddedClips = new Map()
     for (const clip of gltf.animations) {
       if (!clip.name) continue
@@ -138,7 +142,7 @@ export class AvatarScene {
     if (command.type === 'perform') {
       await this.motion?.perform(command.intent, command.intensity)
       const emotion = command.emotion ?? (command.intent === 'sad' ? 'sad'
-        : command.intent === 'greet' || command.intent === 'celebrate' ? 'happy' : undefined)
+        : command.intent === 'greet' || command.intent === 'celebrate' || command.intent === 'wave' || command.intent === 'applaud' ? 'happy' : undefined)
       if (emotion) this.expressions?.emotion(emotion, command.intensity)
       return
     }
@@ -177,6 +181,7 @@ export class AvatarScene {
   setActivity(activity: AvatarActivity): void {
     this.activity = activity
     this.motion?.setActivity(activity)
+    this.life?.setActivity(activity)
   }
 
   hitTest(clientX: number, clientY: number): boolean {
@@ -268,10 +273,13 @@ export class AvatarScene {
   private animate = (): void => {
     this.animationFrame = requestAnimationFrame(this.animate)
     const delta = Math.min(this.clock.getDelta(), 0.1)
+    // Life-motion overlay is sandwiched around mixer updates so it never accumulates.
+    this.life?.undo()
     this.motion?.update(delta)
     this.expressions?.update(delta)
     this.lookTarget.position.lerp(this.desiredLookTarget, 1 - Math.exp(-12 * delta))
     this.lookTarget.updateMatrixWorld()
+    this.life?.apply(delta)
     this.vrm?.update(delta)
     this.renderer.render(this.scene, this.camera)
   }
@@ -280,6 +288,8 @@ export class AvatarScene {
     this.framingBounds = null
     this.motion?.dispose()
     this.motion = null
+    this.life?.dispose()
+    this.life = null
     this.expressions = null
     this.clipAdapter = null
     this.mixer = null

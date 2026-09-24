@@ -27,6 +27,10 @@ for (const tool of createAvatarTools(controller)) registry.register(tool.name, t
 assert.ok(registry.get('unrelated_tool'))
 const avatar = registry.get('avatar_control')!.handler
 assert.equal(registry.permission('avatar_control'), 'normal')
+const intentSchema = (avatar.definition as { function: { parameters: { properties: Record<string, { enum?: string[]; description?: string }> } } })
+  .function.parameters.properties.intent
+assert.deepEqual(intentSchema.enum?.slice(-4), ['wave', 'shrug', 'bow', 'applaud'], 'gesture intents join the schema')
+assert.match(intentSchema.description ?? '', /applaud=clap hands/, 'schema and prompt share one gloss')
 const abortController = new AbortController()
 const result = await avatar.execute(
   { action: 'play_animation', animation: 'Wave', loop: true },
