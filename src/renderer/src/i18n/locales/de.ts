@@ -289,7 +289,7 @@ export default {
       library: 'Avatar-Modellbibliothek',
       importModel: '.vrm-Modell importieren', empty: 'Noch keine VRM-Modelle importiert.', modelName: 'Charaktername', default: 'Als Standard', defaultAnimation: 'Start-Leerlaufanimation (erneut klicken zum Löschen)',
       animations: 'Verfügbare Animationen',
-      addEmbedded: 'Clip hinzufügen', importVrma: '.vrma importieren', embedded: 'Eingebettet', animationName: 'Animationsname für LLM', clipName: 'Eingebetteter Clipname', newAnimation: 'Neue Animation'
+      addEmbedded: 'Clip hinzufügen', importVrma: '.vrma importieren (mehrere)', embedded: 'Eingebettet', animationName: 'Animationsname für LLM', clipName: 'Eingebetteter Clipname', newAnimation: 'Neue Animation'
     },
     tts: {
       library: 'TTS-Modellbibliothek',

@@ -303,7 +303,7 @@ export default {
       defaultAnimation: '启动待机动画（再次点击取消）',
       animations: '可用动画',
       addEmbedded: '添加内嵌 clip',
-      importVrma: '导入 .vrma',
+      importVrma: '导入 .vrma（可多选）',
       embedded: '内嵌',
       animationName: '给 LLM 的动画名',
       clipName: 'VRM 内嵌 clip 名',

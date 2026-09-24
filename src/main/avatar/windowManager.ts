@@ -1,5 +1,6 @@
 import { BrowserWindow, screen } from 'electron'
 import type {
+  AvatarAnimationConfig,
   AvatarBootstrap,
   AvatarActivity,
   AvatarCapabilities,
@@ -153,8 +154,8 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     return this.options.assets.importModel(sourcePath)
   }
 
-  async importAnimation(sourcePath: string) {
-    return this.options.assets.importAnimation(sourcePath)
+  async importAnimations(sourcePaths: string[]): Promise<AvatarAnimationConfig[]> {
+    return this.options.assets.importAnimations(sourcePaths)
   }
 
   getBootstrap(senderId: number): AvatarBootstrap {

@@ -42,9 +42,9 @@ export function AvatarSettings({ models, defaultModelId, onChange, windowSize, o
   }
 
   const importVrma = async (model: AvatarModelConfig) => {
-    const animation = await window.api.avatar.importAnimation()
-    if (!animation) return
-    updateModel(model.id, { animations: [...model.animations, animation] })
+    const animations = await window.api.avatar.importAnimations()
+    if (animations.length === 0) return
+    updateModel(model.id, { animations: [...model.animations, ...animations] })
   }
 
   const updateAnimation = (model: AvatarModelConfig, animationId: string, patch: Partial<AvatarAnimationConfig>) => {

@@ -220,7 +220,7 @@ const api = {
   avatar: {
     importModel: (): Promise<AvatarModelConfig | null> =>
       ipcRenderer.invoke('avatar:import-model'),
-    importAnimation: (): Promise<AvatarAnimationConfig | null> =>
+    importAnimations: (): Promise<AvatarAnimationConfig[]> =>
       ipcRenderer.invoke('avatar:import-animation'),
     setSession: (sessionId: string, update: AvatarSessionUpdate): Promise<Session> =>
       ipcRenderer.invoke('avatar:session-set', sessionId, update)

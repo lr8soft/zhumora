@@ -289,7 +289,7 @@ export default {
       library: 'Avatar モデルライブラリ',
       importModel: '.vrm をインポート', empty: 'VRM モデルはまだありません。', modelName: 'キャラクター名', default: 'デフォルトに設定', defaultAnimation: '起動時の待機アニメーション（再クリックで解除）',
       animations: '利用可能なアニメーション',
-      addEmbedded: 'clip を追加', importVrma: '.vrma をインポート', embedded: '埋め込み', animationName: 'LLM 用の名前', clipName: '埋め込み clip 名', newAnimation: '新規アニメーション'
+      addEmbedded: 'clip を追加', importVrma: '.vrma をインポート（複数可）', embedded: '埋め込み', animationName: 'LLM 用の名前', clipName: '埋め込み clip 名', newAnimation: '新規アニメーション'
     },
     tts: {
       library: 'TTS モデルライブラリ',

@@ -1,7 +1,8 @@
 import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
-import type { AvatarAnimationConfig, AvatarModelConfig } from '../../shared/avatar'
-import { generateId } from '../id'
+import type { AvatarAnimationConfig, AvatarModelConfig } from '../../shared/avatar.ts'
+import { generateId } from '../id.ts'
+import { log } from '../llm/logger.ts'
 
 export class AvatarAssetStore {
   private readonly root: string
@@ -28,6 +29,19 @@ export class AvatarAssetStore {
       source: 'vrma',
       filePath: managedPath
     }
+  }
+
+  /** Imports a multi-selection; one rejected file must not discard the rest. */
+  async importAnimations(sourcePaths: string[]): Promise<AvatarAnimationConfig[]> {
+    const imported: AvatarAnimationConfig[] = []
+    for (const sourcePath of sourcePaths) {
+      try {
+        imported.push(await this.importAnimation(sourcePath))
+      } catch (error) {
+        log('error', `Avatar animation import failed (${path.basename(sourcePath)}): ${error instanceof Error ? error.message : String(error)}`)
+      }
+    }
+    return imported
   }
 
   async readManagedFile(filePath: string): Promise<Uint8Array> {

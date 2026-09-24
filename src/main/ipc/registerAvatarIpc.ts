@@ -16,11 +16,11 @@ export function registerAvatarIpc(win: BrowserWindow, avatar: AvatarWindowManage
 
   ipcMain.handle('avatar:import-animation', async () => {
     const result = await dialog.showOpenDialog(win, {
-      properties: ['openFile'],
+      properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'VRM Animation', extensions: ['vrma'] }]
     })
-    if (result.canceled) return null
-    return avatar.importAnimation(result.filePaths[0])
+    if (result.canceled) return []
+    return avatar.importAnimations(result.filePaths)
   })
 
   ipcMain.handle('avatar:session-set', (_event, sessionId: unknown, requested: AvatarSessionUpdate) => {

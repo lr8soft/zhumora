@@ -124,7 +124,7 @@ Local and remote endpoints are both supported.
 
 ## VRM Avatar
 
-Import `.vrm` characters under **Settings → Avatar**, then configure embedded animation names or attach `.vrma` animations. Avatars are off by default for every session; select one from the upward-opening Avatar menu in the composer when needed. The character runs in its own draggable transparent window, and the Agent can only invoke motions and expressions reported or configured for that model.
+Import `.vrm` characters under **Settings → Avatar**, then configure embedded animation names or attach `.vrma` animations (several files can be selected at once). Avatars are off by default for every session; select one from the upward-opening Avatar menu in the composer when needed. The character runs in its own draggable transparent window, and the Agent can only invoke motions and expressions reported or configured for that model.
 
 Avatars include application-owned idle, nodding, head-shaking, greeting, waving, shrugging, bowing, applause, celebration and sadness motions, adapted to VRM 0/1. Default motions use expressive upper-body movement with naturally hanging arms; a procedural life layer adds breathing, subtle weight shifts, arm sway and finger flexion to every clip. Greeting, waving and celebration add a smile, while sadness lowers the head and uses the model's sad expression when available. They blink and vary their idle pose without LLM calls. Agent activity drives response gestures; one-shot gestures return to the current activity with blended transitions. Mouse gaze follows only inside the Avatar window and smoothly returns forward on exit. Expressions fade in and return to neutral automatically. Explicitly configured custom animations retain their own choreography.
 

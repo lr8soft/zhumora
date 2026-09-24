@@ -289,7 +289,7 @@ export default {
       library: "Bibliothèque d'avatars",
       importModel: 'Importer un modèle .vrm', empty: 'Aucun modèle VRM importé.', modelName: 'Nom du personnage', default: 'Par défaut', defaultAnimation: "Animation d'attente au démarrage (recliquer pour retirer)",
       animations: 'Animations disponibles',
-      addEmbedded: 'Ajouter un clip', importVrma: 'Importer .vrma', embedded: 'Intégré', animationName: 'Nom pour le LLM', clipName: 'Nom du clip intégré', newAnimation: 'Nouvelle animation'
+      addEmbedded: 'Ajouter un clip', importVrma: 'Importer .vrma (plusieurs)', embedded: 'Intégré', animationName: 'Nom pour le LLM', clipName: 'Nom du clip intégré', newAnimation: 'Nouvelle animation'
     },
     tts: {
       library: 'Bibliothèque de modèles TTS',
