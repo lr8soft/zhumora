@@ -1,11 +1,13 @@
 import assert from 'node:assert/strict'
 import { buildAvatarSystemPrompt } from '../src/main/avatar/prompt.ts'
 
+const trainedActions = ['idle', 'speak', 'wave', 'greet', 'point', 'celebrate', 'surprised', 'phone', 'drink', 'encourage', 'bow', 'spin']
 const readyPrompt = buildAvatarSystemPrompt('anime_freak_free', ['Idle', 'Wave'], {
   animations: ['Idle', 'Wave'],
   expressions: ['neutral', 'happy', 'Surprised'],
   defaultAnimation: 'Idle',
-  intents: ['idle', 'greet', 'acknowledge']
+  intents: ['idle', 'greet', 'acknowledge'],
+  textMotionActions: trainedActions
 }, true)
 
 assert.match(readyPrompt, /Available animation names \(case-sensitive; use exact spelling\): Idle, Wave\./)
@@ -24,6 +26,20 @@ assert.match(readyPrompt, /bow=bow deeply/)
 assert.match(readyPrompt, /applaud=clap hands/)
 assert.match(readyPrompt, /Built-in motions stay upper-body and in place\./)
 assert.match(readyPrompt, /wave for casual hello or goodbye/)
+assert.match(readyPrompt, /action="generate_motion"/)
+assert.match(readyPrompt, /trained for these perform intents: idle, greet, celebrate, wave, bow\./,
+  'the prompt names only the intents the local model actually covers')
+assert.match(readyPrompt, /Every other intent uses its built-in procedural motion/)
+assert.match(readyPrompt, /Its trained actions are: idle, speak, wave, greet, point, celebrate, surprised, phone, drink, encourage, bow, spin\./)
+
+const builtInPrompt = buildAvatarSystemPrompt('anime_freak_free', ['Idle'], {
+  animations: ['Idle'],
+  expressions: [],
+  defaultAnimation: 'Idle',
+  intents: ['idle', 'wave']
+}, true)
+assert.doesNotMatch(builtInPrompt, /trained for these perform intents/)
+assert.doesNotMatch(builtInPrompt, /generate_motion/)
 
 const pendingPrompt = buildAvatarSystemPrompt('loading', [], { animations: [], expressions: [] }, false)
 assert.match(pendingPrompt, /capability scan is not ready/)

@@ -251,6 +251,8 @@ stateDiagram-v2
 - TTS sink：停止旧语音并消费最终 assistant 输出；
 - Bot local sink：将当前 run 的输出发送到来源平台。
 
+Avatar 的文字动作模型是展示适配器内部能力：`avatar_control` 仍走现有 normal 权限、按会话 Avatar window 和 command acknowledgement；`generate_motion` 只接收有长度边界的文字动作描述。每个 Avatar renderer 拥有一个 CPU 推理 worker，读取随 renderer 打包的只读权重并输出标准化 humanoid 骨骼姿态；`AvatarMotionController` 继续拥有动作混合、中断和返回待机。模型不进入 `SessionService`、Agent runner、main/preload IPC 通用能力或消息历史。worker 在启动握手中上报训练词汇，renderer 据此得到可被本地模型接管的 intent 子集：`perform` 只对该子集使用本地模型，其余 intent 一律使用内置程序动作，未覆盖的文字不生成臆测动作，用户配置的 VRMA 覆盖始终优先。main 侧由 `trainedAvatarIntents` 从上报词汇推导该子集，提示词只声明模型真正覆盖的 intent。训练在开发环境离线执行，源 VRMA 不随应用打包。
+
 `SessionEventHub` 保存全局订阅者；每次运行通过 `forRun(localSink)` 把全局订阅者快照与来源平台的 local sink 合并。local sink 只活在本次运行中，不注册为新的进程级总线。
 
 新增事件时必须同步检查 `main → preload → renderer`，并测试两个 session 事件交错时不会串线。

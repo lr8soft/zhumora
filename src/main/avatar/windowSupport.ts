@@ -74,6 +74,7 @@ export function cleanNames(values: unknown): string[] {
 export function describeCommand(command: AvatarCommand): string {
   switch (command.type) {
     case 'perform': return `Avatar ${command.intent} scheduled; automatically returns to current activity.`
+    case 'generate_motion': return `Avatar motion generated for "${command.text}"; automatically returns to current activity.`
     case 'play_animation': return `Avatar animation "${command.animation}" started (${command.loop ? 'loop' : 'once'}).`
     case 'set_expression': return `Avatar expression "${command.expression}" set to ${command.value}.`
     case 'reset_pose': return 'Avatar pose and expressions reset.'

@@ -128,6 +128,8 @@ npm run build:linux
 
 Avatar 自带程序生成的待机、说话、点头、摇头、打招呼、挥手、耸肩、鞠躬、鼓掌、庆祝、伤心等动作（适配 VRM 0/1），并有呼吸、重心微移、手臂随动和手指微曲的常驻生命感动画。
 
+Avatar 还内置一个 CPU 本地文字动作模型：Agent 可用 `avatar_control` 的 `generate_motion` 输入简短中文或英文动作描述，生成标准化 VRM 骨骼动画。当前训练词汇为待机、说话、挥手、问候、指向、庆祝、惊讶、看手机、喝水、鼓励、鞠躬和旋转；未覆盖的动作会明确报错。词汇中属于 `perform` intent 的只有待机、问候、挥手、庆祝和鞠躬，这五个走本地模型，其余 intent（点头、摇头、耸肩、鼓掌、伤心）保持原有程序动画；提示词只声明模型真正覆盖的 intent。训练脚本与复现方法见 [`scripts/avatar_motion/README.md`](./scripts/avatar_motion/README.md)。
+
 项目不附带角色模型。`@pixiv/three-vrm` 代码采用 MIT 许可证，但每个 VRM 模型拥有独立许可；导入和分发模型前请自行确认模型作者的授权范围。
 
 ## 文档

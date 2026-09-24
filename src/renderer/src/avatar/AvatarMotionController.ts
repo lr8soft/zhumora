@@ -4,6 +4,16 @@ import type { AvatarActivity, AvatarIntent } from '../../../shared/avatar.ts'
 import { createBuiltinMotion } from './motionClips.ts'
 
 type ClipResolver = (name: string) => Promise<THREE.AnimationClip>
+type MotionGenerator = (text: string, intensity: number) => Promise<THREE.AnimationClip | null>
+/** Local text motion model: a generator plus the semantics it was trained on. */
+export interface NeuralMotionSource {
+  generate: MotionGenerator
+  /**
+   * Intents the model was trained on. Only these may replace a built-in motion;
+   * an untrained intent would otherwise be answered with an unrelated clip.
+   */
+  intents: ReadonlySet<AvatarIntent>
+}
 export interface AvatarIdleState { name: string; builtIn: boolean }
 interface BlendEntry { action: THREE.AnimationAction; start: number }
 
@@ -31,19 +41,22 @@ export class AvatarMotionController {
   private readonly resolveClip: ClipResolver
   private readonly overrides: Partial<Record<AvatarIntent, string>>
   private readonly random: () => number
+  private readonly neural: NeuralMotionSource | undefined
 
   constructor(
     vrm: VRM,
     mixer: THREE.AnimationMixer,
     resolveClip: ClipResolver,
     overrides: Partial<Record<AvatarIntent, string>> = {},
-    random: () => number = Math.random
+    random: () => number = Math.random,
+    neural?: NeuralMotionSource
   ) {
     this.vrm = vrm
     this.mixer = mixer
     this.resolveClip = resolveClip
     this.overrides = overrides
     this.random = random
+    this.neural = neural
   }
 
   async initialize(preferredIdle?: string): Promise<AvatarIdleState> {
@@ -62,6 +75,16 @@ export class AvatarMotionController {
         console.warn('Avatar default motion unavailable; using built-in idle.', error)
       }
     }
+    if (!this.idleClip && this.neural?.intents.has('idle')) {
+      try {
+        const generated = await this.neural.generate('idle', 0.7)
+        if (!this.disposed && generation === this.generation && generated) {
+          this.idleClip = generated
+          this.idle = { name: 'idle', builtIn: false }
+          this.start(generated, true)
+        }
+      } catch (error) { console.warn('Avatar CPU idle motion unavailable; using built-in idle.', error) }
+    }
     await Promise.all(Object.entries(this.overrides).map(async ([intent, name]) => {
       try {
         const clip = await this.resolveClip(name)
@@ -73,7 +96,9 @@ export class AvatarMotionController {
 
   async play(name: string, loop: boolean): Promise<void> {
     const generation = ++this.generation
-    const clip = this.idle.builtIn && name === 'idle' ? this.builtin('idle') : await this.resolveClip(name)
+    const clip = name === this.idle.name && this.idleClip
+      ? this.idleClip
+      : this.idle.builtIn && name === 'idle' ? this.builtin('idle') : await this.resolveClip(name)
     if (this.disposed || generation !== this.generation) throw new Error('Avatar motion was superseded.')
     this.overrideUntil = loop ? Infinity : this.elapsed + clip.duration
     this.start(clip, loop)
@@ -81,14 +106,29 @@ export class AvatarMotionController {
 
   async perform(intent: AvatarIntent, intensity = 0.7): Promise<void> {
     const generation = ++this.generation
-    let clip = this.overrideClips.get(intent) ?? this.builtin(intent, intensity)
+    let clip = this.overrideClips.get(intent)
     const override = this.overrides[intent]
-    if (override && !this.overrideClips.has(intent)) {
+    if (!clip && override) {
       try { clip = await this.resolveClip(override) }
       catch (error) { console.warn('Avatar override unavailable; using built-in motion.', error) }
     }
+    if (!clip && this.neural?.intents.has(intent)) {
+      try { clip = await this.neural.generate(intent, intensity) ?? undefined }
+      catch (error) { console.warn('Avatar text motion unavailable; using built-in motion.', error) }
+    }
+    clip ??= this.builtin(intent, intensity)
     if (this.disposed || generation !== this.generation) return
     // Semantic requests are bounded; exact play_animation retains explicit looping.
+    this.overrideUntil = this.elapsed + Math.min(clip.duration, 12)
+    this.start(clip, false)
+  }
+
+  async generateFromText(text: string, intensity = 0.8): Promise<void> {
+    if (!this.neural) throw new Error('Avatar text motion is unavailable.')
+    const generation = ++this.generation
+    const clip = await this.neural.generate(text, intensity)
+    if (this.disposed || generation !== this.generation) return
+    if (!clip) throw new Error('This action is outside the local motion model vocabulary.')
     this.overrideUntil = this.elapsed + Math.min(clip.duration, 12)
     this.start(clip, false)
   }

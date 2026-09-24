@@ -4,6 +4,10 @@ export const AVATAR_INTENTS = ['idle', 'acknowledge', 'disagree', 'greet', 'cele
 /** Single source for intent wording; consumed by the tool schema and the system prompt. */
 export const AVATAR_INTENT_GLOSS = 'idle=rest, acknowledge=nod, disagree=shake head, greet=nod and smile, celebrate=smile and slight head lift, sad=lower head and sad expression, wave=wave one hand, shrug=raise shoulders, bow=bow deeply, applaud=clap hands. Built-in motions stay upper-body and in place.'
 export type AvatarIntent = typeof AVATAR_INTENTS[number]
+/** Intents a local motion model can answer; every other intent keeps its built-in motion. */
+export function trainedAvatarIntents(trainedActions: string[]): AvatarIntent[] {
+  return AVATAR_INTENTS.filter(intent => trainedActions.includes(intent))
+}
 export const AVATAR_EMOTIONS = ['neutral', 'happy', 'sad', 'angry', 'surprised', 'relaxed'] as const
 export type AvatarEmotion = typeof AVATAR_EMOTIONS[number]
 export type AvatarActivity = 'idle' | 'thinking' | 'speaking'
@@ -42,6 +46,11 @@ export interface AvatarCapabilities {
   /** Exact public animation name currently used as the startup idle. */
   defaultAnimation?: string
   intents?: AvatarIntent[]
+  /**
+   * Trained action names reported by the local text motion model. Empty or
+   * missing means the renderer has no model and only built-in motions run.
+   */
+  textMotionActions?: string[]
 }
 
 export interface AvatarLookTarget {
@@ -54,6 +63,7 @@ export interface AvatarLookTarget {
 
 export type AvatarCommand =
   | { type: 'perform'; intent: AvatarIntent; emotion?: AvatarEmotion; intensity: number }
+  | { type: 'generate_motion'; text: string; intensity: number }
   | { type: 'play_animation'; animation: string; loop: boolean }
   | { type: 'set_expression'; expression: string; value: number }
   | { type: 'reset_pose' }

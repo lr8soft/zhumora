@@ -13,14 +13,16 @@ export function createAvatarTools(controller: AvatarController): Array<{ name: s
           'Control the optional VRM Avatar attached to this session.',
           'When the Session Avatar system section is present, proactively use action=perform for each new user request; the user does not need to ask for a gesture.',
           'Prefer action=perform: choose an intent and optional emotion in one call. Idle, blinking and activity gestures run automatically.',
+          'When Session Avatar reports the local text motion model, action=generate_motion accepts a short action phrase in its documented vocabulary.',
           'Use only exact animation/expression names listed in the Session Avatar system section.',
           'This is presentation-only: never use it instead of completing the user task.'
         ].join('\n'),
         parameters: {
           type: 'object',
           properties: {
-            action: { type: 'string', enum: ['perform', 'play_animation', 'set_expression', 'reset_pose', 'show_message'] },
+            action: { type: 'string', enum: ['perform', 'generate_motion', 'play_animation', 'set_expression', 'reset_pose', 'show_message'] },
             intent: { type: 'string', enum: [...AVATAR_INTENTS], description: `perform: ${AVATAR_INTENT_GLOSS}` },
+            text: { type: 'string', description: 'generate_motion: a short action description in Chinese or English, up to 160 characters.' },
             emotion: { type: 'string', enum: [...AVATAR_EMOTIONS] },
             intensity: { type: 'number', minimum: 0, maximum: 1, description: 'perform strength, default 0.6; automatically returns to current activity.' },
             animation: { type: 'string', description: 'Required for play_animation.' },
@@ -47,6 +49,14 @@ export function createAvatarTools(controller: AvatarController): Array<{ name: s
           return { content: 'intensity must be a finite number from 0 to 1.', isError: true }
         }
         command = { type: 'perform', intent: args.intent as AvatarIntent, emotion: args.emotion as AvatarEmotion | undefined, intensity: typeof args.intensity === 'number' ? args.intensity : 0.6 }
+      } else if (action === 'generate_motion') {
+        if (typeof args.text !== 'string' || !args.text.trim() || args.text.length > 160) {
+          return { content: 'generate_motion requires a short nonempty text description (up to 160 characters).', isError: true }
+        }
+        if (args.intensity !== undefined && (typeof args.intensity !== 'number' || !Number.isFinite(args.intensity) || args.intensity < 0 || args.intensity > 1)) {
+          return { content: 'intensity must be a finite number from 0 to 1.', isError: true }
+        }
+        command = { type: 'generate_motion', text: args.text.trim(), intensity: typeof args.intensity === 'number' ? args.intensity : 0.8 }
       } else if (action === 'play_animation') {
         const animation = String(args.animation || '').trim()
         if (!animation) return { content: 'play_animation requires "animation".', isError: true }

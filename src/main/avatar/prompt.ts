@@ -1,4 +1,4 @@
-import { AVATAR_INTENT_GLOSS, type AvatarCapabilities } from '../../shared/avatar.ts'
+import { AVATAR_INTENT_GLOSS, trainedAvatarIntents, type AvatarCapabilities } from '../../shared/avatar.ts'
 
 export function buildAvatarSystemPrompt(
   modelName: string,
@@ -14,6 +14,11 @@ export function buildAvatarSystemPrompt(
     ].join('\n')
   }
 
+  // The trained vocabulary decides which intents the local model may answer;
+  // every other intent keeps its built-in procedural motion.
+  const trained = capabilities.textMotionActions ?? []
+  const trainedIntents = trainedAvatarIntents(trained)
+
   return [
     '## Session Avatar',
     `This session has the Avatar "${modelName}" enabled in a separate desktop window.`,
@@ -22,6 +27,12 @@ export function buildAvatarSystemPrompt(
     'If avatar_control already succeeded for the current user request, do not call it again unless the emotional state materially changes, such as moving from working to success or failure. You may send the Avatar call alongside other task tool calls; never delay, replace, or narrate the actual task work just to control the Avatar.',
     capabilities.intents?.length
       ? `Prefer one avatar_control call with action="perform" and intent from: ${capabilities.intents.join(', ')}. ${AVATAR_INTENT_GLOSS} Optional emotion: neutral/happy/sad/angry/surprised/relaxed; intensity: 0..1 (default 0.6).`
+      : '',
+    trainedIntents.length
+      ? `A local CPU motion model was trained for these perform intents: ${trainedIntents.join(', ')}. Every other intent uses its built-in procedural motion, so choose those intents for their documented meaning rather than for the model.`
+      : '',
+    trained.length
+      ? `That model can also play one trained action from a short Chinese or English phrase via avatar_control action="generate_motion" and text. Its trained actions are: ${trained.join(', ')}. Unsupported descriptions return an error; use perform for gestures outside that vocabulary.`
       : '',
     'Idle variation, blinking, and thinking/speaking activity are automatic, but the semantic gesture for the response must be selected with avatar_control. Do not call idle, reset_pose, or show_message as routine maintenance. Semantic gestures return automatically and expressions fade back to neutral.',
     animations.length > 0
