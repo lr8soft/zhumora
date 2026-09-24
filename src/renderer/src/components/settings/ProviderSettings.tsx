@@ -260,9 +260,10 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
           </div>
           <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.temperatureHint')}</p>
 
-          {/* 思考强度功能开关（具体强度在聊天输入框里按会话选择） */}
-          <div className="provider-row">
-            <label style={{ display: 'flex', alignItems: 'center', gap: 8, cursor: 'pointer' }}>
+          {/* 思考强度功能开关（具体强度在聊天输入框里按会话选择）。
+              多行提示 + 下拉必须纵向排列，不能用横向的 .provider-row */}
+          <div className="provider-block">
+            <label className="provider-block-toggle">
               <input
                 type="checkbox"
                 className="checkbox"
@@ -271,13 +272,11 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
               />
               <span className="form-label">{t('settings.providers.reasoningEffort')}</span>
             </label>
-            <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.reasoningEnabledHint')}</p>
+            <p className="form-hint">{t('settings.providers.reasoningEnabledHint')}</p>
             {reasoningCapabilities[p.id] && (
-              <p className="form-hint" style={{ marginTop: 4 }}>
-                {t(reasoningCapabilityHintKey(reasoningCapabilities[p.id]))}
-              </p>
+              <p className="form-hint">{t(reasoningCapabilityHintKey(reasoningCapabilities[p.id]))}</p>
             )}
-            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'center', gap: 8, marginTop: 8 }}>
+            <div className="provider-block-field">
               <label className="form-label">{t('settings.providers.reasoningDialect')}</label>
               <select
                 className="input-field"
@@ -290,7 +289,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
                 <option value="qwen">{t('settings.providers.reasoningDialectQwen')}</option>
               </select>
             </div>
-            <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.reasoningDialectHint')}</p>
+            <p className="form-hint">{t('settings.providers.reasoningDialectHint')}</p>
           </div>
 
           {/* Context Window */}
