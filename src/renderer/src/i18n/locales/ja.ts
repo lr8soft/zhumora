@@ -78,8 +78,8 @@ export default {
     streamInterruptedTool: "モデルへの接続が応答中に切断されました — ツール呼び出しが途中までになりました。小さな出力で再試行するようモデルに依頼しています。",
     inputResizeHint: "ドラッグで入力欄の高さを調整（クリックでリセット）",
     reasoningEffortHint: "思考強度を選択（現在のプロバイダーで有効）",
-    reasoningEffort: { off: '既定', low: '低', medium: '中', high: '高' },
-    reasoningEffortDesc: { off: 'モデルに委ねる', low: '高速、少ない思考', medium: 'バランス', high: '深い推論' }
+    reasoningEffort: { off: 'オフ', low: '低', medium: '中', high: '高' },
+    reasoningEffortDesc: { off: '思考しない', low: '高速、少ない思考', medium: 'バランス', high: '深い推論' }
   },
   diagram: {
     title: '図表',
@@ -157,6 +157,17 @@ export default {
       reasoningLow: '低 — 高速、少ない思考',
       reasoningMedium: '中 — バランス',
       reasoningHigh: '高 — 深い推論',
+      reasoningCapability: {
+        supported: '端点は思考強度の指定に対応すると宣言しています（llama.cpp chat_template_caps）。',
+        unknown: '端点は思考強度の対応を報告していません（vLLM / SGLang / LiteLLM など）。標準パラメータは引き続き送信されます。',
+        unsupported: '端点は思考強度パラメータを受け付けないと宣言しています。送信されません。'
+      },
+      reasoningDialect: '思考強度プロトコル',
+      reasoningDialectAuto: '自動判別',
+      reasoningDialectOpenai: '標準 reasoning_effort',
+      reasoningDialectDeepseek: 'DeepSeek 公式 API',
+      reasoningDialectQwen: 'Alibaba Cloud 百錬（Qwen）',
+      reasoningDialectHint: 'エンドポイントから自動判別します（DeepSeek / Alibaba Cloud 百錬の公式 API）。ローカルの llama.cpp / vLLM / SGLang とゲートウェイは標準の reasoning_effort のままです。',
       addProvider: 'プロバイダーを追加',
       remove: '削除',
       active: 'アクティブ',

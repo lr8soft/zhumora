@@ -13,6 +13,7 @@
 // ============================================================
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '../../shared/types'
 import { streamChat } from '../llm/provider'
+import { toReasoningParam, type ReasoningEffortParam } from '../llm/reasoning'
 import { log } from '../llm/logger'
 import { toolRegistry, type ToolRegistry } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
@@ -59,7 +60,7 @@ export interface AgentRunOptions {
   toolRegistry?: ToolRegistry
   /** 覆盖模型名（如果用户在聊天页选了别的模型） */
   modelOverride?: string
-  /** 对话级思考强度（聊天输入框选择；'off'/undefined = 不发送 reasoning_effort 参数） */
+  /** 对话级思考强度（聊天输入框选择）。undefined = provider 未开启该功能开关，不发送参数 */
   reasoningEffort?: ReasoningEffort
   /** 是否启用长期记忆（提取 + 注入） */
   memoryEnabled?: boolean
@@ -87,9 +88,9 @@ export async function runAgent(
 ): Promise<ChatMessage[]> {
   const { provider, workspacePath, messages, messageIds, compaction, signal, sessionId, memoryEnabled, onSessionTitleUpdate } = opts
   const toolsRegistry = opts.toolRegistry || toolRegistry
-  // 对话级思考强度（'off'/undefined = 不发送参数，模型默认行为）。
-  // 收窄为 streamChat 接受的 'low'|'medium'|'high'
-  const reasoningEffort = opts.reasoningEffort && opts.reasoningEffort !== 'off' ? opts.reasoningEffort : undefined
+  // 对话级档位 → 线上参数（'off' → 'none' 显式关闭思考；undefined 才是不发送）。
+  // 映射是纯函数，见 llm/reasoning.ts。
+  const reasoningEffort = toReasoningParam(opts.reasoningEffort)
 
   const conversation = buildWorkingConversation(opts)
   const contextWindow = await fetchContextWindow(provider, opts.modelOverride)
@@ -280,7 +281,7 @@ async function streamRound(
   conversation: WorkingConversation,
   provider: ProviderConfig,
   modelOverride: string | undefined,
-  reasoningEffort: 'low' | 'medium' | 'high' | undefined,
+  reasoningEffort: ReasoningEffortParam | undefined,
   tools: ReturnType<ToolRegistry['definitions']>,
   signal: AbortSignal | undefined,
   cb: AgentEventCallbacks
@@ -320,7 +321,7 @@ async function finalizeRun(
   conversation: WorkingConversation,
   allAssistantMessages: ChatMessage[],
   cb: AgentEventCallbacks,
-  reasoningEffort: 'low' | 'medium' | 'high' | undefined
+  reasoningEffort: ReasoningEffortParam | undefined
 ): Promise<void> {
   const finalizeMessages: ChatMessage[] = [
     ...conversation.messages,

@@ -1,7 +1,8 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Circle, CircleDot, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react'
-import type { ProviderConfig } from '@shared/types'
+import type { ProviderConfig, ReasoningCapability } from '@shared/types'
+import type { ReasoningDialect } from '@shared/reasoning'
 import { useProviderContextDetection } from './useProviderContextDetection'
 import { TEMPERATURE_MAX, TEMPERATURE_MIN, TEMPERATURE_STEP, TemperatureInput } from './TemperatureInput'
 
@@ -11,9 +12,20 @@ interface Props {
   onChange: (providers: ProviderConfig[], activeId: string | null) => void
 }
 
+/**
+ * 端点能力声明 → i18n key。
+ * "未声明"与"声明不支持"必须区分：前者是 vLLM / SGLang / LiteLLM 的常态
+ * （仍会收到标准参数），不代表配置有问题。
+ */
+function reasoningCapabilityHintKey(capability: ReasoningCapability): string {
+  if (capability.declaresSupport === true) return 'settings.providers.reasoningCapability.supported'
+  if (capability.declaresSupport === false) return 'settings.providers.reasoningCapability.unsupported'
+  return 'settings.providers.reasoningCapability.unknown'
+}
+
 export function ProviderSettings({ providers, activeId, onChange }: Props) {
   const { t } = useTranslation()
-  const { detecting, detected, detectContextWindow } = useProviderContextDetection({ providers, activeId, onChange })
+  const { detecting, detected, detectContextWindow, reasoningCapabilities } = useProviderContextDetection({ providers, activeId, onChange })
   // 模型列表状态：key = `${providerId}::${baseUrl}`（baseUrl 变了旧列表自动失效）
   const [modelLists, setModelLists] = useState<Record<string, { id: string; name?: string; ownedBy?: string }[]>>({})
   const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
@@ -63,7 +75,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
       enabled: true,
       temperature: undefined,
       reasoningEnabled: false,
-      reasoningEffort: 'medium',
+      reasoningDialect: 'auto',
       contextWindow: 0
     }
     onChange([...providers, newProv], activeId || id)
@@ -260,6 +272,25 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
               <span className="form-label">{t('settings.providers.reasoningEffort')}</span>
             </label>
             <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.reasoningEnabledHint')}</p>
+            {reasoningCapabilities[p.id] && (
+              <p className="form-hint" style={{ marginTop: 4 }}>
+                {t(reasoningCapabilityHintKey(reasoningCapabilities[p.id]))}
+              </p>
+            )}
+            <div style={{ display: 'grid', gridTemplateColumns: 'auto 1fr', alignItems: 'center', gap: 8, marginTop: 8 }}>
+              <label className="form-label">{t('settings.providers.reasoningDialect')}</label>
+              <select
+                className="input-field"
+                value={p.reasoningDialect || 'auto'}
+                onChange={(e) => updateProvider(i, { reasoningDialect: e.target.value as ReasoningDialect })}
+              >
+                <option value="auto">{t('settings.providers.reasoningDialectAuto')}</option>
+                <option value="openai">{t('settings.providers.reasoningDialectOpenai')}</option>
+                <option value="deepseek">{t('settings.providers.reasoningDialectDeepseek')}</option>
+                <option value="qwen">{t('settings.providers.reasoningDialectQwen')}</option>
+              </select>
+            </div>
+            <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.reasoningDialectHint')}</p>
           </div>
 
           {/* Context Window */}

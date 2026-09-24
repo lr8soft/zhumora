@@ -78,8 +78,8 @@ export default {
     streamInterruptedTool: "Die Verbindung zum Modell ist während der Antwort abgebrochen — der Tool-Aufruf wurde abgeschnitten. Das Modell wird um einen Wiederholungsversuch mit kleinerer Ausgabe gebeten.",
     inputResizeHint: "Ziehen, um die Eingabehöhe zu ändern (Klicken zum Zurücksetzen)",
     reasoningEffortHint: "Begründungsintensität wählen (für aktuellen Anbieter aktiviert)",
-    reasoningEffort: { off: 'Standard', low: 'Niedrig', medium: 'Mittel', high: 'Hoch' },
-    reasoningEffortDesc: { off: 'Vom Modell entscheiden lassen', low: 'Schnell, weniger Denken', medium: 'Ausgewogen', high: 'Tiefes Nachdenken' }
+    reasoningEffort: { off: 'Aus', low: 'Niedrig', medium: 'Mittel', high: 'Hoch' },
+    reasoningEffortDesc: { off: 'Kein Denken', low: 'Schnell, weniger Denken', medium: 'Ausgewogen', high: 'Tiefes Nachdenken' }
   },
   diagram: {
     title: 'Diagramm',
@@ -157,6 +157,17 @@ export default {
       reasoningLow: 'niedrig — schnell, weniger Denken',
       reasoningMedium: 'mittel — ausgeglichen',
       reasoningHigh: 'hoch — tiefes Reasoning',
+      reasoningCapability: {
+        supported: 'Der Endpunkt meldet Unterstützung für Begründungsintensität (llama.cpp chat_template_caps).',
+        unknown: 'Der Endpunkt meldet keine Begründungsintensität (vLLM / SGLang / LiteLLM); der Standardparameter wird weiterhin gesendet.',
+        unsupported: 'Der Endpunkt meldet, dass Begründungsintensität nicht akzeptiert wird; der Parameter wird nicht gesendet.'
+      },
+      reasoningDialect: 'Reasoning-Protokoll',
+      reasoningDialectAuto: 'Automatisch erkennen',
+      reasoningDialectOpenai: 'Standard-reasoning_effort',
+      reasoningDialectDeepseek: 'Offizielle DeepSeek-API',
+      reasoningDialectQwen: 'Aliyun Bailian (Qwen)',
+      reasoningDialectHint: 'Wird aus dem Endpunkt erkannt (offizielle DeepSeek- und Aliyun-Bailian-APIs). Lokale llama.cpp / vLLM / SGLang und Gateways behalten das Standard-reasoning_effort.',
       addProvider: 'Anbieter hinzufügen',
       remove: 'Entfernen',
       active: 'Aktiv',

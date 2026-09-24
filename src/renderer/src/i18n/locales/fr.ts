@@ -78,8 +78,8 @@ export default {
     streamInterruptedTool: "La connexion au modèle a été interrompue en cours de réponse : l'appel d'outil a été tronqué. Le modèle est invité à réessayer avec une sortie plus petite.",
     inputResizeHint: "Glisser pour redimensionner la zone de saisie (clic pour réinitialiser)",
     reasoningEffortHint: "Choisir l'intensité de raisonnement (activé pour le fournisseur actuel)",
-    reasoningEffort: { off: 'Par défaut', low: 'Faible', medium: 'Moyen', high: 'Élevé' },
-    reasoningEffortDesc: { off: 'Laisser le modèle décider', low: 'Rapide, moins de réflexion', medium: 'Équilibré', high: 'Raisonnement approfondi' }
+    reasoningEffort: { off: 'Désactivé', low: 'Faible', medium: 'Moyen', high: 'Élevé' },
+    reasoningEffortDesc: { off: 'Sans réflexion', low: 'Rapide, moins de réflexion', medium: 'Équilibré', high: 'Raisonnement approfondi' }
   },
   diagram: {
     title: 'Diagramme',
@@ -157,6 +157,17 @@ export default {
       reasoningLow: 'bas — rapide, moins de réflexion',
       reasoningMedium: 'moyen — équilibré',
       reasoningHigh: 'haut — raisonnement approfondi',
+      reasoningCapability: {
+        supported: "L'endpoint déclare prendre en charge l'intensité de raisonnement (llama.cpp chat_template_caps).",
+        unknown: "L'endpoint ne déclare pas l'intensité de raisonnement (vLLM / SGLang / LiteLLM) ; le paramètre standard est tout de même envoyé.",
+        unsupported: "L'endpoint déclare ne pas accepter l'intensité de raisonnement ; le paramètre n'est pas envoyé."
+      },
+      reasoningDialect: 'Protocole de raisonnement',
+      reasoningDialectAuto: 'Détection automatique',
+      reasoningDialectOpenai: 'reasoning_effort standard',
+      reasoningDialectDeepseek: 'API officielle DeepSeek',
+      reasoningDialectQwen: 'Aliyun Bailian (Qwen)',
+      reasoningDialectHint: "Détecté depuis l'endpoint (API officielles DeepSeek et Aliyun Bailian). Les llama.cpp / vLLM / SGLang locaux et les passerelles conservent reasoning_effort standard.",
       addProvider: 'Ajouter Fournisseur',
       remove: 'Supprimer',
       active: 'Actif',

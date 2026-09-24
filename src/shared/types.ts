@@ -3,6 +3,7 @@
 // ============================================================
 import type { AvatarModelConfig } from './avatar'
 import type { AvatarWindowSize } from './avatarWindow'
+import type { ReasoningDialect } from './reasoning'
 import type { TtsModelConfig } from './tts'
 import type { BrowserTarget } from './browser'
 
@@ -48,8 +49,11 @@ export interface ProviderConfig {
   /** 思考强度功能开关：开启后聊天输入框显示"思考强度"下拉，用户按会话选择。
    *  关闭时不发送 reasoning_effort 参数 */
   reasoningEnabled?: boolean
-  /** @deprecated 已迁移到对话级选择（ReasoningEffort），保留字段仅为旧数据兼容，不再读取 */
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  /**
+   * 思考强度的请求协议；缺省/`auto` 按端点自动识别（见 `shared/reasoning.ts`）。
+   * 只影响发送哪些字段，不影响档位到线上取值的映射。
+   */
+  reasoningDialect?: ReasoningDialect
   contextWindow?: number           // 模型上下文窗口大小（token 数），0 或未设 = 自动检测
 }
 
@@ -240,12 +244,31 @@ export class AgentAbortedError extends Error {
 }
 
 /** 对话级思考强度（聊天输入框选择，每次 agent 运行携带）
- *  - off:    不发送 reasoning_effort 参数（模型默认行为）
+ *  - off:    关闭思考（线上发送 reasoning_effort: 'none'）
  *  - low:    快速，少思考
  *  - medium: 平衡
  *  - high:   深度推理
+ *
+ *  注意：'off' 不等于"省略字段"。要在端点上保留模型默认行为，请关闭
+ *  provider 的"思考强度"功能开关（省略字段会保留服务端默认，见
+ *  `src/main/llm/reasoning.ts`）。
  */
 export type ReasoningEffort = 'off' | 'low' | 'medium' | 'high'
+
+/**
+ * 端点对"思考强度"的能力声明（跨 IPC：main 探测 → preload → 设置页展示，
+ * 不落库、不参与 Agent 运行路径）。
+ *
+ * 只有 llama.cpp 的 `GET /props`（`chat_template_caps.supports_reasoning_effort`）
+ * 会显式声明；vLLM / SGLang / LiteLLM 及商用 API 均不上报，此时
+ * `declaresSupport = null`（未声明 —— 按标准参数发送，由端点自行忽略）。
+ */
+export interface ReasoningCapability {
+  /** true = 声明支持；false = 声明不支持；null = 未声明（无法判断） */
+  declaresSupport: boolean | null
+  /** 能力来源，用于设置页文案与日志诊断 */
+  source: 'llama.cpp-caps' | 'unknown'
+}
 
 /** 工具调用批准模式（三档）
  * - manual: 手动批准 — safe 放行，normal + dangerous 都弹窗

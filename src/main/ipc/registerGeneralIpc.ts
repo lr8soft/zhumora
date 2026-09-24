@@ -5,6 +5,7 @@ import * as db from '../store/db'
 import { detectProviderContextWindow } from '../agent/context'
 import { shouldApplyDetectedContextWindow } from '../agent/contextDetectionPolicy'
 import { listProviderModels } from '../llm/models'
+import { probeReasoningCapability } from '../llm/reasoningCapability'
 import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '../mcp/client'
 import { reloadSkills, inspectSkillPath, type SkillInspection } from '../skill/manager'
 import { refreshSkillTool } from '../skill/skillTool'
@@ -163,6 +164,10 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
   })
   ipcMain.handle('provider:models', (_event, provider: AppSettings['providers'][0], force?: boolean) =>
     listProviderModels(provider, force === true))
+  /** 探测端点是否声明接受"思考强度"参数（llama.cpp /props 的 chat_template_caps）。
+   *  只用于设置页如实展示；不落库、不参与运行路径，探测失败返回"未声明"。 */
+  ipcMain.handle('provider:reasoning-capability', (_event, provider: AppSettings['providers'][0], modelOverride?: string) =>
+    probeReasoningCapability(provider, modelOverride))
 
   ipcMain.handle('memory:list', (_event, options?: { category?: string; search?: string; limit?: number }) =>
     db.getMemories({ category: options?.category as any, search: options?.search, limit: options?.limit }))

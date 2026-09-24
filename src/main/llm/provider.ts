@@ -10,7 +10,8 @@ import { HttpError, getMaxRetries, isRetriableError, isStreamableNetworkError, i
 import {
   createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer, type TokenUsage
 } from './sseAccumulator'
-import { isMalformedToolArgumentsError } from './errors'
+import { isMalformedToolArgumentsError, isReasoningParamRejected } from './errors'
+import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
 
 export type { TokenUsage }
 
@@ -42,7 +43,9 @@ export interface CompletionParams {
   toolChoice?: ToolChoice
   temperature?: number
   maxTokens?: number
-  reasoningEffort?: 'low' | 'medium' | 'high'
+  /** 线上 `reasoning_effort` 取值。对话级档位到线上取值的映射在 runner 边界完成
+   *  （见 llm/reasoning.ts）；undefined = 不发送该字段，保留端点默认行为。 */
+  reasoningEffort?: ReasoningEffortParam
   signal?: AbortSignal
 }
 
@@ -108,8 +111,10 @@ export async function streamChat(
   }
   if (params.temperature !== undefined) body.temperature = params.temperature
   if (params.maxTokens) body.max_tokens = params.maxTokens
-  // reasoning_effort（DeepSeek-R1 / OpenAI o-series 等）
-  if (params.reasoningEffort) body.reasoning_effort = params.reasoningEffort
+  // 思考强度（llama.cpp / vLLM / SGLang / LiteLLM 用标准 reasoning_effort；
+  // DeepSeek / 百炼官方 API 的字段差异在 llm/reasoning.ts 内编码）。
+  // 'none' 是显式关闭思考，与"不发送该字段"语义不同。
+  const reasoningFields = applyReasoningParams(body, provider, params.reasoningEffort)
 
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
   const maxRetries = getMaxRetries()
@@ -118,8 +123,23 @@ export async function streamChat(
   const state: { emitted: boolean; partial: AttemptResult | null } = { emitted: false, partial: null }
 
   try {
+    // 端点不认识思考强度参数（严格校验请求体的网关 / 旧版后端直接 400/422）
+    // 时去掉本次实际写入的字段重发一次，而不是让整轮运行失败。删掉后 body 里
+    // 不再有这些字段，外层网络重试自然沿用降级后的载荷（无需额外标志位）；
+    // 仅在尚未输出内容时降级。
+    const attempt = async (): Promise<AttemptResult> => {
+      try {
+        return await attemptStreamChat(url, body, provider, params, cb, state)
+      } catch (err) {
+        if (state.emitted || reasoningFields.length === 0 || !isReasoningParamRejected(err)) throw err
+        for (const field of reasoningFields) delete body[field]
+        log('warn', `Endpoint rejected ${reasoningFields.join('/')} — retrying once without it (${provider.name || provider.baseUrl})`)
+        return attemptStreamChat(url, body, provider, params, cb, state)
+      }
+    }
+
     const result = await withRetry(
-      () => attemptStreamChat(url, body, provider, params, cb, state),
+      attempt,
       {
         maxRetries,
         label: `LLM ${provider.name || provider.baseUrl}`,

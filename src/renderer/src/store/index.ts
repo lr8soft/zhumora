@@ -502,11 +502,12 @@ export const useAppStore = create<AppState>((set, get) => ({
           modelOverride = spm.slice(sepIdx + 2) || undefined
         }
       }
-      // 思考强度：仅当所选 provider 开启了该功能才生效（否则 UI 不显示下拉，也不发送参数）
+      // 思考强度：仅当所选 provider 开启了该功能才生效（否则 UI 不显示下拉，
+      // 也不发送参数——省略字段 = 保留端点默认行为，与档位 'off'（显式关闭思考）不同）
       const settings = get().settings
       const runProvider = settings.providers.find(p => p.id === providerId)
         || (settings.activeProviderId ? settings.providers.find(p => p.id === settings.activeProviderId) : undefined)
-      const effort = runProvider?.reasoningEnabled ? get().reasoningEffort : 'off'
+      const effort = runProvider?.reasoningEnabled ? get().reasoningEffort : undefined
 
       const result = await api.agent.run(sid, { text, images }, {
         providerId,

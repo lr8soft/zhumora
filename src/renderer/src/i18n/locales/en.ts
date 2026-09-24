@@ -78,8 +78,8 @@ export default {
     streamInterruptedTool: "Connection to the model dropped mid-response — the tool call was cut off, asking the model to retry with smaller output.",
     inputResizeHint: "Drag to resize the input area (click to reset)",
     reasoningEffortHint: "Choose reasoning effort (enabled for the current provider)",
-    reasoningEffort: { off: 'Default', low: 'Low', medium: 'Medium', high: 'High' },
-    reasoningEffortDesc: { off: 'Let the model decide', low: 'Fast, less thinking', medium: 'Balanced', high: 'Deep reasoning' }
+    reasoningEffort: { off: 'Off', low: 'Low', medium: 'Medium', high: 'High' },
+    reasoningEffortDesc: { off: 'No thinking', low: 'Fast, less thinking', medium: 'Balanced', high: 'Deep reasoning' }
   },
   diagram: {
     title: 'Diagram',
@@ -157,6 +157,17 @@ export default {
       reasoningLow: 'low — fast, less thinking',
       reasoningMedium: 'medium — balanced',
       reasoningHigh: 'high — deep reasoning',
+      reasoningCapability: {
+        supported: 'The endpoint declares reasoning-effort support (llama.cpp chat_template_caps).',
+        unknown: 'The endpoint does not report reasoning-effort support (vLLM / SGLang / LiteLLM); the standard parameter is still sent.',
+        unsupported: 'The endpoint declares it does not accept reasoning effort; the parameter is not sent.'
+      },
+      reasoningDialect: 'Reasoning protocol',
+      reasoningDialectAuto: 'Auto-detect',
+      reasoningDialectOpenai: 'Standard reasoning_effort',
+      reasoningDialectDeepseek: 'DeepSeek official API',
+      reasoningDialectQwen: 'Aliyun Bailian (Qwen)',
+      reasoningDialectHint: 'Detected from the endpoint (DeepSeek and Aliyun Bailian official APIs). Local llama.cpp / vLLM / SGLang and gateways keep the standard reasoning_effort.',
       addProvider: 'Add Provider',
       remove: 'Remove',
       active: 'Active',

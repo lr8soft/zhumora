@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from 'react'
-import type { ProviderConfig } from '@shared/types'
+import type { ProviderConfig, ReasoningCapability } from '@shared/types'
 
 interface Options {
   providers: ProviderConfig[]
@@ -10,10 +10,26 @@ interface Options {
 const signatureOf = (provider: ProviderConfig) =>
   `${provider.baseUrl}\u0000${provider.apiKey}\u0000${provider.defaultModel}`
 
+/**
+ * Signature for the reasoning-capability probe: only the fields that decide what
+ * is probed. Context detection additionally requires a credential, but local
+ * endpoints (llama.cpp) usually have no API key and are exactly the ones that
+ * declare this capability, so it must not reuse `signatureOf`.
+ */
+const capabilitySignatureOf = (provider: ProviderConfig) =>
+  `${provider.baseUrl}\u0000${provider.defaultModel}`
+
+/**
+ * Probes provider endpoints for their declared capabilities: context window and
+ * reasoning-effort support. Both are advisory — the context window can be typed
+ * manually afterwards, and a missing reasoning declaration is not an error.
+ */
 export function useProviderContextDetection({ providers, activeId, onChange }: Options) {
   const [detecting, setDetecting] = useState<Record<string, boolean>>({})
   const [detected, setDetected] = useState<Record<string, number>>({})
+  const [reasoningCapabilities, setReasoningCapabilities] = useState<Record<string, ReasoningCapability>>({})
   const autoSignatures = useRef<Record<string, string>>({})
+  const capabilitySignatures = useRef<Record<string, string>>({})
   const inFlight = useRef(new Set<string>())
   const providersRef = useRef(providers)
   providersRef.current = providers
@@ -78,5 +94,33 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
     return () => timers.forEach(clearTimeout)
   }, [providers])
 
-  return { detecting, detected, detectContextWindow }
+  // Capability declaration is probed without a credential (see
+  // capabilitySignatureOf) and only re-probed when the target changes.
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = []
+    for (const provider of providers) {
+      if (!provider.baseUrl) {
+        delete capabilitySignatures.current[provider.id]
+        continue
+      }
+      const signature = capabilitySignatureOf(provider)
+      if (capabilitySignatures.current[provider.id] === signature) continue
+      timers.push(setTimeout(() => {
+        if (capabilitySignatures.current[provider.id] === signature) return
+        capabilitySignatures.current[provider.id] = signature
+        void window.api.provider.reasoningCapability(provider, provider.defaultModel)
+          .then(capability => {
+            const current = providersRef.current.find(item => item.id === provider.id)
+            if (!current || capabilitySignatureOf(current) !== signature) return
+            setReasoningCapabilities(state => ({ ...state, [provider.id]: capability }))
+          })
+          .catch(() => {
+            // Advisory only: an endpoint without /props simply declares nothing.
+          })
+      }, 500))
+    }
+    return () => timers.forEach(clearTimeout)
+  }, [providers])
+
+  return { detecting, detected, detectContextWindow, reasoningCapabilities }
 }

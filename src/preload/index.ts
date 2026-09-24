@@ -3,7 +3,7 @@
 // 通过 contextBridge 暴露最小化 API surface
 // ============================================================
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningEffort } from '../shared/types'
+import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, ReasoningEffort } from '../shared/types'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 
@@ -302,7 +302,14 @@ const api = {
       ipcRenderer.invoke('provider:context-window', provider, modelOverride, requested),
     /** 拉取模型列表（OpenAI 兼容 GET /models；主进程缓存 5 分钟，force 强刷） */
     listModels: (provider: any, force?: boolean): Promise<{ models: { id: string; name?: string; ownedBy?: string }[]; error?: string }> =>
-      ipcRenderer.invoke('provider:models', provider, force)
+      ipcRenderer.invoke('provider:models', provider, force),
+    /**
+     * 探测端点对"思考强度"的能力声明（llama.cpp /props 的 chat_template_caps）。
+     * 仅用于设置页如实展示：declaresSupport=null 表示端点未报告该能力
+     * （vLLM / SGLang / LiteLLM 等），此时仍按标准参数发送。
+     */
+    reasoningCapability: (provider: any, modelOverride?: string): Promise<ReasoningCapability> =>
+      ipcRenderer.invoke('provider:reasoning-capability', provider, modelOverride)
   },
 
   // ============================================================

@@ -14,6 +14,7 @@ import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
 import { normalizeTtsModels, resolveDefaultTtsModelId } from '../../shared/tts'
 import { normalizeBrowserTarget, normalizeCustomBrowserPath } from '../../shared/browser'
 import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/mcpServer'
+import { normalizeReasoningDialect } from '../../shared/reasoning'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -294,6 +295,22 @@ function loadSettings(): AppSettings {
   }
 }
 
+/**
+ * Provider 列表的结构归一化：目前只有思考强度方言需要收口（未知值回落 'auto'）。
+ * 其余字段保持原样——它们的默认值由各消费方（上下文窗口探测、模型列表、
+ * 用量统计）决定，在这里补默认值会形成第二份默认值定义。
+ */
+function normalizeProviders(input: unknown): AppSettings['providers'] | null {
+  if (!Array.isArray(input)) return null
+  return input.map(provider => {
+    if (!provider || typeof provider !== 'object') return provider
+    return {
+      ...provider,
+      reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect)
+    }
+  })
+}
+
 /** JSON blob 的前向迁移与默认值合并集中在存储边界。 */
 export function normalizeSettings(input: unknown): AppSettings {
   const defaults = defaultSettings()
@@ -305,7 +322,7 @@ export function normalizeSettings(input: unknown): AppSettings {
     ...defaults,
     ...raw,
     schemaVersion: SETTINGS_SCHEMA_VERSION,
-    providers: Array.isArray(raw.providers) ? raw.providers : defaults.providers,
+    providers: normalizeProviders(raw.providers) ?? defaults.providers,
     mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
     mcpServer: ensureMcpServerToken(normalizeMcpServerSettings(raw.mcpServer)),
     telegramBot: normalizeTelegramBotConfig(raw.telegramBot),

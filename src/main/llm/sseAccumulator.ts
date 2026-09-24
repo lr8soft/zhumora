@@ -40,14 +40,18 @@ export interface StreamAccumulator {
 /**
  * 从 delta 中提取思考内容增量（reasoning_content / reasoning 字段）。
  * 不同推理模型的后端字段名不同：
- * - DeepSeek-R1 / 豆包 / Kimi / 多数 OpenAI 兼容网关 → reasoning_content
- * - OpenAI o-series 部分端点 / Ollama → reasoning
+ * - DeepSeek-R1 / 豆包 / Kimi / SGLang / llama.cpp / 多数 OpenAI 兼容网关 → reasoning_content
+ * - vLLM（已由 reasoning_content 改名）/ OpenAI o-series 部分端点 / Ollama → reasoning
  * 非字符串（如 o-series 的对象形 signature 块）一律忽略。
+ *
+ * 取"第一个非空字符串"而不是"第一个字符串"：vLLM 改名后官方明确警告，客户端
+ * 读旧字段会静默拿到空值；同时吐两个键的版本里，空串不能遮蔽另一个键的真实内容。
  * 思考内容仅供 UI 展示：不进正文、不回传 LLM 上下文。
  */
 export function extractReasoningDelta(delta: any): string {
-  if (typeof delta?.reasoning_content === 'string') return delta.reasoning_content
-  if (typeof delta?.reasoning === 'string') return delta.reasoning
+  for (const candidate of [delta?.reasoning_content, delta?.reasoning]) {
+    if (typeof candidate === 'string' && candidate !== '') return candidate
+  }
   return ''
 }
 

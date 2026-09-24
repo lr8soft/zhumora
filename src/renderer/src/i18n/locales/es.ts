@@ -78,8 +78,8 @@ export default {
     streamInterruptedTool: "La conexión con el modelo se interrumpió a mitad de la respuesta: la llamada a la herramienta fue truncada. Se pidió al modelo reintentar con una salida más pequeña.",
     inputResizeHint: "Arrastra para cambiar la altura del área de entrada (clic para restablecer)",
     reasoningEffortHint: "Elige la intensidad de razonamiento (activado para el proveedor actual)",
-    reasoningEffort: { off: 'Predeterminado', low: 'Baja', medium: 'Media', high: 'Alta' },
-    reasoningEffortDesc: { off: 'Que lo decida el modelo', low: 'Rápido, menos pensamiento', medium: 'Equilibrado', high: 'Razonamiento profundo' }
+    reasoningEffort: { off: 'Desactivado', low: 'Baja', medium: 'Media', high: 'Alta' },
+    reasoningEffortDesc: { off: 'Sin razonamiento', low: 'Rápido, menos pensamiento', medium: 'Equilibrado', high: 'Razonamiento profundo' }
   },
   diagram: {
     title: 'Diagrama',
@@ -157,6 +157,17 @@ export default {
       reasoningLow: 'bajo — rápido, menos pensamiento',
       reasoningMedium: 'medio — equilibrado',
       reasoningHigh: 'alto — razonamiento profundo',
+      reasoningCapability: {
+        supported: 'El endpoint declara compatibilidad con la intensidad de razonamiento (llama.cpp chat_template_caps).',
+        unknown: 'El endpoint no informa de compatibilidad con la intensidad de razonamiento (vLLM / SGLang / LiteLLM); se sigue enviando el parámetro estándar.',
+        unsupported: 'El endpoint declara que no acepta la intensidad de razonamiento; no se envía el parámetro.'
+      },
+      reasoningDialect: 'Protocolo de razonamiento',
+      reasoningDialectAuto: 'Detección automática',
+      reasoningDialectOpenai: 'reasoning_effort estándar',
+      reasoningDialectDeepseek: 'API oficial de DeepSeek',
+      reasoningDialectQwen: 'Aliyun Bailian (Qwen)',
+      reasoningDialectHint: 'Se detecta desde el endpoint (API oficiales de DeepSeek y Aliyun Bailian). Los llama.cpp / vLLM / SGLang locales y las pasarelas mantienen reasoning_effort estándar.',
       addProvider: 'Añadir Proveedor',
       remove: 'Eliminar',
       active: 'Activo',

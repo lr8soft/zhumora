@@ -79,13 +79,13 @@ export default {
     inputResizeHint: "拖拽调整输入区高度（单击恢复自适应）",
     reasoningEffortHint: "选择思考强度（当前 Provider 已开启该功能）",
     reasoningEffort: {
-      off: '默认',
+      off: '关闭',
       low: '低',
       medium: '中',
       high: '高'
     },
     reasoningEffortDesc: {
-      off: '由模型自行决定',
+      off: '不进行思考',
       low: '快速，少思考',
       medium: '平衡',
       high: '深度推理'
@@ -167,6 +167,17 @@ export default {
       reasoningLow: '低 — 快速，少思考',
       reasoningMedium: '中 — 平衡',
       reasoningHigh: '高 — 深度推理',
+      reasoningCapability: {
+        supported: '端点声明支持思考强度（llama.cpp chat_template_caps）。',
+        unknown: '端点未报告思考强度能力（vLLM / SGLang / LiteLLM 等），仍会按标准参数发送。',
+        unsupported: '端点声明不接受思考强度参数，不会发送该参数。'
+      },
+      reasoningDialect: '思考强度协议',
+      reasoningDialectAuto: '自动识别',
+      reasoningDialectOpenai: '标准 reasoning_effort',
+      reasoningDialectDeepseek: 'DeepSeek 官方 API',
+      reasoningDialectQwen: '阿里云百炼（Qwen）',
+      reasoningDialectHint: '按端点自动识别（DeepSeek、阿里云百炼官方 API）。本地 llama.cpp / vLLM / SGLang 与网关统一使用标准 reasoning_effort，无需改动。',
       addProvider: '添加提供商',
       remove: '移除',
       active: '当前使用',

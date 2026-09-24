@@ -89,6 +89,65 @@ Reasoning models (DeepSeek-R1, Doubao, Kimi, OpenAI o-series, Ollama) stream a
   with the Cline / opencode approach: it is **never** merged into `content` and
   **never** fed back into the LLM context when rebuilding history
 
+The delta field is read from `reasoning_content` or `reasoning`, whichever is
+non-empty per delta: vLLM renamed the field and warns that a client reading only
+the old key silently observes an empty value.
+
+### Reasoning effort (input side)
+
+Target endpoints (llama.cpp server, vLLM, SGLang, LiteLLM gateways) are all
+OpenAI-compatible chat-completions services accepting the standard
+`reasoning_effort` field, so there is no per-vendor field-name table — the whole
+policy is one pure module, `src/main/llm/reasoning.ts`:
+
+- The level is chosen per conversation in the composer. `off` is sent
+  **explicitly** as `reasoning_effort: "none"`; merely omitting the field is not
+  equivalent. vLLM / SGLang keep the server default when the field is absent and
+  llama.cpp falls back to the Jinja template default, so a thinking-by-default
+  model (Qwen3 series) would still think. Only a provider whose reasoning-effort
+  feature toggle is off omits the field entirely, preserving endpoint defaults.
+- llama.cpp `GET /props` is polled for `chat_template_caps.supports_reasoning_effort`
+  (`src/main/llm/reasoningCapability.ts`, exposed through the
+  `provider:reasoning-capability` IPC) and shown in the provider settings. It is
+  informational and never gates the run path: vLLM / SGLang / LiteLLM do not
+  report the capability, and "not reported" is distinct from "unsupported".
+- A gateway rejecting unknown request fields with 400/422 that names
+  `reasoning_effort` triggers one automatic degradation: the parameter is dropped
+  and the request re-sent once (`isReasoningParamRejected` in `llm/errors.ts`),
+  after which the normal retry policy keeps using the reduced payload. Unrelated
+  400/422 (context length, malformed history) and 5xx never trigger it.
+
+#### Official-API dialects
+
+Almost every endpoint family (llama.cpp, vLLM, SGLang, LiteLLM gateways, OpenAI,
+the Google compatibility layer) accepts the standard `reasoning_effort` field, so
+local servers and gateways need no vendor table at all. Two official APIs differ,
+and they are encoded in the same pure module:
+
+| Dialect | Field sent | Level mapping |
+|---|---|---|
+| `openai` (default) | `reasoning_effort` | `none` / `low` / `medium` / `high` |
+| `deepseek` | `reasoning_effort` | `none` / `low` / `high` / `high` — DeepSeek has no `medium` |
+| `qwen` (Aliyun Bailian) | `enable_thinking` | boolean: `off` → `false`, everything else → `true` |
+
+Notes:
+
+- The dialect is resolved from the **endpoint hostname only**
+  (`resolveReasoningDialect`), never from the model name: local vLLM / SGLang
+  routinely serve Qwen3 and DeepSeek weights, and name-based detection would send
+  them fields their API does not accept. Official API versus local server is
+  exactly the distinction hostname draws. `ProviderConfig.reasoningDialect`
+  (`shared/reasoning.ts`, normalized at the storage boundary, default `auto`)
+  allows overriding it for gateways and private deployments.
+- Bailian's toggle is binary: the low/medium/high levels all just mean "thinking
+  on". Per-level depth would need `thinking_budget`, which has no UI here and is
+  therefore not sent rather than invented.
+- Bailian also exposes `preserve_thinking`, which relays historical
+  `reasoning_content` back into the next request. Zhumora deliberately never feeds
+  reasoning back into the LLM context, so it is not sent.
+- `applyReasoningParams` returns the field names it wrote so that the degradation
+  path deletes exactly those fields instead of guessing names.
+
 The context window may be configured manually or detected from the provider where supported.
 
 Current auto-detection paths include:
