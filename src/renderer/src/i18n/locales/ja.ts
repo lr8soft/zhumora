@@ -157,7 +157,7 @@ export default {
       reasoningLow: '低 — 高速、少ない思考',
       reasoningMedium: '中 — バランス',
       reasoningHigh: '高 — 深い推論',
-      addProvider: '+ プロバイダーを追加',
+      addProvider: 'プロバイダーを追加',
       remove: '削除',
       active: 'アクティブ',
       activate: 'クリックしてアクティブ化',
@@ -185,7 +185,7 @@ export default {
       authHeader: 'ヘッダー名',
       apiKey: 'API Key',
       customHeaders: 'カスタムヘッダー（1行1つ、Key: Value）',
-      addServer: '+ MCP サーバーを追加',
+      addServer: 'MCP サーバーを追加',
       remove: '削除'
     },
     telegram: {

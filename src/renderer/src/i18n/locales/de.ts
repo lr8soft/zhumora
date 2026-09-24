@@ -157,7 +157,7 @@ export default {
       reasoningLow: 'niedrig — schnell, weniger Denken',
       reasoningMedium: 'mittel — ausgeglichen',
       reasoningHigh: 'hoch — tiefes Reasoning',
-      addProvider: '+ Anbieter hinzufügen',
+      addProvider: 'Anbieter hinzufügen',
       remove: 'Entfernen',
       active: 'Aktiv',
       activate: 'Klicken zum Aktivieren',
@@ -185,7 +185,7 @@ export default {
       authHeader: 'Header-Name',
       apiKey: 'API Key',
       customHeaders: 'Benutzerdefinierte Headers (eine pro Zeile, Key: Value)',
-      addServer: '+ MCP-Server hinzufügen',
+      addServer: 'MCP-Server hinzufügen',
       remove: 'Entfernen'
     },
     telegram: {

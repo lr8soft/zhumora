@@ -167,7 +167,7 @@ export default {
       reasoningLow: '低 — 快速，少思考',
       reasoningMedium: '中 — 平衡',
       reasoningHigh: '高 — 深度推理',
-      addProvider: '+ 添加提供商',
+      addProvider: '添加提供商',
       remove: '移除',
       active: '当前使用',
       activate: '点击切换为当前',
@@ -195,7 +195,7 @@ export default {
       authHeader: 'Header 名称',
       apiKey: 'API Key',
       customHeaders: '自定义 Headers（每行一个，Key: Value）',
-      addServer: '+ 添加 MCP 服务器',
+      addServer: '添加 MCP 服务器',
       remove: '移除'
     },
     telegram: {
