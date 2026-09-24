@@ -5,7 +5,7 @@ import type { AvatarIntent } from '../../../shared/avatar.ts'
 type Angles = [number, number, number]
 type Pose = Partial<Record<VRMHumanBoneName, Angles>>
 const durations: Record<AvatarIntent, number> = {
-  idle: 6, thinking: 5, explain: 4, acknowledge: 2, disagree: 2.4, greet: 3, celebrate: 3, sad: 5,
+  idle: 6, acknowledge: 2, disagree: 2.4, greet: 3, celebrate: 3, sad: 5,
   wave: 3.5, shrug: 2.8, bow: 3.5, applaud: 3
 }
 
@@ -33,7 +33,11 @@ const rest: Pose = {
 /** Original application-owned curves in canonical VRM1 space. */
 function poseAt(intent: AvatarIntent, t: number, variant: number, intensity: number): Pose {
   const phase = t * Math.PI * 2
-  const shape = intent === 'wave' || intent === 'applaud' ? 0.85 : intent === 'shrug' || intent === 'bow' ? 1 : 2
+  // Flatter envelopes keep multi-beat gestures (nod, wave, clap) evenly visible;
+  // bow/shrug ease in and out; head cues use a stronger bell.
+  const shape = intent === 'wave' || intent === 'applaud' ? 0.85
+    : intent === 'acknowledge' || intent === 'disagree' ? 0.5
+      : intent === 'shrug' || intent === 'bow' ? 1 : 2
   const envelope = Math.sin(Math.PI * t) ** shape * intensity
   const pose: Pose = {
     ...rest,
@@ -43,16 +47,14 @@ function poseAt(intent: AvatarIntent, t: number, variant: number, intensity: num
   if (intent === 'idle') {
     pose.head = [0, Math.sin(phase) * 0.045 * variant, envelope * 0.04 * variant]
     pose.spine![2] += envelope * 0.025 * variant
-  } else if (intent === 'thinking') {
-    pose.head = [0.08 * envelope, 0.06 * envelope, -0.06 * envelope]
   } else if (intent === 'acknowledge') {
-    pose.head = [Math.sin(phase) * 0.13 * envelope, 0, 0]
+    pose.head = [Math.sin(phase * 3) * 0.38 * envelope, 0, 0]
+    pose.neck = [Math.sin(phase * 3) * 0.1 * envelope, 0, 0]
   } else if (intent === 'disagree') {
-    pose.head = [0, Math.sin(phase) * 0.16 * envelope, 0]
+    pose.head = [0, Math.sin(phase * 2.5) * 0.46 * envelope, 0]
+    pose.neck = [0, Math.sin(phase * 2.5) * 0.12 * envelope, 0]
   } else if (intent === 'greet') {
     pose.head = [0.1 * envelope, 0, 0.035 * envelope]
-  } else if (intent === 'explain') {
-    pose.head = [Math.sin(phase) * 0.045 * envelope, 0.035 * envelope * variant, 0]
   } else if (intent === 'celebrate') {
     pose.head = [-0.06 * envelope, 0, 0.035 * envelope]
   } else if (intent === 'sad') {
@@ -60,22 +62,25 @@ function poseAt(intent: AvatarIntent, t: number, variant: number, intensity: num
     pose.neck = [0.025 * envelope, 0, 0]
     pose.spine![0] += 0.025 * envelope
   } else if (intent === 'wave') {
+    // Raise the whole right arm well above the shoulder and swing the hand.
     const wiggle = Math.sin(phase * 3) * envelope
-    pose.rightUpperArm = [0.12 * envelope, 0, 1.44 - 1.05 * envelope]
+    pose.rightUpperArm = [0.18 * envelope, 0, 1.44 - 2.0 * envelope]
     pose.rightLowerArm = [0, 0.22 + 1.1 * envelope, 0]
-    pose.rightHand = [0, 0, 0.06 + 0.32 * wiggle]
-    pose.head = [0.02 * envelope, -0.06 * envelope, 0.05 * envelope]
+    pose.rightHand = [0, 0, 0.06 + 0.6 * wiggle]
+    pose.head = [0.02 * envelope, -0.08 * envelope, 0.06 * envelope]
   } else if (intent === 'shrug') {
     pose.leftShoulder = [0, 0, 0.3 * envelope]
     pose.rightShoulder = [0, 0, -0.3 * envelope]
     pose.neck = [0.02 * envelope, 0, 0.02 * envelope]
     pose.head = [0.03 * envelope, 0, 0.07 * envelope]
   } else if (intent === 'bow') {
-    pose.hips = [-0.04 * envelope, 0, 0]
-    pose.spine![0] += 0.18 * envelope
-    pose.chest![0] += 0.16 * envelope
-    pose.neck = [0.08 * envelope, 0, 0]
-    pose.head = [0.12 * envelope, 0, 0]
+    // Deep bow: fold the whole torso to roughly 90 degrees at the default strength.
+    pose.hips = [-0.05 * envelope, 0, 0]
+    pose.spine![0] += 0.58 * envelope
+    pose.chest![0] += 0.58 * envelope
+    pose.upperChest = [0.42 * envelope, 0, 0]
+    pose.neck = [0.12 * envelope, 0, 0]
+    pose.head = [0.08 * envelope, 0, 0]
   } else if (intent === 'applaud') {
     // Arm bones extend along ±X: y swings forward/elbow flexion, z raises sideways.
     const clap = Math.sin(phase * 2.5) * envelope

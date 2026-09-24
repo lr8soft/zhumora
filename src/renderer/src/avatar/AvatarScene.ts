@@ -50,13 +50,20 @@ export class AvatarScene {
     this.container.appendChild(this.renderer.domElement)
     this.scene.add(this.lookTarget)
 
-    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x667788, 1.5))
-    const key = new THREE.DirectionalLight(0xffffff, 2.0)
-    key.position.set(1.5, 2.8, 2.2)
+    // Canonical three-vrm example lighting: one white DirectionalLight at
+    // intensity π. MToon output is `lightColor / π`, so π makes a surface that
+    // faces the light render at exactly its base diffuse color, and the toon
+    // terminator stays crisp. The examples render on a page; our overlay sits on
+    // an arbitrary desktop, so one small hemisphere keeps the shadow side from
+    // going pitch black instead of stacking more directional lights.
+    const key = new THREE.DirectionalLight(0xffffff, Math.PI)
+    key.position.set(1, 1, 1).normalize()
     this.scene.add(key)
-    const fill = new THREE.DirectionalLight(0x9bbcff, 1.0)
-    fill.position.set(-2, 1.2, 1)
+    // Cool fill lifts the shadow side without flattening the toon terminator.
+    const fill = new THREE.DirectionalLight(0xc8d8ff, 1.2)
+    fill.position.set(-2.2, 1.0, 1.4)
     this.scene.add(fill)
+    this.scene.add(new THREE.HemisphereLight(0xffffff, 0x8a90a8, 0.6))
 
     this.resizeObserver = new ResizeObserver(() => this.resize())
     this.resizeObserver.observe(container)

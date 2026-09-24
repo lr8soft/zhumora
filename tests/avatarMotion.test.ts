@@ -94,6 +94,18 @@ for (const version of ['0', '1'] as const) {
     assert.ok(moves('applaud', 'leftLowerArm'), 'applaud moves the forearms')
     assert.ok(moves('shrug', 'leftShoulder'), 'shrug lifts the shoulders')
     assert.ok(moves('bow', 'hips'), 'bow bends the torso')
+    const headSwing = (intent: AvatarIntent) => {
+      const node = f.vrm.humanoid.getNormalizedBoneNode('head')!
+      const track = createBuiltinMotion(f.vrm, intent).tracks.find(t => t.name === `${node.uuid}.quaternion`)!
+      const base = new THREE.Quaternion().fromArray(track.values, 0)
+      let max = 0
+      for (let i = 0; i < track.values.length; i += 4) {
+        max = Math.max(max, new THREE.Quaternion().fromArray(track.values, i).angleTo(base))
+      }
+      return max
+    }
+    assert.ok(headSwing('acknowledge') > 0.18, 'acknowledge nods noticeably')
+    assert.ok(headSwing('disagree') > 0.25, 'disagree shakes head noticeably')
     await f.controller.initialize()
     f.step(0.02)
     for (const side of ['left', 'right'] as const) {
@@ -116,6 +128,13 @@ for (const version of ['0', '1'] as const) {
     f.step(1.3)
     const clapGap = handGap()
     assert.ok(clapGap < restGap - 0.1, 'applaud brings the hands together: ' + clapGap + ' vs ' + restGap)
+    await f.controller.reset()
+    f.step(2)
+    const restHeadY = f.vrm.humanoid.getNormalizedBoneNode('head')!.getWorldPosition(new THREE.Vector3()).y
+    await f.controller.perform('bow')
+    f.step(1.6)
+    const bowHeadY = f.vrm.humanoid.getNormalizedBoneNode('head')!.getWorldPosition(new THREE.Vector3()).y
+    assert.ok(bowHeadY < restHeadY - 0.15, 'bow folds the head deeply: ' + bowHeadY + ' vs ' + restHeadY)
     await f.controller.reset()
     f.step(2)
     const head = f.vrm.humanoid.getNormalizedBoneNode('head')!

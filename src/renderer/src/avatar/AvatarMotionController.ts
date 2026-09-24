@@ -142,8 +142,8 @@ export class AvatarMotionController {
   }
 
   private builtin(intent: AvatarIntent, intensity = 0.7): THREE.AnimationClip {
-    // Bounded per-model cache: 12 intents × 2 variants × 3 strengths.
-    const strength = intensity === 0 ? 0 : intensity < 0.34 ? 0.3 : intensity < 0.67 ? 0.6 : 0.9
+    // Bounded per-model cache: 10 intents × 2 variants × 3 strengths.
+    const strength = intensity === 0 ? 0 : intensity < 0.34 ? 0.35 : intensity < 0.75 ? 0.85 : 1
     const key = intent + ':' + this.variant + ':' + strength
     let clip = this.builtins.get(key)
     if (!clip) {
@@ -156,8 +156,9 @@ export class AvatarMotionController {
   private startBase(): void {
     this.appliedActivity = this.activity
     this.nextBaseChange = this.elapsed + 0.7
-    const intent = this.activity === 'speaking' ? 'explain' : this.activity
-    const clip = intent === 'idle' && this.idleClip ? this.idleClip : this.overrideClips.get(intent) ?? this.builtin(intent)
+    // Every activity rests on the same idle base clip; only the ambient life
+    // layer reacts to idle/thinking/speaking.
+    const clip = this.idleClip ?? this.overrideClips.get('idle') ?? this.builtin('idle')
     this.start(clip, true, 0.65)
     this.nextVariation = this.elapsed + 7 + this.random() * 6
   }

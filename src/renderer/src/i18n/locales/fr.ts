@@ -281,7 +281,7 @@ export default {
     avatar: {
       intent: "Remplacer un mouvement",
       intentNone: "Lecture directe uniquement",
-      intentNames: {"idle":"Repos","thinking":"Réfléchir","explain":"Expliquer","acknowledge":"Acquiescer","disagree":"Désapprouver","greet":"Saluer de la tête","celebrate":"Célébrer","sad":"Triste","wave":"Faire un signe","shrug":"Épaules hautes","bow":"S'incliner","applaud":"Applaudir"},
+      intentNames: {"idle":"Repos","acknowledge":"Acquiescer","disagree":"Désapprouver","greet":"Saluer de la tête","celebrate":"Célébrer","sad":"Triste","wave":"Faire un signe","shrug":"Épaules hautes","bow":"S'incliner","applaud":"Applaudir"},
       windowSize: "Taille de la fenêtre Avatar",
       windowWidth: "Largeur (240–960)",
       windowHeight: "Hauteur (320–1440)",

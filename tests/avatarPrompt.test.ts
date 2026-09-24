@@ -20,9 +20,9 @@ assert.match(readyPrompt, /already succeeded for the current user request, do no
 assert.match(readyPrompt, /semantic gesture for the response must be selected with avatar_control/)
 assert.match(readyPrompt, /wave=wave one hand/)
 assert.match(readyPrompt, /shrug=raise shoulders/)
-assert.match(readyPrompt, /bow=bow politely/)
+assert.match(readyPrompt, /bow=bow deeply/)
 assert.match(readyPrompt, /applaud=clap hands/)
-assert.match(readyPrompt, /Built-in motions stay upper-body and subtle\./)
+assert.match(readyPrompt, /Built-in motions stay upper-body and in place\./)
 assert.match(readyPrompt, /wave for casual hello or goodbye/)
 
 const pendingPrompt = buildAvatarSystemPrompt('loading', [], { animations: [], expressions: [] }, false)

@@ -281,7 +281,7 @@ export default {
     avatar: {
       intent: "内蔵モーションを置換",
       intentNone: "直接再生のみ",
-      intentNames: {"idle":"待機","thinking":"思考","explain":"説明","acknowledge":"うなずく","disagree":"首を振る","greet":"会釈","celebrate":"喜ぶ","sad":"悲しみ","wave":"手を振る","shrug":"肩をすくめる","bow":"お辞儀","applaud":"拍手"},
+      intentNames: {"idle":"待機","acknowledge":"うなずく","disagree":"首を振る","greet":"会釈","celebrate":"喜ぶ","sad":"悲しみ","wave":"手を振る","shrug":"肩をすくめる","bow":"お辞儀","applaud":"拍手"},
       windowSize: "Avatar ウィンドウサイズ",
       windowWidth: "幅（240–960）",
       windowHeight: "高さ（320–1440）",

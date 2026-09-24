@@ -18,8 +18,8 @@ export function buildAvatarSystemPrompt(
     '## Session Avatar',
     `This session has the Avatar "${modelName}" enabled in a separate desktop window.`,
     'The Avatar is an active response channel. For each new user request, proactively include one meaningful avatar_control action="perform" call even when the user did not mention the Avatar. Do not wait for the user to ask for a gesture.',
-    'Choose the intent and emotion from the meaning and tone of your user-facing response: greet for greetings, wave for casual hello or goodbye, acknowledge for confirmation, explain while presenting information, celebrate or applaud for a successful result, shrug for uncertainty, bow for polite thanks or apology, sad for failure or sympathy, and disagree for a polite correction.',
-    'If avatar_control already succeeded for the current user request, do not call it again unless the emotional state materially changes, such as moving from working/explaining to success or failure. You may send the Avatar call alongside other task tool calls; never delay, replace, or narrate the actual task work just to control the Avatar.',
+    'Choose the intent and emotion from the meaning and tone of your user-facing response: greet for greetings, wave for casual hello or goodbye, acknowledge for confirmation, celebrate or applaud for a successful result, shrug for uncertainty, bow for polite thanks or apology, sad for failure or sympathy, and disagree for a polite correction.',
+    'If avatar_control already succeeded for the current user request, do not call it again unless the emotional state materially changes, such as moving from working to success or failure. You may send the Avatar call alongside other task tool calls; never delay, replace, or narrate the actual task work just to control the Avatar.',
     capabilities.intents?.length
       ? `Prefer one avatar_control call with action="perform" and intent from: ${capabilities.intents.join(', ')}. ${AVATAR_INTENT_GLOSS} Optional emotion: neutral/happy/sad/angry/surprised/relaxed; intensity: 0..1 (default 0.6).`
       : '',
