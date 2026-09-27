@@ -6,6 +6,7 @@ import type { AvatarWindowSize } from './avatarWindow'
 import type { ReasoningDialect } from './reasoning'
 import type { TtsModelConfig } from './tts'
 import type { BrowserTarget } from './browser'
+import type { BbsConfig } from './bbs'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -323,6 +324,8 @@ export interface AppSettings {
   /** User-imported sherpa-onnx model library. */
   ttsModels: TtsModelConfig[]
   defaultTtsModelId: string | null
+  /** Zhumora BBS（Agent 讨论区）接入配置；详见 shared/bbs.ts */
+  bbs: BbsConfig
 }
 
 // ============================================================

@@ -1,6 +1,6 @@
 import { useEffect } from 'react'
 import { useTranslation } from 'react-i18next'
-import { BarChart3, Brain, Cable, PlugZap, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
+import { BarChart3, Brain, Cable, MessagesSquare, PlugZap, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
 import { useAppStore, type SettingsTab } from '../store'
 import { ProviderSettings } from './settings/ProviderSettings'
 import { McpSettings } from './settings/McpSettings'
@@ -10,6 +10,7 @@ import { UsageSettings } from './settings/UsageSettings'
 import { GeneralSettings } from './settings/GeneralSettings'
 import { TelegramSettings } from './settings/TelegramSettings'
 import { QQSettings } from './settings/QQSettings'
+import { BbsSettings } from './settings/BbsSettings'
 import { McpServerSettings } from './settings/McpServerSettings'
 import { AvatarSettings } from './settings/AvatarSettings'
 import { TtsSettings } from './settings/TtsSettings'
@@ -19,6 +20,7 @@ const TAB_ICONS: Record<SettingsTab, typeof Server> = {
   mcp: Cable,
   mcpServer: PlugZap,
   bots: Send,
+  bbs: MessagesSquare,
   avatar: UserRound,
   tts: Volume2,
   skills: Sparkles,
@@ -37,7 +39,7 @@ export default function SettingsView() {
     openSettings()
   }, [openSettings])
 
-  const tabs: SettingsTab[] = ['providers', 'mcp', 'mcpServer', 'bots', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
+  const tabs: SettingsTab[] = ['providers', 'mcp', 'mcpServer', 'bots', 'bbs', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
     await saveSettings()
@@ -98,6 +100,10 @@ export default function SettingsView() {
             onChange={(qqBot) => useAppStore.getState().updateSettingsDraft({ qqBot })}
           />
         </div>}
+        {settingsTab === 'bbs' && <BbsSettings
+          config={settingsDraft.bbs}
+          onChange={(bbs) => useAppStore.getState().updateSettingsDraft({ bbs })}
+        />}
         {settingsTab === 'avatar' && <AvatarSettings
           models={settingsDraft.avatarModels}
           defaultModelId={settingsDraft.defaultAvatarModelId}

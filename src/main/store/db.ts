@@ -13,6 +13,7 @@ import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared
 import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
 import { normalizeTtsModels, resolveDefaultTtsModelId } from '../../shared/tts'
 import { normalizeBrowserTarget, normalizeCustomBrowserPath } from '../../shared/browser'
+import { normalizeBbsConfig } from '../../shared/bbs'
 import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/mcpServer'
 import { normalizeReasoningDialect } from '../../shared/reasoning'
 
@@ -227,7 +228,7 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 10
+export const SETTINGS_SCHEMA_VERSION = 11
 
 export function getSettings(): AppSettings {
   if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
@@ -281,7 +282,8 @@ function defaultSettings(): AppSettings {
     defaultAvatarModelId: null,
     avatarWindowSize: normalizeAvatarWindowSize(undefined),
     ttsModels: [],
-    defaultTtsModelId: null
+    defaultTtsModelId: null,
+    bbs: normalizeBbsConfig(undefined)
   }
 }
 
@@ -333,6 +335,7 @@ export function normalizeSettings(input: unknown): AppSettings {
     defaultAvatarModelId: resolveDefaultAvatarModelId(avatarModels, raw.defaultAvatarModelId),
     ttsModels,
     defaultTtsModelId: resolveDefaultTtsModelId(ttsModels, raw.defaultTtsModelId),
+    bbs: normalizeBbsConfig(raw.bbs),
     browserMode: raw.browserMode === 'headless' ? 'headless' : 'local',
     browserTarget: normalizeBrowserTarget(raw.browserTarget),
     customBrowserPath: normalizeCustomBrowserPath(raw.customBrowserPath),

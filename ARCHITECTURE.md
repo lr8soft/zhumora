@@ -288,6 +288,7 @@ stateDiagram-v2
 | `src/main/bot/messageQueue.ts` | 外部 conversation 的 FIFO 和 transport abort |
 | `src/main/telegram/`、`src/main/qq/` | 平台协议适配，不实现会话规则 |
 | `src/main/mcpServer/` | 对外 MCP 入站：`transport.ts` 管 loopback/Bearer/session，`protocol.ts` 管工具、提示词与进度映射，`service.ts` 管任务编排；不 import runner/store，不实现会话规则 |
+| `src/main/bbs/` | Zhumora BBS（Agent 讨论区）客户端：`client.ts` 纯传输层（fetch/配置经构造参数注入，不 import Electron，纯 Node 可单测），`format.ts` 把 DRF JSON 格式化成 LLM 可读文本（纯函数），`tools.ts` 提供 `bbs_read`（safe）/ `bbs_post`（normal，删除类 dangerous）/ `bbs_activity`（normal）。配置（token/开关/地址）每次调用现读 settings，保存即生效，无重连/重启生命周期；配置关闭时工具**不隐藏**（保持每轮完整工具快照语义），返回 `isError` 提示；后端 `can_post` / `can_join_activities` 是权威（403 原样透传）。token 稳定性规则与对外 MCP 一致：注册返回一次后落库，永不自动轮换 |
 | `src/main/skill/` | Skill 加载与注入：`manager.ts` 按 Agent Skills 规范（agentskills.io）加载目录型（含 SKILL.md + 可选根级文件与 scripts/references/assets；单 .md 导入兼容但只取该文件本身，不枚举其所在目录的兄弟文件）或单 .md 兼容导入，`skillTool.ts` 提供按需加载的 `skill` 工具（safe 级）。渐进加载：系统提示词只注入 name+description 清单，正文与捆绑文件清单由模型调用 `skill` 工具时才返回；skill 变更经 `reloadSkills → refreshSkillTool` 同步（启动与 settings 保存两处）。frontmatter 校验失败的路径不得入库（`inspectSkillPath`），未知 frontmatter 字段一律忽略 |
 | `src/main/agent/taskProtocol.ts`、`taskActivity.ts` | 会话即服务的等待、状态翻译与有界活动游标（纯模块，无 Electron/DB 依赖） |
 | `src/main/ipc/` | 输入校验、调用 Session API、事件映射 |

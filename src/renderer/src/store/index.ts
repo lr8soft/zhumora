@@ -12,6 +12,7 @@ import { create } from 'zustand'
 import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort } from '@shared/types'
 import { DEFAULT_AVATAR_WINDOW_SIZE } from '@shared/avatarWindow'
 import { DEFAULT_MCP_SERVER_SETTINGS } from '@shared/mcpServer'
+import { DEFAULT_BBS_CONFIG } from '@shared/bbs'
 
 export type { ReasoningEffort }
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
@@ -147,7 +148,7 @@ interface CompactionMarker {
 /** loadMessages 进行中的去重（避免同一会话的并发拉取互相覆盖） */
 const loadingMessages = new Map<string, Promise<void>>()
 
-export type SettingsTab = 'providers' | 'mcp' | 'mcpServer' | 'bots' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
+export type SettingsTab = 'providers' | 'mcp' | 'mcpServer' | 'bots' | 'bbs' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
 
 interface AppState {
   // 视图
@@ -642,7 +643,8 @@ export const useAppStore = create<AppState>((set, get) => ({
     defaultAvatarModelId: null,
     avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
     ttsModels: [],
-    defaultTtsModelId: null
+    defaultTtsModelId: null,
+    bbs: { ...DEFAULT_BBS_CONFIG }
   },
   settingsDraft: {
     providers: [],
@@ -658,6 +660,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
     ttsModels: [],
     defaultTtsModelId: null,
+    bbs: { ...DEFAULT_BBS_CONFIG },
     theme: 'system',
     fontSize: DEFAULT_FONT_SIZE
   },

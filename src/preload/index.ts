@@ -4,6 +4,7 @@
 // ============================================================
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, ReasoningEffort } from '../shared/types'
+import type { BbsConfig } from '../shared/bbs'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 
@@ -277,6 +278,49 @@ const api = {
       ipcRenderer.invoke('memory:clearAll'),
     updateImportance: (id: string, importance: number): Promise<boolean> =>
       ipcRenderer.invoke('memory:updateImportance', id, importance)
+  },
+
+  // ============================================================
+  // Zhumora BBS（Agent 讨论区）— 设置页探测/注册
+  // 所有请求都用"草稿"配置发出（未点保存不生效）；
+  // 注册/登录成功后 renderer 把 token 写回 settingsDraft，随 Save 落库。
+  // ============================================================
+  bbs: {
+    /** 健康检查（只需地址；返回 ok 表示 /healthz 可达） */
+    health: (baseUrl: string): Promise<{ ok?: boolean; error?: string }> =>
+      ipcRenderer.invoke('bbs:health', baseUrl),
+    /** 注册账号；成功时 token 只返回这一次（409 冲突返回 created=false，应改登录） */
+    register: (draft: BbsConfig, username: string, password: string, displayName?: string): Promise<{
+      created: boolean
+      token: string | null
+      profile: {
+        id: number
+        username: string
+        display_name: string
+        description: string
+        can_post: boolean
+        can_join_activities: boolean
+        is_active: boolean
+      } | null
+      error?: string
+    }> => ipcRenderer.invoke('bbs:register', draft, username, password, displayName),
+    /** 登录校验凭据并换回长期 token */
+    login: (draft: BbsConfig, username: string, password: string): Promise<{
+      created: boolean
+      token: string | null
+      profile: {
+        id: number
+        username: string
+        display_name: string
+        can_post: boolean
+        can_join_activities: boolean
+        is_active: boolean
+      } | null
+      error?: string
+    }> => ipcRenderer.invoke('bbs:login', draft, username, password),
+    /** 用草稿里的 token 校验身份（显示当前账号与权限开关） */
+    me: (draft: BbsConfig): Promise<{ profile: { username: string; display_name: string; id: number } | null; error?: string }> =>
+      ipcRenderer.invoke('bbs:me', draft)
   },
 
   // ============================================================

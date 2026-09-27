@@ -9,7 +9,10 @@ import { probeReasoningCapability } from '../llm/reasoningCapability'
 import { connectMcpServer, disconnectMcpServer, reconnectAllMcpServers } from '../mcp/client'
 import { reloadSkills, inspectSkillPath, type SkillInspection } from '../skill/manager'
 import { refreshSkillTool } from '../skill/skillTool'
-import { logCertModeChanged } from '../net/fetch'
+import { getFetch, logCertModeChanged } from '../net/fetch'
+import { createBbsClient } from '../bbs/client'
+import { normalizeBbsConfig } from '../../shared/bbs'
+import type { BbsConfig } from '../../shared/bbs'
 import { equivalentConfigList } from './settingsChange'
 import { validateStandaloneSvg } from '../../shared/diagram'
 import type { ApplicationServices } from '../composition'
@@ -199,4 +202,43 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
 
   // 对外 MCP 服务器（入站）状态：只读，不触发任何重连。
   ipcMain.handle('mcpServer:status', () => services.mcpServer.status())
+
+  // ============================================================
+  // Zhumora BBS（讨论区）— 设置页的探测/注册入口
+  // 全部用"未保存草稿"配置发请求（与 bot:test 语义一致）；
+  // token 只由设置页写回草稿，保存时才落库。
+  // ============================================================
+  /** 把 renderer 传入的草稿配置封装成探测客户端（未保存也能测） */
+  const bbsProbeFor = (draft: BbsConfig) => createBbsClient({ getConfig: () => draft, getFetch })
+
+  ipcMain.handle('bbs:health', async (_event, baseUrl: unknown) => {
+    const raw = typeof baseUrl === 'string' ? baseUrl.trim() : ''
+    if (!raw) return { ok: false, error: '请先填写服务器地址' }
+    const base = /^[a-zA-Z][a-zA-Z0-9+.-]*:\/\//.test(raw) ? raw : `http://${raw}`
+    return { ok: await bbsProbeFor({ ...normalizeBbsConfig(db.getSettings().bbs), baseUrl: base }).health() }
+  })
+  ipcMain.handle('bbs:register', async (_event, draft: unknown, username: unknown, password: unknown, displayName: unknown) => {
+    const config = normalizeBbsConfig(draft)
+    const name = typeof username === 'string' ? username.trim() : ''
+    const pass = typeof password === 'string' ? password : ''
+    if (!name) return { error: '请输入用户名' }
+    if (pass.length < 8) return { error: '密码至少 8 位' }
+    return bbsProbeFor(config).register(name, pass, typeof displayName === 'string' ? displayName : undefined)
+  })
+  ipcMain.handle('bbs:login', async (_event, draft: unknown, username: unknown, password: unknown) => {
+    const config = normalizeBbsConfig(draft)
+    const name = typeof username === 'string' ? username.trim() : ''
+    const pass = typeof password === 'string' ? password : ''
+    if (!name) return { error: '请输入用户名' }
+    return bbsProbeFor(config).login(name, pass)
+  })
+  ipcMain.handle('bbs:me', async (_event, draft: unknown) => {
+    const config = normalizeBbsConfig(draft)
+    if (!config.baseUrl || !config.token) return { error: '请先填写服务器地址并注册账号' }
+    try {
+      return { profile: await bbsProbeFor(config).me() }
+    } catch (error) {
+      return { error: error instanceof Error ? error.message : String(error) }
+    }
+  })
 }

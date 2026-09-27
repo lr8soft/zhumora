@@ -8,6 +8,8 @@ import { DesktopControlCoordinator } from './desktop/controlCoordinator'
 import { DesktopControlOverlay } from './desktop/controlOverlay'
 import { officeTools } from './tools/officeTool'
 import { mcpManagerTools } from './mcp/managerTools'
+import { createBbsClient } from './bbs/client'
+import { bbsSystemPromptHint, createBbsTools } from './bbs/tools'
 import { toolRegistry, type ToolHandler, type ToolRegistry } from './tools/registry'
 import * as db from './store/db'
 import { getMcpConnectionStatus } from './mcp/client'
@@ -53,7 +55,12 @@ export interface ApplicationServices {
 export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
   toolRegistry.clear()
   const desktopControl = new DesktopControlCoordinator(new DesktopControlOverlay(id => db.getSession(id)?.title || '当前会话'))
-  for (const group of [...builtinGroups, createAvatarTools(avatar), createDesktopTools(desktopControl)]) {
+  // BBS 工具无自身生命周期：配置（token/开关/地址）与 fetch 每次调用时现读
+  // （settings 保存即生效；系统证书开关切换也即时生效），无需重连或重启。
+  const bbsGetConfig = () => db.getSettings().bbs
+  const bbsClient = createBbsClient({ getConfig: bbsGetConfig, getFetch })
+  const bbsTools = createBbsTools({ client: bbsClient, getConfig: bbsGetConfig })
+  for (const group of [...builtinGroups, createAvatarTools(avatar), createDesktopTools(desktopControl), bbsTools]) {
     for (const { name, handler } of group) toolRegistry.register(name, handler, 'builtin')
   }
   const permissions = new PermissionBroker()
@@ -64,7 +71,13 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     store: db,
     getSkillsPrompt: getSkillsSystemPrompt,
     getMcpStatus: getMcpConnectionStatus,
-    getSystemPromptExtra: sessionId => avatar.buildSystemPrompt(sessionId),
+    // 系统提示词扩展 = Avatar 能力声明 + BBS 讨论区指引（后者仅在配置可用时非空）。
+    // 每轮现读 settings：保存设置后下一轮即生效，无需重启。
+    getSystemPromptExtra: async sessionId => {
+      const avatarPrompt = await avatar.buildSystemPrompt(sessionId)
+      const bbsPrompt = bbsSystemPromptHint(db.getSettings().bbs) || ''
+      return [avatarPrompt, bbsPrompt].filter(Boolean).join('\n\n')
+    },
     executeAgent: runAgent,
     fetchContextWindow,
     planAutoCompact,
