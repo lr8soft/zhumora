@@ -13,8 +13,6 @@ import { AvatarMotionController } from './AvatarMotionController'
 import { AvatarExpressionController } from './AvatarExpressionController'
 import { AvatarClipAdapter } from './AvatarClipAdapter'
 import { AvatarLifeMotion } from './AvatarLifeMotion'
-import { NeuralMotionClient } from './neural/NeuralMotionClient'
-import { bindNeuralMotion, type NeuralMotionBinding } from './neural/neuralMotion'
 
 type AssetLoader = (assetId: string) => Promise<Uint8Array>
 
@@ -37,7 +35,6 @@ export class AvatarScene {
   private life: AvatarLifeMotion | null = null
   private expressions: AvatarExpressionController | null = null
   private clipAdapter: AvatarClipAdapter | null = null
-  private neural: NeuralMotionClient | null = null
   private activity: AvatarActivity = 'idle'
   private embeddedClips = new Map<string, THREE.AnimationClip>()
   private animationClips = new Map<string, Promise<THREE.AnimationClip>>()
@@ -101,18 +98,7 @@ export class AvatarScene {
     for (const animation of bootstrap.model.animations) {
       if (animation.intent) overrides[animation.intent] = animation.name
     }
-    let neural: NeuralMotionBinding | null = null
-    try {
-      neural = await bindNeuralMotion(vrm)
-    } catch (error) {
-      console.warn('Avatar CPU motion worker unavailable; using built-in motions.', error)
-    }
-    if (version !== this.loadVersion) {
-      neural?.client.dispose()
-      throw new Error('Avatar model load was superseded.')
-    }
-    this.neural = neural?.client ?? null
-    const motion = new AvatarMotionController(vrm, this.mixer, name => this.resolveClip(name), overrides, Math.random, neural?.source)
+    const motion = new AvatarMotionController(vrm, this.mixer, name => this.resolveClip(name), overrides)
     this.motion = motion
     this.expressions = vrm.expressionManager ? new AvatarExpressionController(vrm.expressionManager) : null
     this.life = new AvatarLifeMotion(vrm)
@@ -153,8 +139,7 @@ export class AvatarScene {
       animations,
       expressions,
       defaultAnimation: idle.name,
-      intents: [...AVATAR_INTENTS],
-      ...(neural ? { textMotionActions: neural.actions } : {})
+      intents: [...AVATAR_INTENTS]
     }
   }
 
@@ -166,10 +151,6 @@ export class AvatarScene {
       const emotion = command.emotion ?? (command.intent === 'sad' ? 'sad'
         : command.intent === 'greet' || command.intent === 'celebrate' || command.intent === 'wave' || command.intent === 'applaud' ? 'happy' : undefined)
       if (emotion) this.expressions?.emotion(emotion, command.intensity)
-      return
-    }
-    if (command.type === 'generate_motion') {
-      await this.motion?.generateFromText(command.text, command.intensity)
       return
     }
     if (command.type === 'play_animation') {
@@ -314,8 +295,6 @@ export class AvatarScene {
     this.framingBounds = null
     this.motion?.dispose()
     this.motion = null
-    this.neural?.dispose()
-    this.neural = null
     this.life?.dispose()
     this.life = null
     this.expressions = null

@@ -192,8 +192,7 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
       animations,
       expressions: cleanNames(capabilities?.expressions),
       defaultAnimation,
-      intents: AVATAR_INTENTS.filter(intent => capabilities?.intents?.includes(intent)),
-      textMotionActions: cleanNames(capabilities?.textMotionActions)
+      intents: AVATAR_INTENTS.filter(intent => capabilities?.intents?.includes(intent))
     }
     entry.ready = true
     entry.resolveReady()
@@ -268,9 +267,6 @@ export class AvatarWindowManager implements AvatarController, AvatarMessageTarge
     }
     if (command.type === 'perform' && !entry.capabilities.intents?.includes(command.intent)) {
       return { content: 'This Avatar renderer does not support that intent.', isError: true }
-    }
-    if (command.type === 'generate_motion' && (!entry.capabilities.textMotionActions?.length || !command.text.trim() || command.text.length > 160)) {
-      return { content: 'Avatar text motion is unavailable or the description is invalid.', isError: true }
     }
     if (command.type === 'set_expression') {
       const requested = command.expression.toLowerCase()
