@@ -351,6 +351,8 @@ export default {
       workspaceHint: 'Directorio raíz de trabajo del agente. Las herramientas de archivo son relativas a esta ruta.',
       language: 'Idioma',
       languageHint: 'Idioma de interfaz. Detecta automáticamente el idioma del sistema en el primer inicio.',
+      backgroundClose: 'Seguir ejecutando en segundo plano',
+      backgroundCloseHint: 'Al cerrar la ventana, Zhumora se minimiza a la bandeja del sistema; las sesiones, el Bot y MCP continúan. Solo «Salir» en la bandeja termina el proceso.',
       autoDetect: 'Auto (Sistema)',
       appearance: 'Apariencia',
       appearanceHint: 'Tema y tamaño de fuente',

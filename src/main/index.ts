@@ -16,9 +16,30 @@ import { refreshSkillTool } from './skill/skillTool'
 import { AvatarAssetStore } from './avatar/assetStore'
 import { AvatarWindowManager } from './avatar/windowManager'
 import { reconcileAvatarSessions } from './ipc/registerAvatarIpc'
+import { BackgroundManager } from './background'
+import { shouldCloseInsteadOfHide } from './backgroundPolicy'
 
 export let mainWindow: BrowserWindow | null = null
 let applicationServices: ApplicationServices | null = null
+let background: BackgroundManager | null = null
+// 区分"关窗收进后台"与"真退出"的唯一标志：只有 app.quit()（托盘退出/系统关机）
+// 才会触发 before-quit 置位。窗口自身永远不知道进程要去哪。
+let quitting = false
+
+// 后台化后必须保证单实例：用户在窗口隐藏期间再次启动应用时，
+// 不能让第二个 main 进程去抢同一份 SQLite / MCP 端口 / Bot 连接。
+if (!app.requestSingleInstanceLock()) {
+  app.quit()
+} else {
+  app.on('second-instance', () => {
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+    else {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+      mainWindow.focus()
+    }
+  })
+}
 
 function createWindow(): BrowserWindow {
   mainWindow = new BrowserWindow({
@@ -50,11 +71,28 @@ function createWindow(): BrowserWindow {
     }
   })
 
+  // 关窗 → 收进后台（默认）：拦截 close 事件，仅隐藏不销毁。
+  // 窗口销毁（真退出）只发生在 before-quit 置位 quitting 之后，或后台模式被显式关闭时。
+  mainWindow.on('close', (event) => {
+    const close = shouldCloseInsteadOfHide({
+      quitting,
+      platform: process.platform,
+      dev: is.dev,
+      backgroundClose: getSettings().backgroundClose
+    })
+    if (!close) {
+      event.preventDefault()
+      mainWindow.hide()
+    }
+  })
+
+  // 仅真销毁时触发（退出中 / dev / 用户关闭后台模式 / darwin 红点）。后台 hide 不会走到这里。
   mainWindow.on('closed', () => {
     mainWindow = null
-    // Avatar windows are auxiliary. They must not keep a headless app alive after
-    // the user closes the primary window on platforms where close means quit.
-    if (process.platform !== 'darwin') app.quit()
+    if (quitting || process.platform === 'darwin') return
+    // 真销毁（dev 或显式关闭后台模式）保留原"关主窗即退出"语义：
+    // 即使 Avatar 辅助窗口还开着也不能让进程残留。
+    if (is.dev || getSettings().backgroundClose === false) app.quit()
   })
 
   mainWindow.webContents.setWindowOpenHandler((details) => {
@@ -122,16 +160,46 @@ app.whenReady().then(async () => {
     log('error', `Failed to start MCP server: ${err instanceof Error ? err.message : String(err)}`)
   })
 
+  // 后台可见性：托盘 + 系统通知。只读订阅 SessionEventHub 与 PermissionBroker，
+  // 不参与会话/权限/Agent 决策（见 background.ts 头注）。
+  background = new BackgroundManager({
+    subscribeEvents: sink => services.sessions.events.subscribe(sink),
+    permissions: services.permissions,
+    getSessionTitle: id => services.sessions.getSession(id)?.title ?? null,
+    getLanguage: () => getSettings().language ?? 'auto',
+    getMainWindow: () => (mainWindow && !mainWindow.isDestroyed() ? mainWindow : null),
+    // 托盘/通知用 32px PNG（.ico 多尺寸在 Tray 上取用不一致）
+    trayIconPath: is.dev
+      ? path.join(__dirname, '../../src/renderer/public/icon-32.png')
+      : path.join(__dirname, '../renderer/icon-32.png'),
+    quitApp: () => app.quit()
+  })
+
   app.on('activate', () => {
-    if (BrowserWindow.getAllWindows().length === 0) createWindow()
+    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
+    else if (!mainWindow.isVisible()) {
+      if (mainWindow.isMinimized()) mainWindow.restore()
+      mainWindow.show()
+    }
+    mainWindow.focus()
   })
 })
 
+// 窗口全部销毁不再自动退出：后台模式下主窗口只是隐藏，进程必须存活。
+// 真退出唯一入口 = 托盘"退出" / 系统关机 → app.quit() → before-quit 清理链。
+// （darwin 上原本就随窗关闭不退出，此处理论上不会走到 quit。）
 app.on('window-all-closed', () => {
-  if (process.platform !== 'darwin') app.quit()
+  if (quitting) return
+  // 兜底：非后台模式（dev / 用户关闭后台）下 window-all-closed 仍是合理退出点，
+  // 与 macOS 行为对齐（darwin 不退出）。
+  if (process.platform !== 'darwin' && (is.dev || getSettings().backgroundClose === false)) {
+    app.quit()
+  }
 })
 
 app.on('before-quit', () => {
+  quitting = true
+  background?.dispose()
   void applicationServices?.bots.stopAll()
   void applicationServices?.mcpServer.stop()
   void applicationServices?.sessions.stopAll()

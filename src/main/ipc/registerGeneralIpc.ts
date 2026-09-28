@@ -93,12 +93,15 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     reconcileAvatarSessions(services.avatar, settings)
     return settings
   })
+  // 窗口隐藏（后台运行）时打开原生对话框会挂起进程事件循环，
+  // 统一回落到无父窗口对话框（仍保持模态但不依赖主窗口可见性）
+  const dialogParent = () => (win.isDestroyed() || !win.isVisible() ? undefined : win)
   ipcMain.handle('settings:pickDirectory', async () => {
-    const result = await dialog.showOpenDialog(win, { properties: ['openDirectory'] })
+    const result = await dialog.showOpenDialog(dialogParent(), { properties: ['openDirectory'] })
     return result.canceled ? null : result.filePaths[0]
   })
   ipcMain.handle('settings:pickFile', async () => {
-    const result = await dialog.showOpenDialog(win, {
+    const result = await dialog.showOpenDialog(dialogParent(), {
       properties: ['openFile'],
       filters: [{ name: 'Skill files', extensions: ['md'] }]
     })
@@ -120,7 +123,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     if (format === 'svg' && !validateStandaloneSvg(content)) return 'failed'
     const defaultName = typeof defaultPath === 'string' && defaultPath ? defaultPath : `diagram.${format}`
     // 保存对话框的格式下拉只展示用户已选格式（内容写入只认 format，列全格式只会误导用户）
-    const result = await dialog.showSaveDialog(win, {
+    const result = await dialog.showSaveDialog(dialogParent(), {
       title: 'Save Diagram',
       defaultPath: defaultName,
       filters: [DIAGRAM_SAVE_FILTERS[format]]

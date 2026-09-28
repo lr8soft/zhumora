@@ -20,6 +20,7 @@
 - 全局运行输出通过 `SessionEventHub` 分发。平台 local sink 只负责把本次回复送回来源平台，不得成为另一套全局事件总线。
 - user message 必须标明 `renderer` 或 `external` 来源。renderer 输入靠 invoke 返回的权威消息替换 `pending-*`；只有 external 输入通过 `agent:user_message` 追加到 UI，禁止双写。
 - 删除活动会话必须先中止并等待 completion settle，再删数据库。应用退出必须停止新 Bot 输入并调用 `SessionService.stopAll()`。
+- 窗口生命周期：关窗默认 `hide()` 收进托盘后台（`backgroundClose` 设置），main 进程继续运行会话；真退出唯一入口是托盘"退出"/系统关机 → `app.quit()` → `before-quit` 清理链，禁止在窗口事件里再复制一套清理逻辑。隐藏期权限请求保持挂起（不自动批准、不加超时），由 `BackgroundManager` 弹系统通知提醒，裁决仍归人。后台可见性（托盘/通知）只能作为 `SessionEventHub`/`PermissionBroker` 的只读投影，策略判断放 `backgroundPolicy.ts` 纯函数，禁止让展示层持有会话/运行状态或反向调用 Agent API。
 - 不得恢复已删除的 `BotAgentBridge`、`BotRunCoordinator`、`AgentIpcRuntime`，也不得用新名字重建相同职责。
 - 当前没有 scheduler、定时任务 runtime 或 scheduled-job 表。未来若明确重新引入，scheduler 只能作为 `SessionService` 输入适配器，并先更新 `ARCHITECTURE.md`、migration 和并发/取消测试。
 
@@ -115,6 +116,7 @@ npm run build
 - 消息协议：多会话交错事件、start 先于 token、完成后与 DB 记录 ID 一致。
 - 数据库：fresh + legacy migration，settings 默认值与缓存失效。
 - IPC：启动失败不留下伪持久化消息，同一 session 防重入，不同 session 可并行。
+- 窗口生命周期：关窗后 main 存活且会话继续；隐藏期权限请求挂起 + 通知、批准前不执行工具；托盘退出走 `before-quit` 全清理；二次启动被单实例锁拦截。
 
 测试失败时先确定是既有基线还是本次回归。不得删除测试、放宽断言、吞异常或只改快照来获得绿色结果。Office 测试出现 pdf.js `standardFontDataUrl` warning 是已知非失败警告；若变为错误再处理。
 

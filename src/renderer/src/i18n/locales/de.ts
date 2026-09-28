@@ -351,6 +351,8 @@ export default {
       workspaceHint: 'Stammverzeichnis für die Agent-Arbeit. Datei-Tools sind relativ zu diesem Pfad.',
       language: 'Sprache',
       languageHint: 'Interface-Sprache. Erkennt Systemsprache beim ersten Start automatisch.',
+      backgroundClose: 'Im Hintergrund weiterlaufen lassen',
+      backgroundCloseHint: 'Beim Schließen des Fensters bleibt Zhumora im Systembereich; Sitzungen, Bot und MCP fahren fort. Nur «Beenden» im Systembereich beendet den Prozess.',
       autoDetect: 'Auto (System)',
       appearance: 'Erscheinungsbild',
       appearanceHint: 'Design und Schriftgröße',

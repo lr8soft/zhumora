@@ -352,6 +352,8 @@ export default {
       language: 'Language',
       languageHint: 'Interface language. Auto-detects system language on first launch.',
       autoDetect: 'Auto (System)',
+      backgroundClose: 'Keep running in background',
+      backgroundCloseHint: 'Closing the window hides Zhumora to the system tray; sessions, Bot and MCP keep running. Quit only from the tray menu.',
       appearance: 'Appearance',
       appearanceHint: 'Theme and interface font size',
       theme: 'Theme',

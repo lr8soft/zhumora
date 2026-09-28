@@ -351,6 +351,8 @@ export default {
       workspaceHint: "Répertoire racine de travail de l'agent. Les outils de fichiers sont relatifs à ce chemin.",
       language: 'Langue',
       languageHint: "Langue de l'interface. Détecte automatiquement la langue système au premier lancement.",
+      backgroundClose: 'Continuer en arrière-plan',
+      backgroundCloseHint: "À la fermeture de la fenêtre, Zhumora reste dans la zone de notification ; les sessions, le Bot et MCP continuent. Seule « Quitter » dans la zone de notification termine le processus.",
       autoDetect: 'Auto (Système)',
       appearance: 'Apparence',
       appearanceHint: 'Thème et taille de police',

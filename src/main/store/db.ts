@@ -339,6 +339,8 @@ export function normalizeSettings(input: unknown): AppSettings {
     browserMode: raw.browserMode === 'headless' ? 'headless' : 'local',
     browserTarget: normalizeBrowserTarget(raw.browserTarget),
     customBrowserPath: normalizeCustomBrowserPath(raw.customBrowserPath),
+    // 窗口关闭默认收进托盘后台（用户可显式关回"关闭即退出"）
+    backgroundClose: raw.backgroundClose !== false,
     activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
       ? raw.activeProviderId
       : defaults.activeProviderId,

@@ -351,6 +351,8 @@ export default {
       workspaceHint: 'エージェントが作業するルートディレクトリ。ファイルツールはこのパスに相対。',
       language: '言語',
       languageHint: 'インターフェース言語。初回起動時にシステム言語を自動検出。',
+      backgroundClose: '終了後もバックグラウンドで実行',
+      backgroundCloseHint: 'ウィンドウを閉じても Zhumora はシステムトレイに残り、セッション・Bot・MCP はバックグラウンドで続行します。終了はトレイメニューから。',
       autoDetect: '自動 (システム)',
       appearance: '外観',
       appearanceHint: 'テーマとフォントサイズ',

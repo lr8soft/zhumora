@@ -306,6 +306,8 @@ export interface AppSettings {
    * 关闭时走 Node 内置 fetch（打包的 Mozilla CA，不读系统证书库）。
    */
   useSystemCerts?: boolean
+  /** 窗口关闭 = 收进系统托盘后台继续运行（默认 true）；false = 关闭即退出 */
+  backgroundClose?: boolean
   /**
    * 浏览器模式（默认 'local'）：local 显示窗口，headless 在后台运行。
    * browserTarget 是首选项；启动失败后按 Chrome、Edge、自定义路径回退。

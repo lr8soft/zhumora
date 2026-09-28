@@ -373,6 +373,8 @@ export default {
       workspaceHint: 'Agent 工作的根目录。文件工具都相对于此路径。',
       language: '语言',
       languageHint: '界面语言。首次启动时自动检测系统语言。',
+      backgroundClose: '关闭时保持后台运行',
+      backgroundCloseHint: '关闭窗口后 Zhumora 收进系统托盘，会话、Bot 与 MCP 服务器继续在后台运行；仅通过托盘菜单"退出"结束进程。',
       autoDetect: '自动 (跟随系统)',
       appearance: '外观',
       appearanceHint: '主题与界面字号',

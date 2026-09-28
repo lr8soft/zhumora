@@ -1,5 +1,5 @@
 import { useTranslation } from 'react-i18next'
-import { Brain, Check, FolderOpen, Globe, Monitor, Moon, RefreshCw, Repeat, ShieldCheck, Sun, Type, Wifi, Workflow } from 'lucide-react'
+import { Brain, Check, FolderOpen, Globe, Monitor, Moon, RefreshCw, Repeat, ShieldCheck, Sun, Type, Wifi, Workflow, Zap } from 'lucide-react'
 import { SUPPORTED_LANGUAGES, type AppLanguage, getEffectiveLanguage, storeLanguage } from '../../i18n'
 import { useAppStore, FONT_SIZE_OPTIONS, type Theme } from '../../store'
 import type { BrowserTarget } from '@shared/browser'
@@ -118,6 +118,25 @@ export function GeneralSettings() {
             </option>
           ))}
         </select>
+      </section>
+
+      {/* 后台运行（macOS 上红点关闭本就隐藏到 dock，该开关对 mac 无影响） */}
+      <section className="settings-section" style={window.api.platform === 'darwin' ? { display: 'none' } : undefined}>
+        <div className="switch-row">
+          <div style={{ display: 'flex', alignItems: 'center', gap: 9 }}>
+            <Zap size={16} style={{ color: 'var(--app-color-primary-strong)', flex: '0 0 auto' }} />
+            <div>
+              <strong>{t('settings.general.backgroundClose')}</strong>
+              <small>{t('settings.general.backgroundCloseHint')}</small>
+            </div>
+          </div>
+          <input
+            type="checkbox"
+            className="switch"
+            checked={settingsDraft.backgroundClose !== false}
+            onChange={(e) => updateSettingsDraft({ backgroundClose: e.target.checked })}
+          />
+        </div>
       </section>
 
       {/* 网络重试 */}

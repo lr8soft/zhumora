@@ -4,8 +4,10 @@ import * as db from '../store/db'
 import type { TtsManager } from '../tts/manager'
 
 export function registerTtsIpc(win: BrowserWindow, tts: TtsManager): void {
+  // 主窗口隐藏（后台运行）时不用它当对话框父窗口，避免对话框挂起（见 registerGeneralIpc）
+  const dialogParent = () => (win.isDestroyed() || !win.isVisible() ? undefined : win)
   ipcMain.handle('tts:import-model', async () => {
-    const result = await dialog.showOpenDialog(win, {
+    const result = await dialog.showOpenDialog(dialogParent(), {
       title: 'Select a sherpa-onnx VITS or Kokoro model folder',
       properties: ['openDirectory']
     })

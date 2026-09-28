@@ -33,14 +33,23 @@ export interface PermissionCheckOptions {
   timeoutMs?: number
 }
 
+/** 挂起权限状态变化观察器：请求进入 / 离开挂起集合时按会话回调（只读投影，如托盘角标/系统通知）。 */
+export type PermissionStateObserver = (sessionId: string, pending: boolean) => void
+
 /** Owns pending permission state and arbitrates the first response across presenters. */
 export class PermissionBroker {
   private readonly pending = new Map<string, PendingPermission>()
   private readonly globalPresenters = new Set<PermissionPresenter>()
+  private readonly stateObservers = new Set<PermissionStateObserver>()
 
   addPresenter(presenter: PermissionPresenter): () => void {
     this.globalPresenters.add(presenter)
     return () => this.globalPresenters.delete(presenter)
+  }
+
+  addObserver(observer: PermissionStateObserver): () => void {
+    this.stateObservers.add(observer)
+    return () => this.stateObservers.delete(observer)
   }
 
   createCheck(options: PermissionCheckOptions): (toolName: string, args: Record<string, unknown>) => Promise<boolean> {
@@ -73,6 +82,13 @@ export class PermissionBroker {
         pending.timer = setTimeout(() => this.settle(request.id, false, 'timeout'), timeoutMs)
       }
       this.pending.set(request.id, pending)
+      for (const observer of this.stateObservers) {
+        try {
+          observer(request.sessionId, true)
+        } catch {
+          // 观察者是只读投影（托盘/通知），失败不影响权限仲裁
+        }
+      }
       for (const presenter of presenters) {
         try {
           Promise.resolve(presenter.present(request)).catch(() => {})
@@ -96,6 +112,14 @@ export class PermissionBroker {
   dispose(): void {
     for (const id of [...this.pending.keys()]) this.settle(id, false, 'cancelled')
     this.globalPresenters.clear()
+    this.stateObservers.clear()
+  }
+
+  hasPending(sessionId: string): boolean {
+    for (const value of this.pending.values()) {
+      if (value.request.sessionId === sessionId) return true
+    }
+    return false
   }
 
   private settle(permissionId: string, allowed: boolean, resolution: PermissionResolution): boolean {
@@ -104,6 +128,14 @@ export class PermissionBroker {
     this.pending.delete(permissionId)
     if (pending.timer) clearTimeout(pending.timer)
     pending.resolve(allowed)
+    const sessionId = pending.request.sessionId
+    for (const observer of this.stateObservers) {
+      try {
+        observer(sessionId, this.hasPending(sessionId))
+      } catch {
+        // 同上：投影失败不影响仲裁
+      }
+    }
     for (const presenter of pending.presenters) {
       try {
         Promise.resolve(presenter.resolve?.(pending.request, resolution)).catch(() => {})
