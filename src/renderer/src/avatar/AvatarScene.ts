@@ -6,7 +6,7 @@ import {
   VRMAnimationLoaderPlugin,
   type VRMAnimation
 } from '@pixiv/three-vrm-animation'
-import { AVATAR_INTENTS, resolveStartupAvatarAnimation } from '@shared/avatar'
+import { AVATAR_INTENTS, resolveAvatarAnimationLookup, resolveStartupAvatarAnimation } from '@shared/avatar'
 import type { AvatarActivity, AvatarBootstrap, AvatarCapabilities, AvatarCommand, AvatarIntent } from '@shared/avatar'
 import type { AvatarLookTarget } from '@shared/avatar'
 import { AvatarMotionController } from './AvatarMotionController'
@@ -212,20 +212,17 @@ export class AvatarScene {
   }
 
   private async resolveClip(name: string): Promise<THREE.AnimationClip> {
-    const existing = this.embeddedClips.get(name)
-    if (existing) return existing
-    const config = this.model?.animations.find(animation => animation.name === name)
-    if (!config) throw new Error(`Animation "${name}" is unavailable.`)
-    if (config.source === 'embedded') {
-      const clip = this.embeddedClips.get(config.clipName || config.name)
-      if (!clip) throw new Error(`Embedded clip "${config.clipName || config.name}" was not found.`)
+    // Imported VRMA > configured embedded alias > raw embedded clip name.
+    const lookup = resolveAvatarAnimationLookup(name, this.model?.animations ?? [])
+    if (lookup.kind === 'embedded') {
+      const clip = this.embeddedClips.get(lookup.clipName)
+      if (!clip) throw new Error(`Embedded clip "${lookup.clipName}" was not found.`)
       return clip
     }
-
-    let pending = this.animationClips.get(config.id)
+    let pending = this.animationClips.get(lookup.id)
     if (!pending) {
-      pending = this.loadVrmAnimation(config.id)
-      this.animationClips.set(config.id, pending)
+      pending = this.loadVrmAnimation(lookup.id)
+      this.animationClips.set(lookup.id, pending)
     }
     return pending
   }

@@ -52,6 +52,7 @@ import {
   equivalentAvatarModel,
   normalizeAvatarLine,
   normalizeAvatarModels,
+  resolveAvatarAnimationLookup,
   resolveStartupAvatarAnimation,
   resolveDefaultAvatarModelId
 } from '../src/shared/avatar.ts'
@@ -92,6 +93,21 @@ assert.equal(equivalentAvatarModel(models[0], { ...models[0], defaultAnimationId
 assert.equal(resolveStartupAvatarAnimation(models[0], ['Wave', 'Dance']), 'Dance')
 assert.equal(resolveStartupAvatarAnimation({ animations: [] }, ['Blink', 'calm_idle_loop']), 'calm_idle_loop')
 assert.equal(resolveStartupAvatarAnimation({ animations: [] }, ['Wave']), undefined)
+
+// Resolution priority: imported VRMA > configured embedded alias > raw embedded clip name.
+const shadowed = normalizeAvatarModels([{
+  ...models[0],
+  animations: [
+    { id: 'wave-vrma', name: 'Wave', source: 'vrma', filePath: 'D:/avatars/wave.vrma' },
+    { id: 'wave', name: 'Wave', source: 'embedded', clipName: 'Armature|Wave' },
+    { id: 'dance', name: 'Dance', source: 'vrma', filePath: 'D:/avatars/dance.vrma' }
+  ]
+}])[0]
+assert.deepEqual(resolveAvatarAnimationLookup('Wave', shadowed.animations), { kind: 'vrma', id: 'wave-vrma' })
+assert.deepEqual(resolveAvatarAnimationLookup('Wave', models[0].animations), { kind: 'embedded', clipName: 'Armature|Wave' })
+assert.deepEqual(resolveAvatarAnimationLookup('Dance', shadowed.animations), { kind: 'vrma', id: 'dance' })
+assert.deepEqual(resolveAvatarAnimationLookup('Idle', shadowed.animations), { kind: 'embedded', clipName: 'Idle' })
+assert.deepEqual(resolveAvatarAnimationLookup('Dance', []), { kind: 'embedded', clipName: 'Dance' })
 
 const mapped = normalizeAvatarModels([{ ...models[0], animations: [{ ...models[0].animations[0], intent: 'greet' }] }])[0]
 assert.equal(mapped.animations[0].intent, 'greet')

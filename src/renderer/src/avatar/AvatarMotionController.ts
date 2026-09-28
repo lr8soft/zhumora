@@ -81,7 +81,11 @@ export class AvatarMotionController {
 
   async perform(intent: AvatarIntent, intensity = 0.7): Promise<void> {
     const generation = ++this.generation
-    let clip = this.overrideClips.get(intent) ?? this.builtin(intent, intensity)
+    // 'idle' replays the running base clip so perform stays seamless with the
+    // looping startup idle; the procedural motion is only a last resort.
+    let clip = intent === 'idle'
+      ? this.idleClip ?? this.overrideClips.get(intent) ?? this.builtin(intent, intensity)
+      : this.overrideClips.get(intent) ?? this.builtin(intent, intensity)
     const override = this.overrides[intent]
     if (override && !this.overrideClips.has(intent)) {
       try { clip = await this.resolveClip(override) }

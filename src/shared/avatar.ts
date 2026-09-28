@@ -131,6 +131,26 @@ export function resolveDefaultAvatarModelId(models: AvatarModelConfig[], request
   return models[0]?.id ?? null
 }
 
+export type AvatarClipLookup =
+  | { kind: 'vrma'; id: string }
+  | { kind: 'embedded'; clipName: string }
+
+/**
+ * Where a public animation name resolves, highest priority first:
+ * imported VRMA > configured embedded alias > raw embedded clip name.
+ * An import therefore always shadows a same-named model-embedded clip.
+ */
+export function resolveAvatarAnimationLookup(
+  name: string,
+  animations: Array<Pick<AvatarAnimationConfig, 'id' | 'name' | 'source' | 'clipName'>>
+): AvatarClipLookup {
+  const vrma = animations.find(animation => animation.name === name && animation.source === 'vrma')
+  if (vrma) return { kind: 'vrma', id: vrma.id }
+  const embedded = animations.find(animation => animation.name === name && animation.source === 'embedded')
+  if (embedded) return { kind: 'embedded', clipName: embedded.clipName || name }
+  return { kind: 'embedded', clipName: name }
+}
+
 export function resolveStartupAvatarAnimation(
   model: Pick<AvatarModelConfig, 'animations' | 'defaultAnimationId'>,
   availableNames: string[]

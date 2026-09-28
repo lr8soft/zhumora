@@ -7,7 +7,7 @@ import { AvatarClipAdapter } from '../src/renderer/src/avatar/AvatarClipAdapter.
 import { AvatarLifeMotion } from '../src/renderer/src/avatar/AvatarLifeMotion.ts'
 import { mapScreenPointToAvatarLookTarget } from '../src/main/avatar/lookTarget.ts'
 import { AVATAR_INTENTS, type AvatarIntent } from '../src/shared/avatar.ts'
-import { createBuiltinMotion } from '../src/renderer/src/avatar/motionClips.ts'
+import { canonicalRotation, createBuiltinMotion } from '../src/renderer/src/avatar/motionClips.ts'
 import { createAvatarAgentEventSink } from '../src/main/avatar/agentEvents.ts'
 
 assert.deepEqual(mapScreenPointToAvatarLookTarget({ x: 280, y: 220 }, { x: 100, y: 100, width: 360, height: 240 }), { x: 0, y: 0 })
@@ -206,6 +206,32 @@ resolveClip(completed)
 await assert.rejects(pendingPlay, /superseded/, 'late asset loading cannot override a newer reset')
 raceMotion.dispose()
 assert.equal(race.mixer.stats.actions.inUse, 0, 'dispose stops all actions')
+
+// perform('idle') must replay the startup idle clip, never a second procedural motion.
+const idleFixture = fixture('1')
+const idleBase = idleFixture.vrm.humanoid.getNormalizedBoneNode('head')!
+const startupIdle = new THREE.AnimationClip('startup-idle', 2, [new THREE.QuaternionKeyframeTrack(
+  idleBase.uuid + '.quaternion', [0, 2], [0, 0, 0, 1, 0, 0.3, 0, Math.sqrt(1 - 0.09)]
+)])
+const idleResolved: string[] = []
+const idleMotion = new AvatarMotionController(
+  idleFixture.vrm, idleFixture.mixer,
+  async name => {
+    idleResolved.push(name)
+    return name === 'startup-idle' ? startupIdle : Promise.reject(new Error('no import'))
+  }, {}, () => 0
+)
+await idleMotion.initialize('startup-idle')
+idleResolved.length = 0
+await idleMotion.perform('idle')
+assert.deepEqual(idleResolved, [], 'perform idle must not load a replacement motion')
+idleFixture.step(2.5)
+// 2.5s later the 2s loop is 0.5s in: 0.25 of the 0.3 rad Y turn, no X turn.
+// Tolerance covers the 0.45s blend from the procedural pre-roll pose.
+const idleHead = idleBase.quaternion
+const idleExpected = new THREE.Quaternion().setFromAxisAngle(new THREE.Vector3(0, 1, 0), 0.075)
+assert.ok(idleHead.angleTo(idleExpected) < 0.15, 'perform idle keeps the startup idle pose: ' + idleHead.angleTo(idleExpected))
+idleMotion.dispose()
 
 // Life-motion overlay: present and subtle, and it must never accumulate on untracked bones.
 const lifeFixture = fixture('1')
