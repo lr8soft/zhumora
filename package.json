@@ -1,6 +1,6 @@
 {
   "name": "zhumora",
-  "version": "0.4.9",
+  "version": "0.5.0",
   "description": "An open source AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora, LT_lrsoft",
@@ -40,7 +40,7 @@
     "officeparser": "^7.8.0",
     "pdf-lib": "^1.17.1",
     "pdfjs-dist": "^6.3.289",
-    "playwright": "^1.62.1",
+    "playwright": "^1.63.0",
     "pptxgenjs": "^4.0.1",
     "react-i18next": "^17.0.11",
     "react-virtuoso": "^4.18.13",
