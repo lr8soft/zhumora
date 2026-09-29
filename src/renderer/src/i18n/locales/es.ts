@@ -79,7 +79,8 @@ export default {
     inputResizeHint: "Arrastra para cambiar la altura del área de entrada (clic para restablecer)",
     reasoningEffortHint: "Elige la intensidad de razonamiento (activado para el proveedor actual)",
     reasoningEffort: { off: 'Desactivado', low: 'Baja', medium: 'Media', high: 'Alta' },
-    reasoningEffortDesc: { off: 'Sin razonamiento', low: 'Rápido, menos pensamiento', medium: 'Equilibrado', high: 'Razonamiento profundo' }
+    reasoningEffortDesc: { off: 'Sin razonamiento', low: 'Rápido, menos pensamiento', medium: 'Equilibrado', high: 'Razonamiento profundo' },
+    contextMenu: { copy: 'Copiar', cut: 'Cortar', paste: 'Pegar', selectAll: 'Seleccionar todo', selectMessage: 'Seleccionar el mensaje completo' }
   },
   diagram: {
     title: 'Diagrama',

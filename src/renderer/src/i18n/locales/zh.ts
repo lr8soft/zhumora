@@ -89,6 +89,13 @@ export default {
       low: '快速，少思考',
       medium: '平衡',
       high: '深度推理'
+    },
+    contextMenu: {
+      copy: '复制',
+      cut: '剪切',
+      paste: '粘贴',
+      selectAll: '全选',
+      selectMessage: '选择整条消息'
     }
   },
   diagram: {

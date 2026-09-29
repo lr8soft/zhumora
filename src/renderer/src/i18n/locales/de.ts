@@ -79,7 +79,8 @@ export default {
     inputResizeHint: "Ziehen, um die Eingabehöhe zu ändern (Klicken zum Zurücksetzen)",
     reasoningEffortHint: "Begründungsintensität wählen (für aktuellen Anbieter aktiviert)",
     reasoningEffort: { off: 'Aus', low: 'Niedrig', medium: 'Mittel', high: 'Hoch' },
-    reasoningEffortDesc: { off: 'Kein Denken', low: 'Schnell, weniger Denken', medium: 'Ausgewogen', high: 'Tiefes Nachdenken' }
+    reasoningEffortDesc: { off: 'Kein Denken', low: 'Schnell, weniger Denken', medium: 'Ausgewogen', high: 'Tiefes Nachdenken' },
+    contextMenu: { copy: 'Kopieren', cut: 'Ausschneiden', paste: 'Einfügen', selectAll: 'Alles markieren', selectMessage: 'Ganze Nachricht markieren' }
   },
   diagram: {
     title: 'Diagramm',

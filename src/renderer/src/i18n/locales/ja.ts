@@ -79,7 +79,8 @@ export default {
     inputResizeHint: "ドラッグで入力欄の高さを調整（クリックでリセット）",
     reasoningEffortHint: "思考強度を選択（現在のプロバイダーで有効）",
     reasoningEffort: { off: 'オフ', low: '低', medium: '中', high: '高' },
-    reasoningEffortDesc: { off: '思考しない', low: '高速、少ない思考', medium: 'バランス', high: '深い推論' }
+    reasoningEffortDesc: { off: '思考しない', low: '高速、少ない思考', medium: 'バランス', high: '深い推論' },
+    contextMenu: { copy: 'コピー', cut: '切り取り', paste: '貼り付け', selectAll: 'すべて選択', selectMessage: 'メッセージ全体を選択' }
   },
   diagram: {
     title: '図表',

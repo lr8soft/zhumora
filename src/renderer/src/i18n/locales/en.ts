@@ -79,7 +79,8 @@ export default {
     inputResizeHint: "Drag to resize the input area (click to reset)",
     reasoningEffortHint: "Choose reasoning effort (enabled for the current provider)",
     reasoningEffort: { off: 'Off', low: 'Low', medium: 'Medium', high: 'High' },
-    reasoningEffortDesc: { off: 'No thinking', low: 'Fast, less thinking', medium: 'Balanced', high: 'Deep reasoning' }
+    reasoningEffortDesc: { off: 'No thinking', low: 'Fast, less thinking', medium: 'Balanced', high: 'Deep reasoning' },
+    contextMenu: { copy: 'Copy', cut: 'Cut', paste: 'Paste', selectAll: 'Select All', selectMessage: 'Select whole message' }
   },
   diagram: {
     title: 'Diagram',

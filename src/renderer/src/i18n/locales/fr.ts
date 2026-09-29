@@ -79,7 +79,8 @@ export default {
     inputResizeHint: "Glisser pour redimensionner la zone de saisie (clic pour réinitialiser)",
     reasoningEffortHint: "Choisir l'intensité de raisonnement (activé pour le fournisseur actuel)",
     reasoningEffort: { off: 'Désactivé', low: 'Faible', medium: 'Moyen', high: 'Élevé' },
-    reasoningEffortDesc: { off: 'Sans réflexion', low: 'Rapide, moins de réflexion', medium: 'Équilibré', high: 'Raisonnement approfondi' }
+    reasoningEffortDesc: { off: 'Sans réflexion', low: 'Rapide, moins de réflexion', medium: 'Équilibré', high: 'Raisonnement approfondi' },
+    contextMenu: { copy: 'Copier', cut: 'Couper', paste: 'Coller', selectAll: 'Tout sélectionner', selectMessage: 'Sélectionner le message complet' }
   },
   diagram: {
     title: 'Diagramme',

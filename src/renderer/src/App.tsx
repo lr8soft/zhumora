@@ -5,6 +5,7 @@ import TitleBar from './components/TitleBar'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
 import SettingsView from './components/SettingsView'
+import ContextMenu from './components/ContextMenu'
 import PermissionDialog from './components/PermissionDialog'
 import ConfirmDeleteDialog from './components/ConfirmDeleteDialog'
 import {
@@ -409,6 +410,9 @@ export default function App() {
 
       {/* 会话删除确认弹窗（防误操作；z-index 高于权限弹窗，用户主动删除时置于最前） */}
       <ConfirmDeleteDialog />
+
+      {/* 全局右键菜单（输入框：复制/剪切/粘贴/全选；选中文本：复制/选择整条消息） */}
+      <ContextMenu />
     </div>
   )
 }
