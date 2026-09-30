@@ -27,6 +27,15 @@ assert.equal(isRetriableError(new Error('net::ERR_INCOMPLETE_CHUNKED_ENCODING'))
 assert.equal(isRetriableError(new Error('net::ERR_CONNECTION_RESET')), true, 'ERR_CONNECTION_RESET 可重试')
 assert.equal(isRetriableError(new Error('net::ERR_EMPTY_RESPONSE')), true, 'ERR_EMPTY_RESPONSE 可重试')
 assert.equal(isRetriableError(new Error('net::ERR_TIMED_OUT')), true, 'ERR_TIMED_OUT 可重试')
+// QUIC（HTTP3/UDP）是瞬时传输层故障：UDP 被防火墙/NAT 丢弃、切换网络、QUIC reset 都会触发，
+// 重试走新连接（Chromium 会回退 TCP）即可恢复 —— 此前漏配导致"有概率直接判死"
+assert.equal(isRetriableError(new Error('net::ERR_QUIC_PROTOCOL_ERROR')), true, 'ERR_QUIC_PROTOCOL_ERROR 可重试（瞬时 QUIC 故障，重试后 Chromium 回退 TCP 恢复）')
+assert.equal(isStreamableNetworkError(new Error('net::ERR_QUIC_PROTOCOL_ERROR')), true, 'QUIC 故障在流中断时按可续接处理')
+// 其余易漏配的瞬时码（M116+ 新拆出的连接码 / DNS 应答超时）：必须可重试
+assert.equal(isRetriableError(new Error('net::ERR_QUIC_HANDSHAKE_TIMEOUT')), true, 'QUIC 握手超时（UDP 丢包）可重试')
+assert.equal(isRetriableError(new Error('net::ERR_CONNECTION_ABORTED')), true, 'ERR_CONNECTION_ABORTED（M116+ 新码）可重试')
+assert.equal(isRetriableError(new Error('net::ERR_EMPTY_REQUEST')), true, 'ERR_EMPTY_REQUEST（M116+ 新码）可重试')
+assert.equal(isRetriableError(new Error('net::ERR_DNS_TIMEOUT')), true, 'ERR_DNS_TIMEOUT（DNS 应答超时，≠ NXDOMAIN）可重试')
 
 // 确定性/用户主动错误：绝不重试
 assert.equal(isRetriableError(new Error('net::ERR_ABORTED')), false, 'ERR_ABORTED（含用户中止）不重试')
@@ -75,6 +84,14 @@ assert.equal(isOfflineError(new Error('net::ERR_INTERNET_DISCONNECTED')), true, 
 assert.equal(isOfflineError(new Error('net::ERR_ADDRESS_UNREACHABLE')), true, '地址不可达识别为离线')
 assert.equal(isOfflineError(new Error('net::ERR_CONNECTION_RESET')), false, '连接重置不是离线')
 assert.equal(isOfflineError(Object.assign(new Error('fetch failed'), { cause: { code: 'EAI_AGAIN' } })), false, 'undici EAI_AGAIN 是歧义信号，不判离线（仍可重试）')
+
+// 离线等价码不判离线：ERR_NAME_NOT_RESOLVED 是歧义信号（断网 / 端点域名写错 /
+// ISP DNS 故障无法区分），判离线会让"域名写错"这类配置错误也吞掉重试语义，
+// 且无限重试（maxRetries=-1）依赖"网络恢复前一直重试"——歧义码保持可重试
+assert.equal(isOfflineError(new Error('net::ERR_NAME_NOT_RESOLVED')), false, 'DNS 解析失败是歧义信号，不判离线')
+assert.equal(isOfflineError(new Error('net::ERR_TUNNEL_CONNECTION_FAILED')), false, 'tunnel 失败是歧义信号，不判离线')
+assert.equal(isOfflineError(new Error('net::ERR_PROXY_CONNECTION_FAILED')), false, '代理连接失败是歧义信号，不判离线')
+assert.equal(isRetriableError(new Error('net::ERR_NAME_NOT_RESOLVED')), true, 'DNS 解析失败可重试（短暂抖动靠退避自愈）')
 
 // 离线 = 可重试判定之外再排除
 assert.equal(isStreamableNetworkError(new Error('net::ERR_HTTP2_PROTOCOL_ERROR')), true, '流中断类错误可续接')

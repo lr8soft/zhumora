@@ -35,19 +35,20 @@ const RETRYABLE_CODES = new Set([
 /**
  * 值得重试的 Chromium 网络错误码（Electron net.fetch；错误 message 形如
  * "net::ERR_INCOMPLETE_CHUNKED_ENCODING"，undici 的 cause 里不会出现 ERR_*）。
- * 覆盖：流中途断开（chunked 编码未完成 / HTTP2 协议错误 / 连接重置 / 对端关闭）、
- * 代理与 DNS 抖动、超时、TLS 握手失败。
+ * 覆盖：流中途断开（chunked 编码未完成 / HTTP2 协议错误 / QUIC 协议错误 /
+ * 连接重置 / 对端关闭）、代理与 DNS 抖动、超时、TLS 握手失败。
  * 排除：ERR_ABORTED（含用户中止，永不重试）、ERR_FAILED（Chromium 通用兜底码，
  * 与 ERR_INVALID_URL 等确定性错误无法区分，重试无意义且会掩盖真实问题）、
  * ERR_INTERNET_DISCONNECTED / ERR_ADDRESS_UNREACHABLE（由 withRetry 的
  * 离线保护整体拦截，不逐个列入）。
  */
 const RETRYABLE_NET_CODES = new Set([
-  'ERR_HTTP2_PROTOCOL_ERROR', 'ERR_INCOMPLETE_CHUNKED_ENCODING', 'ERR_CONNECTION_RESET',
-  'ERR_CONNECTION_CLOSED', 'ERR_EMPTY_RESPONSE', 'ERR_NETWORK_CHANGED',
-  'ERR_NAME_NOT_RESOLVED', 'ERR_TUNNEL_CONNECTION_FAILED', 'ERR_PROXY_CONNECTION_FAILED',
-  'ERR_PROXY_CERTIFICATE_INVALID', 'ERR_TIMED_OUT', 'ERR_CONNECTION_TIMED_OUT',
-  'ERR_SSL_PROTOCOL_ERROR'
+  'ERR_HTTP2_PROTOCOL_ERROR', 'ERR_QUIC_PROTOCOL_ERROR', 'ERR_QUIC_HANDSHAKE_TIMEOUT',
+  'ERR_INCOMPLETE_CHUNKED_ENCODING', 'ERR_CONNECTION_RESET', 'ERR_CONNECTION_CLOSED',
+  'ERR_CONNECTION_ABORTED', 'ERR_EMPTY_RESPONSE', 'ERR_EMPTY_REQUEST', 'ERR_NETWORK_CHANGED',
+  'ERR_NAME_NOT_RESOLVED', 'ERR_DNS_TIMEOUT', 'ERR_TUNNEL_CONNECTION_FAILED',
+  'ERR_PROXY_CONNECTION_FAILED', 'ERR_PROXY_CERTIFICATE_INVALID',
+  'ERR_TIMED_OUT', 'ERR_CONNECTION_TIMED_OUT', 'ERR_SSL_PROTOCOL_ERROR'
 ])
 
 /**
@@ -77,6 +78,9 @@ export function isRetriableError(err: unknown): boolean {
  * 机器/网络整体离线（明确信号）：重试只会耗尽退避预算，直接快速失败。
  * 只认 Chromium 的显式无网络错误（net.fetch 场景）—— undici 的 EAI_AGAIN
  * 是歧义的（可能是 DNS 瞬时抖动而非真离线），仍按可重试处理。
+ * ERR_NAME_NOT_RESOLVED 同理是歧义信号（断网 / 端点域名错误 / ISP DNS 故障
+ * 无法区分），保持可重试：短暂 DNS 抖动时靠退避自愈，无限重试（maxRetries=-1）
+ * 的用户本来就是要"网络恢复前一直重试"，歧义码快速失败会悄悄废掉这个语义。
  */
 export function isOfflineError(err: unknown): boolean {
   if (!err || typeof err !== 'object') return false
