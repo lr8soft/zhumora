@@ -6,15 +6,15 @@ import { encodeCanvasImage } from '../diagramPolicy'
 import { useAppStore } from '../store'
 import { useMermaidRenderer } from '../mermaidContext'
 import { MermaidRenderError, type MermaidTheme } from '../mermaidRenderer'
-import { buildStandaloneSvg } from '../../../shared/diagram'
 
 interface Props {
   source: string
 }
 
-type DiagramFormat = 'svg' | 'png' | 'jpeg'
+// 导出格式只有光栅位图：独立 SVG 文件历史上频繁出现解析/兼容问题，已移除该选项。
+type DiagramFormat = 'png' | 'jpeg'
 
-const DIAGRAM_FORMATS: DiagramFormat[] = ['svg', 'png', 'jpeg']
+const DIAGRAM_FORMATS: DiagramFormat[] = ['png', 'jpeg']
 
 type RenderState =
   | { status: 'loading' }
@@ -95,22 +95,7 @@ export default function MermaidBlock({ source }: Props) {
     setExportError(null)
     // 背景与图表容器一致：light 白、dark #1e2124（--app-color-surface），避免导出后深底深字
     const background = resolvedTheme === 'dark' ? '#1e2124' : '#ffffff'
-    if (format === 'svg') {
-      // renderer 组装独立 SVG（源码注释转义 + 背景矩形），main 只负责落盘
-      let result: 'saved' | 'canceled' | 'failed'
-      try {
-        result = await window.api.settings.saveDiagram(
-          buildStandaloneSvg(renderState.svg, source, background), 'svg', 'diagram.svg'
-        )
-      } catch (error) {
-        setExportError(`${t('diagram.exportFailed')} ${error instanceof Error ? error.message : String(error)}`)
-        return
-      }
-      if (result === 'failed') setExportError(t('diagram.exportFailed'))
-      else setSaved(result === 'saved')
-      return
-    }
-    // PNG/JPEG：光栅化在 renderer 完成（DOM 尺寸检测 + 2x 画布），main 只写 Buffer
+    // 光栅化在 renderer 完成（DOM 尺寸检测 + 2x 画布），main 只写 Buffer
     setExporting(format)
     try {
       const dataUrl = await encodeCanvasImage(

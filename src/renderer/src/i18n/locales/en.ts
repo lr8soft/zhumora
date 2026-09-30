@@ -92,7 +92,7 @@ export default {
     saved: 'Saved',
     exporting: 'Exporting…',
     exportFailed: 'Export failed: ',
-    format: { svg: 'SVG vector', png: 'PNG image', jpeg: 'JPEG image' },
+    format: { png: 'PNG image', jpeg: 'JPEG image' },
     rendering: 'Rendering diagram…',
     renderError: 'Diagram rendering failed. The source is preserved.',
     tooLarge: 'The diagram source is too large. The source is preserved.',

@@ -184,9 +184,9 @@ const api = {
       ipcRenderer.invoke('settings:pickDirectory'),
     pickFile: (): Promise<string | null> =>
       ipcRenderer.invoke('settings:pickFile'),
-    /** 保存 Mermaid 图表为图片文件（system save dialog）：svg 传组装好的独立 SVG 文本；png/jpeg 传 dataURL。
-     *  返回 'saved' | 'canceled'（用户取消） | 'failed'（参数或写入错误） */
-    saveDiagram: (content: string, format: 'svg' | 'png' | 'jpeg', defaultPath: string): Promise<'saved' | 'canceled' | 'failed'> =>
+    /** 保存 Mermaid 图表为位图文件（system save dialog）：content 是 PNG/JPEG dataURL（光栅化在 renderer 完成）。
+     *  独立 SVG 导出已移除。返回 'saved' | 'canceled'（用户取消） | 'failed'（参数或写入错误） */
+    saveDiagram: (content: string, format: 'png' | 'jpeg', defaultPath: string): Promise<'saved' | 'canceled' | 'failed'> =>
       ipcRenderer.invoke('settings:saveDiagram', content, format, defaultPath),
     openExternal: (url: string): Promise<boolean> =>
       ipcRenderer.invoke('shell:openExternal', url),

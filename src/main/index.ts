@@ -95,8 +95,27 @@ function createWindow(): BrowserWindow {
     if (is.dev || getSettings().backgroundClose === false) app.quit()
   })
 
+  // 导航守卫（唯一判定点见 navigationPolicy）：同源放行，http(s) 转系统浏览器，其余拒绝。
+  // will-navigate 拦截消息里 <a href> 的默认同窗口导航；setWindowOpenHandler 拦截 window.open/新窗口。
+  // 没有这两道守卫，点一条助手消息里的链接整个主窗口就会跳走。
+  // 当前文档 origin 在事件时刻解析（创建窗口时 loadURL/loadFile 尚未执行，getURL 还是 about:blank）。
+  const currentAppOrigin = (): string => {
+    try {
+      return new URL(mainWindow!.webContents.getURL()).origin
+    } catch {
+      return ''
+    }
+  }
+  mainWindow.webContents.on('will-navigate', (event, url) => {
+    const decision = decideNavigation(url, currentAppOrigin())
+    if (decision !== 'allow') {
+      // 非同源一律拦下，主窗口绝不被导航走；http(s) 额外交给系统浏览器打开
+      event.preventDefault()
+      if (decision === 'external') void shell.openExternal(url)
+    }
+  })
   mainWindow.webContents.setWindowOpenHandler((details) => {
-    shell.openExternal(details.url)
+    if (decideNavigation(details.url, currentAppOrigin()) === 'external') void shell.openExternal(details.url)
     return { action: 'deny' }
   })
 

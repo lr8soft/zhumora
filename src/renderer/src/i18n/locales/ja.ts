@@ -92,7 +92,7 @@ export default {
     saved: '保存しました',
     exporting: 'エクスポート中…',
     exportFailed: 'エクスポートに失敗しました：',
-    format: { svg: 'SVG ベクトル画像', png: 'PNG 画像', jpeg: 'JPEG 画像' },
+    format: { png: 'PNG 画像', jpeg: 'JPEG 画像' },
     rendering: '図表を描画中…',
     renderError: '図表を描画できませんでした。ソースは保持されています。',
     tooLarge: '図表のソースが大きすぎます。ソースは保持されています。',

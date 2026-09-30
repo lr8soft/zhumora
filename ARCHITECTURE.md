@@ -120,6 +120,7 @@ flowchart TB
 | 外部编排器的权限裁决 | `PermissionBroker` + 模式门禁 | 仅 delegate+normal+非 alwaysConfirm 可外部批准；危险级恒归人 |
 | renderer 消息缓存 | Zustand | 是数据库历史的投影，不是事实来源 |
 | 主窗口关闭→后台 / 真退出判定点 | `main/index.ts` 的 `quitting` 标志 + `backgroundPolicy.shouldCloseInsteadOfHide` | 关窗 hide；退出只走托盘/系统关机→`app.quit()`→`before-quit` |
+| 主窗口外部导航判定 | `navigationPolicy.decideNavigation`（`will-navigate` + `setWindowOpenHandler` 唯一判定点） | 同源放行；http(s) 转系统浏览器；file:/javascript:/自定义协议一律拒绝 |
 | 后台可见性（托盘菜单 + 系统通知） | `BackgroundManager`（`src/main/background.ts`） | 只读投影，订阅 SessionEventHub/PermissionBroker，不拥有会话与运行状态 |
 | 进程服务构造和实现注入 | `composition.ts` | `runAgent`、provider、context、store、tools 在这里注入 |
 
@@ -246,6 +247,7 @@ stateDiagram-v2
 - **单实例**：`app.requestSingleInstanceLock()` 在 main 入口最早处调用；第二个实例直接退出，`second-instance` 事件聚焦/恢复已有窗口。它防止"窗口隐藏期间用户再启一个"造成双 main 抢同一 SQLite/MCP 端口/Bot 连接。
 - **隐藏期权限请求不自动批准、不加超时**：UI presenter 是"人在场"的呈现面，窗口不可见时请求按既有语义保持挂起（`PermissionBroker` 的 first-response-wins 与 cancelSession 不变）。`BackgroundManager` 订阅 `PermissionBroker` 挂起状态与 `SessionEventHub` 的 `complete`/`error`，在窗口不可见时弹系统通知（点击回窗口），裁决仍只能由人在桌面 UI 做出——与外部编排器"无法裁决则保持挂起、不得伪造拒绝"同一原则。`aborted` 不通知（用户/外部主动行为）。
 - **隐藏期 TTS 音频丢弃**：TTS 输出是 renderer 投影（§3），窗口不可见时合成继续、音频事件无人消费；无持久化损失，不为此新增 main 侧 playback。
+- **主窗口导航守卫**：`will-navigate` 与 `setWindowOpenHandler` 两个入口共用 `navigationPolicy.decideNavigation` 纯函数判定（同源放行 / http(s) 交 `shell.openExternal` / 其余拒绝）。消息里的 markdown 超链接若走 Chromium 默认行为会把整个应用窗口导航走，renderer 的 `MarkdownView` 已把链接统一改为 `openExternal`（`mailto:` 交系统邮件客户端），main 守卫是兜底；生产 `file://` 文档 origin 为 `"null"`（opaque），与目标 `file:` URL 的 origin 相等即同源。
 - `BackgroundManager`（`src/main/background.ts`）只拥有托盘与通知两个展示投影：订阅 `SessionEventHub`、`PermissionBroker` 观察器，**不拥有**会话、运行或权限状态；策略判断（何时提醒、hide vs close）是 `src/main/backgroundPolicy.ts` 纯函数。新增"后台提醒"类功能只能扩展这两个投影，不得让展示层反向持有 Agent 状态。
 
 ## 7. 事件与消息协议
@@ -304,6 +306,7 @@ stateDiagram-v2
 | `src/main/skill/` | Skill 加载与注入：`manager.ts` 按 Agent Skills 规范（agentskills.io）加载目录型（含 SKILL.md + 可选根级文件与 scripts/references/assets；单 .md 导入兼容但只取该文件本身，不枚举其所在目录的兄弟文件）或单 .md 兼容导入，`skillTool.ts` 提供按需加载的 `skill` 工具（safe 级）。渐进加载：系统提示词只注入 name+description 清单，正文与捆绑文件清单由模型调用 `skill` 工具时才返回；skill 变更经 `reloadSkills → refreshSkillTool` 同步（启动与 settings 保存两处）。frontmatter 校验失败的路径不得入库（`inspectSkillPath`），未知 frontmatter 字段一律忽略 |
 | `src/main/agent/taskProtocol.ts`、`taskActivity.ts` | 会话即服务的等待、状态翻译与有界活动游标（纯模块，无 Electron/DB 依赖） |
 | `src/main/background.ts`、`src/main/backgroundPolicy.ts` | 后台运行（关窗收托盘）：Tray/Notification 展示投影 + 纯策略函数（何时提醒、hide vs close）；不 import store/runner，不实现会话规则 |
+| `src/main/navigationPolicy.ts` | 主窗口导航判定纯函数（`decideNavigation`）：同源放行 / http(s) 外链 / 其余拒绝；`will-navigate` 与 `setWindowOpenHandler` 共用，不依赖 Electron |
 | `src/main/ipc/` | 输入校验、调用 Session API、事件映射 |
 | `src/main/store/` | SQLite repository 和迁移，不实现 Agent 决策 |
 | `src/main/composition.ts` | 唯一组合根和具体实现注入 |
@@ -328,7 +331,7 @@ stateDiagram-v2
 
 - 消息的持久化真值始终是原始 Markdown 文本；图表 SVG 只是 renderer 的可丢弃投影，不写数据库、不进入 Agent 历史，也不新增 main/preload/IPC 协议。
 - `MarkdownView` 通过 `extractFencedCodeBlocks` 按围栏闭合状态把消息切成"Markdown 片段 + mermaid 块"：已闭合的 `mermaid` fence 立即交给 `MermaidBlock` 渲染（流式输出中块一闭合就出图，不等整条消息完成）；未闭合的块连同其后内容暂按普通 Markdown（源码）展示，闭合后下一帧切出。reasoning 和压缩摘要不启用图表，保持源码展示，避免半截语法反复解析。
-- 图表导出走 `settings:saveDiagram` IPC：renderer 传入已 sanitize 并规范化（`formatStandaloneSvg` 补全 xmlns/宽高）的 SVG 与原始源码，main 经 `showSaveDialog` 落盘 `.svg`（源码写入文件头注释）。它只是 renderer 投影到用户文件系统的单向动作，不新增持久化状态、不进数据库、不改变消息内容。
+- 图表导出走 `settings:saveDiagram` IPC：renderer 把已 sanitize 的 SVG 光栅化为 PNG/JPEG dataURL（DOM 尺寸检测 + 2x 画布）传入，main 经 `showSaveDialog` 落盘位图文件。它只是 renderer 投影到用户文件系统的单向动作，不新增持久化状态、不进数据库、不改变消息内容。**独立 SVG 落盘导出已移除**（生成文件历史上频繁出现 XML 解析/兼容问题）；导出格式只有 PNG/JPEG。
 - `promptBuilder` 只声明这项 renderer 展示能力和安全输出规范，不把 Mermaid 注册为工具。来源适配器要求纯文本时，其 source prompt 优先，模型不得输出 Mermaid block。
 - `MermaidRenderer` 是 renderer 组合根创建的进程级 owner。由于 Mermaid 配置是库级可变状态，初始化和渲染必须串行；缓存以 `theme + 完整 source` 为 key，容量有界，主题或源码变化自然失效。
 - 图表使用 `securityLevel: strict`、关闭 HTML labels、限制源码长度和边数量，并对生成 SVG 再执行 DOMPurify SVG allowlist 清洗；URI 属性和非本地 CSS `url(...)` 资源也必须移除。禁止启用点击回调、任意 HTML、脚本、`foreignObject`、外链对象或其他交互绑定。

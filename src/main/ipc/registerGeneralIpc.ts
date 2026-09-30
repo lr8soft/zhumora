@@ -14,13 +14,11 @@ import { createBbsClient } from '../bbs/client'
 import { normalizeBbsConfig } from '../../shared/bbs'
 import type { BbsConfig } from '../../shared/bbs'
 import { equivalentConfigList } from './settingsChange'
-import { validateStandaloneSvg } from '../../shared/diagram'
 import type { ApplicationServices } from '../composition'
 import { reconcileAvatarSessions } from './registerAvatarIpc'
 
 /** 图表导出保存对话框的格式过滤器（按 renderer 已选 format 收窄，避免误导用户）。 */
-const DIAGRAM_SAVE_FILTERS: Record<'svg' | 'png' | 'jpeg', { name: string; extensions: string[] }> = {
-  svg: { name: 'SVG Image', extensions: ['svg'] },
+const DIAGRAM_SAVE_FILTERS: Record<'png' | 'jpeg', { name: string; extensions: string[] }> = {
   png: { name: 'PNG Image', extensions: ['png'] },
   jpeg: { name: 'JPEG Image', extensions: ['jpeg', 'jpg'] }
 }
@@ -112,15 +110,13 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     if (typeof p !== 'string' || !p) return null
     return inspectSkillPath(p)
   })
-  /** 保存 Mermaid 图表为图片文件（SVG / PNG / JPEG）。
-   *  format=svg 时 content 是 renderer 组装好的独立 SVG 文本（含源码注释头），utf8 写入；
-   *  format=png/jpeg 时 content 是 dataURL（光栅化在 renderer 完成），解码为 Buffer 写入。
-   *  文件名一律取用户选择的路径，避免 dataURL 被当成文件名。 */
+  /** 保存 Mermaid 图表为位图文件（PNG / JPEG）：content 是 dataURL（光栅化在 renderer 完成），解码为 Buffer 写入。
+   *  独立 SVG 导出已移除（落盘文件历史上频繁解析失败）；文件名一律取用户选择的路径，避免 dataURL 被当成文件名。 */
   ipcMain.handle('settings:saveDiagram', async (_event, content: unknown, format: unknown, defaultPath: unknown) => {
     if (typeof content !== 'string' || !content) return 'failed'
-    if (format !== 'svg' && format !== 'png' && format !== 'jpeg') return 'failed'
-    // SVG 落盘前校验：注释体含未转义的 "--" 是非法 XML，落盘后浏览器打开会解析失败
-    if (format === 'svg' && !validateStandaloneSvg(content)) return 'failed'
+    if (format !== 'png' && format !== 'jpeg') return 'failed'
+    const dataUrl = /^data:image\/(png|jpeg);base64,/.exec(content)?.[0]
+    if (!dataUrl) return 'failed'
     const defaultName = typeof defaultPath === 'string' && defaultPath ? defaultPath : `diagram.${format}`
     // 保存对话框的格式下拉只展示用户已选格式（内容写入只认 format，列全格式只会误导用户）
     const result = await dialog.showSaveDialog(dialogParent(), {
@@ -130,13 +126,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     })
     if (result.canceled || !result.filePath) return 'canceled'
     try {
-      if (format === 'svg') {
-        await fsPromises.writeFile(result.filePath, content, 'utf8')
-      } else {
-        const dataUrl = /^data:image\/(png|jpeg);base64,/.exec(content)?.[0]
-        if (!dataUrl) return 'failed'
-        await fsPromises.writeFile(result.filePath, Buffer.from(content.slice(dataUrl.length), 'base64'))
-      }
+      await fsPromises.writeFile(result.filePath, Buffer.from(content.slice(dataUrl.length), 'base64'))
       return 'saved'
     } catch (error) {
       console.error('Save diagram error:', error)
