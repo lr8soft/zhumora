@@ -48,6 +48,7 @@ const store: SessionStore = {
   getSession: id => sessions.get(id) || null,
   updateSessionTitle: (id, title) => { const s = sessions.get(id); if (s) s.title = title },
   updateSessionWorkspace: (id, workspacePath) => { const s = sessions.get(id); if (s) s.workspacePath = workspacePath },
+  updateSessionModelSelection: (id, selection) => { sessions.get(id)!.modelSelection = selection },
   deleteSession: id => { sessions.delete(id); messages.delete(id) },
   getOrCreateBotSession: (channel, accountId, conversationId, title) => {
     const key = `${channel}:${accountId}:${conversationId}`

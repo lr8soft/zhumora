@@ -8,6 +8,7 @@ import type { TtsModelConfig } from './tts'
 import type { BrowserTarget } from './browser'
 import type { BbsConfig } from './bbs'
 import type { SubagentModelSelection } from './subagents'
+import type { SessionModelSelection } from './sessionModel'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -100,6 +101,8 @@ export interface Session {
   updatedAt: number
   messageCount: number
   workspacePath?: string
+  /** Chat model preference, persisted per session; absent/null uses the default. */
+  modelSelection?: SessionModelSelection | null
   /** Persistent delegation provenance; task handles themselves live only for the parent run. */
   subagent?: { parentSessionId: string; providerId: string; model: string }
   /**

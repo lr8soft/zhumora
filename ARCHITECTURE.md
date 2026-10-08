@@ -216,6 +216,13 @@ Bot 层禁止拥有：
 
 ## 6. 会话并发与生命周期
 
+### 按会话保存聊天模型
+
+- 聊天模型偏好属于 session，由 `SessionService.updateModelSelection` 校验并通过 store 保存；migration v7 增加 `sessions.model_selection`，保存 `{providerId, model}`，null 表示使用全局默认。旧会话升级保持 null，不推测历史模型。
+- renderer 的 `sessionModelSlice` 只维护会话列表中的偏好投影，没有全局聊天模型变量。下拉操作按明确 sessionId 保存，确认后更新目标会话；连续选择按该会话串行保存，待写 Promise 由 store 实例持有并在 settle 后释放，不同会话互不阻塞。发送与手动压缩等待目标会话的在途保存，保存失败反馈给用户。
+- 运行和手动压缩共用 `sessionModelPolicy.resolveSessionModel`：显式请求覆盖 → 会话偏好 → 子会话创建模型 → 全局默认；显式换 provider 时不套用另一 provider 的保存模型。已删除/停用的 provider 明确失败，不能静默切到其他端点；模型选择不影响已启动运行的快照。子任务由父 scope 继续时显式传入创建配置，保持原 provider/model。
+- 新会话使用默认模型；切换、删除后自动选中其他会话、renderer 重载和应用重启均由会话投影恢复对应选择。用户选择“默认模型”只清除目标会话的偏好；子会话保留创建配置作为缺省回退。
+
 ### 内部子 Agent（初版）
 
 Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。

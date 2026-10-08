@@ -1,5 +1,5 @@
 import type {
-  AppSettings,
+  ProviderConfig,
   AutoApproveMode,
   ChatMessage,
   Session,
@@ -8,6 +8,8 @@ import type {
 } from '../../shared/types.ts'
 import { AgentAbortedError } from '../../shared/types.ts'
 import { sessionNeedsTitle } from '../../shared/sessionTitle.ts'
+import type { SessionModelSelection } from '../../shared/sessionModel.ts'
+import { resolveSessionModel, saveSessionModelSelection } from './sessionModelPolicy.ts'
 import { compactSession } from './sessionCompaction.ts'
 import { mapPersistedHistory } from './messageMapper.ts'
 import type { AgentEventSink } from './persistedCallbacks.ts'
@@ -22,8 +24,6 @@ import { SubagentScope } from './subagentScope.ts'
 import { assertSubagentsEnabled, resolveSubagentModel, SUBAGENT_CHILD_GUIDANCE, subagentDelegationGuidance } from './subagentPolicy.ts'
 import { createSessionPermissionCheck } from './sessionPermissionCheck.ts'
 import type { ActiveSessionRun, SessionStore, SessionRunRequest, SessionRunHandle, SessionCompactInfo, SessionServiceDependencies } from './sessionContracts.ts'
-
-type Provider = AppSettings['providers'][number]
 
 export class SessionBusyError extends Error {}
 
@@ -72,10 +72,7 @@ export class SessionService {
       throw new SessionBusyError('This subagent is owned by an active parent run.')
     }
     const settings = this.deps.store.getSettings()
-    const provider = this.resolveProvider(settings, request.providerId ?? session.subagent?.providerId)
-    if (session.subagent && !provider.enabled) throw new Error('Subagent provider is disabled.')
-    const modelOverride = request.modelOverride ?? (request.providerId && request.providerId !== session.subagent?.providerId
-      ? undefined : session.subagent?.model)
+    const { provider, modelOverride } = resolveSessionModel(settings, session, request)
     if (request.approveMode) this.setApproveMode(sessionId, request.approveMode)
 
     const settleDefer = deferred<void>()
@@ -224,6 +221,10 @@ export class SessionService {
     this.deps.store.updateSessionWorkspace(sessionId, workspacePath)
   }
 
+  updateModelSelection(sessionId: string, value: unknown): SessionModelSelection | null {
+    return saveSessionModelSelection(this.deps.store, sessionId, value)
+  }
+
   resolveExternalSession(channel: string, accountId: string, conversationId: string, title: string): Session {
     return this.deps.store.getOrCreateBotSession(channel, accountId, conversationId, title)
   }
@@ -269,19 +270,14 @@ export class SessionService {
   async compact(sessionId: string): Promise<SessionCompactInfo> {
     if (this.isRunning(sessionId)) throw new SessionBusyError('Agent is running. Wait for it to finish before compacting.')
     const settings = this.deps.store.getSettings()
-    const subagent = this.deps.store.getSession(sessionId)?.subagent
-    const provider = this.resolveProvider(settings, subagent?.providerId)
-    return compactSession(sessionId, provider, subagent?.model, { deps: this.deps, events: this.events, now: this.now })
-  }
-
-  private resolveProvider(settings: AppSettings, providerId?: string): Provider {
-    const provider = settings.providers.find(item => item.id === (providerId || settings.activeProviderId))
-    if (!provider) throw new Error('No active provider. Please configure one in Settings.')
-    return provider
+    const session = this.deps.store.getSession(sessionId)
+    if (!session) throw new Error('Session not found.')
+    const { provider, modelOverride } = resolveSessionModel(settings, session)
+    return compactSession(sessionId, provider, modelOverride, { deps: this.deps, events: this.events, now: this.now })
   }
 
   private createSubagentScope(
-    session: Session, run: ActiveSessionRun, request: SessionRunRequest, provider: Provider, modelOverride?: string
+    session: Session, run: ActiveSessionRun, request: SessionRunRequest, provider: ProviderConfig, modelOverride?: string
   ): SubagentScope {
     const parent = { providerId: provider.id, model: modelOverride || provider.defaultModel }
     return new SubagentScope({
@@ -297,6 +293,8 @@ export class SessionService {
       },
       start: (childId, prompt, localEvents, presenter) => this.sendMessage({
         sessionId: childId, message: { text: prompt }, inputSource: 'external',
+        providerId: this.deps.store.getSession(childId)?.subagent?.providerId,
+        modelOverride: this.deps.store.getSession(childId)?.subagent?.model,
         signal: run.controller.signal, localEvents,
         sourcePrompt: request.sourcePrompt,
         permissionPresenters: [...(request.permissionPresenters || []), presenter],
@@ -335,7 +333,7 @@ export class SessionService {
     run: ActiveSessionRun,
     options: AgentRunOptions,
     callbacks: AgentEventCallbacks,
-    title: { provider: Provider; modelOverride?: string; needsTitle: boolean; userTexts: string[] }
+    title: { provider: ProviderConfig; modelOverride?: string; needsTitle: boolean; userTexts: string[] }
   ): Promise<void> {
     return this.executeAgent(options, callbacks).then(() => undefined).catch(error => {
       if (error instanceof AgentAbortedError || run.controller.signal.aborted) {
@@ -354,7 +352,7 @@ export class SessionService {
   private async ensureTitle(
     sessionId: string,
     events: AgentEventSink,
-    options: { provider: Provider; modelOverride?: string; userTexts: string[] }
+    options: { provider: ProviderConfig; modelOverride?: string; userTexts: string[] }
   ): Promise<void> {
     await ensureSessionTitle({
       provider: options.provider,

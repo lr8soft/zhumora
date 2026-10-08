@@ -29,6 +29,7 @@ export function createSubagentFixture() {
     },
     getSessions: () => [...sessions.values()], getSettings: () => settings, getSession: id => sessions.get(id) ?? null,
     updateSessionTitle: () => {}, updateSessionWorkspace: () => {},
+    updateSessionModelSelection: (id, selection) => { sessions.get(id)!.modelSelection = selection },
     deleteSession: id => { sessions.delete(id); messages.delete(id) },
     getOrCreateBotSession: () => { throw new Error('unused') }, getMessages: id => [...messages.get(id)!],
     addMessage: message => { assert.ok(sessions.has(message.sessionId), 'no write after deletion'); messages.get(message.sessionId)!.push(message) },
@@ -45,6 +46,7 @@ export function createSubagentFixture() {
   }
   let stuck = false
   let delayPrompt: (() => Promise<string>) | undefined
+  const compactModels: { providerId: string; model: string | undefined }[] = []
   const service = new SessionService({ store, tools, permissions, getSkillsPrompt: () => '', getMcpStatus: () => [],
     getSystemPromptExtra: async id => sessions.get(id)?.subagent && delayPrompt ? delayPrompt() : '',
     executeAgent: async (options, callbacks) => new Promise((resolve, reject) => {
@@ -52,7 +54,7 @@ export function createSubagentFixture() {
       if (!(stuck && sessions.get(options.sessionId!)?.subagent)) {
         options.signal?.addEventListener('abort', () => reject(new AgentAbortedError()), { once: true })
       }
-    }), fetchContextWindow: async () => 32000, completeText: async () => '',
+    }), fetchContextWindow: async (provider, model) => { compactModels.push({ providerId: provider.id, model }); return 32000 }, completeText: async () => '',
     planAutoCompact: async () => ({ beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: 0, keptOffset: 0, summary: null }) })
   for (const { name, handler } of createSubagentTools(service)) tools.register(name, handler)
   const finish = (id: string, text = 'delivered') => {
@@ -67,7 +69,7 @@ export function createSubagentFixture() {
     const options = running.get(session.id)!.options
     return { session, handle, options, scope: service.getSubagentScope(session.id, options.signal) }
   }
-  return { service, tools, permissions, pending, sessions, messages, running, finish, root,
+  return { service, tools, permissions, pending, sessions, messages, running, finish, root, compactModels,
     setDelegation: (enabled: boolean) => { settings.subagentsEnabled = enabled },
     setChildModel: (model: SubagentModelSelection | null) => { settings.subagentModel = model },
     makeStuck: () => { stuck = true }, delayPrompt: (fn: () => Promise<string>) => { delayPrompt = fn } }

@@ -33,6 +33,7 @@ const store: SessionStore = {
   getSession: id => sessions.get(id) || null,
   updateSessionTitle: (id, title) => { sessions.get(id)!.title = title },
   updateSessionWorkspace: (id, workspacePath) => { sessions.get(id)!.workspacePath = workspacePath },
+  updateSessionModelSelection: (id, selection) => { sessions.get(id)!.modelSelection = selection },
   deleteSession: id => { sessions.delete(id); messages.delete(id) },
   getOrCreateBotSession: () => sessions.get('s1')!,
   getMessages: id => [...(messages.get(id) || [])],

@@ -4,6 +4,7 @@ import type { PermissionBroker, PermissionPresenter } from './permissionBroker.t
 import type { AgentRunOptions, runAgent } from './runner.ts'
 import type { ToolRegistry } from '../tools/registry.ts'
 import type { SubagentScope } from './subagentScope.ts'
+import type { SessionModelSelection } from '../../shared/sessionModel.ts'
 
 type Provider = AppSettings['providers'][number]
 
@@ -14,6 +15,7 @@ export interface SessionStore {
   getSession(id: string): Session | null
   updateSessionTitle(id: string, title: string): void
   updateSessionWorkspace(id: string, workspacePath: string): void
+  updateSessionModelSelection(id: string, selection: SessionModelSelection | null): void
   deleteSession(id: string): void
   getOrCreateBotSession(channel: string, accountId: string, conversationId: string, title: string): Session
   getMessages(sessionId: string): UIMessage[]

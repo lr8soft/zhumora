@@ -152,6 +152,12 @@ const migrations: Migration[] = [
         CREATE INDEX idx_sessions_subagent_parent ON sessions(subagent_parent_id);
       `)
     }
+  },
+  {
+    version: 7,
+    up(database) {
+      database.exec('ALTER TABLE sessions ADD COLUMN model_selection TEXT')
+    }
   }
 ]
 

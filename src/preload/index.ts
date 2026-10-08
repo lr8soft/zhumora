@@ -5,6 +5,7 @@
 import { contextBridge, ipcRenderer } from 'electron'
 import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, ReasoningEffort } from '../shared/types'
 import type { BbsConfig } from '../shared/bbs'
+import type { SessionModelSelection } from '../shared/sessionModel'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 
@@ -25,6 +26,8 @@ const api = {
       ipcRenderer.invoke('session:list'),
     get: (id: string): Promise<Session | null> =>
       ipcRenderer.invoke('session:get', id),
+    updateModelSelection: (id: string, selection: SessionModelSelection | null): Promise<SessionModelSelection | null> =>
+      ipcRenderer.invoke('session:updateModelSelection', id, selection),
     delete: (id: string): Promise<boolean> =>
       ipcRenderer.invoke('session:delete', id),
     rename: (id: string, title: string): Promise<boolean> =>

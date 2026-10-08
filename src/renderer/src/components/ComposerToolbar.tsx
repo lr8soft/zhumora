@@ -17,6 +17,8 @@ import {
 import type { AutoApproveMode } from '@shared/types'
 import { MAX_IMAGES } from '../utils/image'
 import { useAppStore } from '../store'
+import { sessionModelSelection } from '../store/sessionModelSlice'
+import type { SessionModelSelection } from '@shared/sessionModel'
 import { ttsPlayback } from '../tts/playback'
 import SetupRequiredDialog from './SetupRequiredDialog'
 
@@ -39,13 +41,12 @@ export default function ComposerToolbar({
 }: Props) {
   const { t } = useTranslation()
   const settings = useAppStore(s => s.settings)
-  const selectedProviderModel = useAppStore(s => s.selectedProviderModel)
   const approveMode = useAppStore(s => s.approveMode)
   const reasoningEffort = useAppStore(s => s.reasoningEffort)
   const isRunning = useAppStore(s => s.runningIds.has(sessionId))
   const activeSession = useAppStore(s => s.sessions.find(session => session.id === sessionId))
   const setApproveMode = useAppStore(s => s.setApproveMode)
-  const setSelectedProviderModel = useAppStore(s => s.setSelectedProviderModel)
+  const setSessionModelSelection = useAppStore(s => s.setSessionModelSelection)
   const setReasoningEffort = useAppStore(s => s.setReasoningEffort)
   const setSessionAvatar = useAppStore(s => s.setSessionAvatar)
   const setSessionTts = useAppStore(s => s.setSessionTts)
@@ -59,9 +60,9 @@ export default function ComposerToolbar({
   const fileInputRef = useRef<HTMLInputElement>(null)
 
   const enabledProviders = settings.providers.filter(provider => provider.enabled)
-  const selectedProviderId = selectedProviderModel?.split('::')[0]
-  const activeRunProvider = enabledProviders.find(provider => provider.id === selectedProviderId)
-    || enabledProviders.find(provider => provider.id === settings.activeProviderId)
+  const selection = sessionModelSelection(activeSession)
+  const selectedProviderId = selection?.providerId
+  const activeRunProvider = enabledProviders.find(provider => provider.id === (selectedProviderId ?? settings.activeProviderId))
   const reasoningSupported = activeRunProvider?.reasoningEnabled === true
   const avatarModels = settings.avatarModels || []
   const activeAvatarModel = activeSession?.avatarEnabled
@@ -76,6 +77,10 @@ export default function ComposerToolbar({
   }
   const modeLabel = (mode: AutoApproveMode) => t(`chat.approve${mode === 'manual' ? 'Manual' : mode === 'auto' ? 'Auto' : 'Full'}`)
   const modeHint = (mode: AutoApproveMode) => t(`chat.approve${mode === 'manual' ? 'Manual' : mode === 'auto' ? 'Auto' : 'Full'}Hint`)
+  const selectModel = (value: SessionModelSelection | null) => {
+    setModelMenuOpen(false)
+    void setSessionModelSelection(sessionId, value).catch(error => onError(String(error)))
+  }
 
   return (
     <div className="composer-toolbar">
@@ -224,8 +229,8 @@ export default function ComposerToolbar({
           title={t('chat.selectModelHint')}
         >
           <span className="composer-model-name">
-            {selectedProviderModel
-              ? `${enabledProviders.find(provider => provider.id === selectedProviderId)?.name || ''} · ${selectedProviderModel.split('::')[1]}`
+            {selection
+              ? `${settings.providers.find(provider => provider.id === selectedProviderId)?.name || selectedProviderId} · ${selection.model}`
               : t('chat.defaultModel')}
           </span>
           <ChevronDown size={12} className={modelMenuOpen ? 'chevron-up' : ''} />
@@ -235,16 +240,16 @@ export default function ComposerToolbar({
             <div className="mode-menu-backdrop" onClick={() => setModelMenuOpen(false)} />
             <div className="mode-menu model-menu">
               <button
-                className={selectedProviderModel === null ? 'mode-menu-item active' : 'mode-menu-item'}
-                onClick={() => { setSelectedProviderModel(null); setModelMenuOpen(false) }}
+                className={selection === null ? 'mode-menu-item active' : 'mode-menu-item'}
+                onClick={() => selectModel(null)}
               >
                 {t('chat.defaultModel')}
               </button>
               {enabledProviders.map(provider => (
                 <button
                   key={provider.id}
-                  className={selectedProviderModel === `${provider.id}::${provider.defaultModel}` ? 'mode-menu-item active' : 'mode-menu-item'}
-                  onClick={() => { setSelectedProviderModel(`${provider.id}::${provider.defaultModel}`); setModelMenuOpen(false) }}
+                  className={selection?.providerId === provider.id && selection.model === provider.defaultModel ? 'mode-menu-item active' : 'mode-menu-item'}
+                  onClick={() => selectModel({ providerId: provider.id, model: provider.defaultModel })}
                 >
                   {provider.name} · {provider.defaultModel}
                 </button>

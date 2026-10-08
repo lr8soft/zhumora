@@ -13,6 +13,7 @@ import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort 
 
 export type { ReasoningEffort }
 import { initialSettingsProjection } from './settingsDefaults'
+import { createSessionModelSlice, sessionModelSelection, type SessionModelSlice } from './sessionModelSlice'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
 
 const api = window.api
@@ -148,7 +149,7 @@ const loadingMessages = new Map<string, Promise<void>>()
 
 export type SettingsTab = 'providers' | 'mcp' | 'mcpServer' | 'bots' | 'bbs' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
 
-interface AppState {
+interface AppState extends SessionModelSlice {
   // 视图
   view: 'chat' | 'settings'
   setView: (v: 'chat' | 'settings') => void
@@ -207,10 +208,6 @@ interface AppState {
   /** LLM 网络重试状态（按会话；无条目 = 该会话未在重试）；maxRetries = -1 表示无限 */
   retryStatus: Record<string, RetryStatus>
   setRetryStatus: (sessionId: string, status: RetryStatus | null) => void
-
-  // 模型选择 — 格式为 "providerId::modelName"，null 则用 active provider 默认模型
-  selectedProviderModel: string | null
-  setSelectedProviderModel: (v: string | null) => void
 
   // 批准模式（三档：manual / auto / full）
   approveMode: AutoApproveMode
@@ -433,8 +430,7 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // ---- 模型选择 ----
-  selectedProviderModel: null,
-  setSelectedProviderModel: (v) => set({ selectedProviderModel: v }),
+  ...createSessionModelSlice(set, api.session.updateModelSelection),
 
   // ---- 批准模式（三档）----
   approveMode: getStoredApproveMode(),
@@ -490,27 +486,15 @@ export const useAppStore = create<AppState>((set, get) => ({
     }))
 
     try {
-      // 解析 selectedProviderModel — 格式 "providerId::modelName"
-      const spm = get().selectedProviderModel
-      let providerId: string | undefined
-      let modelOverride: string | undefined
-      if (spm) {
-        const sepIdx = spm.indexOf('::')
-        if (sepIdx > 0) {
-          providerId = spm.slice(0, sepIdx)
-          modelOverride = spm.slice(sepIdx + 2) || undefined
-        }
-      }
+      await get().waitForSessionModelSelection(sid)
+      const selection = sessionModelSelection(get().sessions.find(session => session.id === sid))
       // 思考强度：仅当所选 provider 开启了该功能才生效（否则 UI 不显示下拉，
       // 也不发送参数——省略字段 = 保留端点默认行为，与档位 'off'（显式关闭思考）不同）
       const settings = get().settings
-      const runProvider = settings.providers.find(p => p.id === providerId)
-        || (settings.activeProviderId ? settings.providers.find(p => p.id === settings.activeProviderId) : undefined)
+      const runProvider = settings.providers.find(p => p.id === (selection?.providerId ?? settings.activeProviderId))
       const effort = runProvider?.reasoningEnabled ? get().reasoningEffort : undefined
 
       const result = await api.agent.run(sid, { text, images }, {
-        providerId,
-        modelOverride,
         approveMode: get().approveMode,
         reasoningEffort: effort
       })
@@ -605,7 +589,9 @@ export const useAppStore = create<AppState>((set, get) => ({
     const sid = activeSessionId
     set({ isCompacting: true })
     try {
-      const res = await api.agent.compactNow(sid)
+      const res = await get().waitForSessionModelSelection(sid).then(
+        () => api.agent.compactNow(sid), error => ({ error: String(error) })
+      )
       if (res.error) {
         console.error('Manual compact error:', res.error)
         // 失败提示：复用压缩通知条（红色错误态），几秒后自动消失

@@ -38,6 +38,8 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
   ipcMain.handle('session:create', (_event, title?: string) => services.sessions.createSession(title))
   ipcMain.handle('session:list', () => services.sessions.listSessions())
   ipcMain.handle('session:get', (_event, id: string) => services.sessions.getSession(id))
+  ipcMain.handle('session:updateModelSelection', (_event, id: string, selection: unknown) =>
+    services.sessions.updateModelSelection(id, selection))
   ipcMain.handle('session:delete', async (_event, id: string) => {
     services.avatar.hide(id)
     services.tts.stop(id)

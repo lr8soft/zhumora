@@ -8,6 +8,7 @@ import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory, Sess
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
 import { defaultSettings, normalizeSettings } from './settingsNormalization'
+import { validateSessionModelSelection, type SessionModelSelection } from '../../shared/sessionModel'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -63,6 +64,7 @@ export function getSessions(): Session[] {
     updatedAt: r.updated_at,
     messageCount: r.msg_count,
     workspacePath: r.workspace_path || undefined,
+    modelSelection: r.model_selection ? validateSessionModelSelection(JSON.parse(r.model_selection)) : null,
     subagent: readSubagentProvenance(r),
     origin: normalizeSessionOrigin(r.origin),
     avatarEnabled: r.avatar_enabled === 1,
@@ -87,6 +89,7 @@ export function getSession(id: string): Session | null {
     updatedAt: row.updated_at,
     messageCount: msgCount,
     workspacePath: row.workspace_path || undefined,
+    modelSelection: row.model_selection ? validateSessionModelSelection(JSON.parse(row.model_selection)) : null,
     subagent: readSubagentProvenance(row),
     origin: normalizeSessionOrigin(row.origin),
     avatarEnabled: row.avatar_enabled === 1,
@@ -120,6 +123,11 @@ export function tryUpdateSessionTitleIfDefault(id: string, title: string): boole
 export function updateSessionWorkspace(id: string, workspacePath: string): void {
   db!.prepare('UPDATE sessions SET workspace_path = ? WHERE id = ?')
     .run(workspacePath, id)
+}
+
+export function updateSessionModelSelection(id: string, selection: SessionModelSelection | null): void {
+  db!.prepare('UPDATE sessions SET model_selection = ? WHERE id = ?')
+    .run(selection ? JSON.stringify(selection) : null, id)
 }
 
 export function updateSessionAvatar(id: string, enabled: boolean, modelId: string | null): void {
