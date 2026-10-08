@@ -63,6 +63,8 @@ export interface ActiveSessionRun {
   unlinkSignal?: () => void
   subagents?: SubagentScope
   approvalParentId?: string
+  /** Generated terminal output is held until the parent and its child runs are released. */
+  outcome?: { kind: 'completed'; messageId: string; content: string } | { kind: 'failed'; error: Error }
   abortNotified: boolean
   /** abortRun 已触发（controller.abort 之外的本地标记） */
   aborted: boolean

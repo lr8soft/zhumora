@@ -4,6 +4,7 @@ import { createMcpTaskSession, DelegatePermissionPresenter, isTerminalMcpTaskSta
 import type { AgentEventSink } from './persistedCallbacks.ts'
 import type { PermissionPresenter } from './permissionBroker.ts'
 import { SUBAGENT_LIMITS, validateSubagentPrompt, validateSubagentRequest, type SubagentRequest } from './subagentPolicy.ts'
+import { awaitWithSignal, waitUntilDeadline } from './runWait.ts'
 
 export interface SubagentHost {
   resolveModel(request: SubagentRequest): { providerId: string; model: string }
@@ -27,6 +28,7 @@ export interface SubagentTaskResult {
   providerId?: string
   model?: string
   status: McpTaskStatus['status']
+  settled: boolean
   reply?: string
   truncated?: boolean
   error?: string
@@ -40,8 +42,9 @@ export class SubagentScope {
   private turns = 0
   private closing?: Promise<void>
   private readonly host: SubagentHost
+  private readonly signal?: AbortSignal
 
-  constructor(host: SubagentHost) { this.host = host }
+  constructor(host: SubagentHost, signal?: AbortSignal) { this.host = host; this.signal = signal }
 
   async spawn(request: SubagentRequest): Promise<SubagentTaskResult> {
     validateSubagentRequest(request)
@@ -68,21 +71,24 @@ export class SubagentScope {
     }
     if (!Number.isInteger(waitMs) || waitMs < 0 || waitMs > 60000) throw new Error('wait_ms must be an integer from 0 to 60000.')
     const children = taskIds.map(id => this.get(id))
+    const deadline = Date.now() + waitMs
     // Reuse taskProtocol's terminal/permission wait; no polling loop or second event bus.
-    await Promise.all(children.map(child => child.task.wait(waitMs)))
-    await Promise.all(children.filter(child => isTerminalMcpTaskStatus(child.task.status()) && this.isLatest(child))
-      .map(child => this.host.waitIdle(child.session.id)))
+    await awaitWithSignal(Promise.all(children.map(child => child.task.wait(Math.max(0, deadline - Date.now())))), this.signal)
+    if (Date.now() < deadline) {
+      await waitUntilDeadline(Promise.all(children.filter(child => isTerminalMcpTaskStatus(child.task.status()) && this.isLatest(child))
+        .map(child => this.host.waitIdle(child.session.id))), deadline, this.signal)
+    }
     return children.map(child => this.result(child))
   }
 
   async cancel(taskId: string): Promise<SubagentTaskResult> {
     const child = this.get(taskId)
     if (isTerminalMcpTaskStatus(child.task.status())) {
-      if (this.isLatest(child)) await this.host.waitIdle(child.session.id)
+      if (this.isLatest(child)) await awaitWithSignal(this.host.stop(child.session.id), this.signal)
       return this.result(child)
     }
     this.checkLatest(child)
-    await this.host.stop(child.session.id)
+    await awaitWithSignal(this.host.stop(child.session.id), this.signal)
     if (!isTerminalMcpTaskStatus(child.task.status())) child.task.settle({ status: 'aborted' })
     return this.result(child)
   }
@@ -92,15 +98,14 @@ export class SubagentScope {
     this.closed = true
     const children = [...new Map([...this.tasks.values()].map(child => [child.session.id, child])).values()]
     this.closing = Promise.all(children.map(async child => {
-      if (isTerminalMcpTaskStatus(child.task.status())) await this.host.waitIdle(child.session.id)
-      else await this.host.stop(child.session.id)
+      await this.host.stop(child.session.id)
       if (!isTerminalMcpTaskStatus(child.task.status())) child.task.settle({ status: 'aborted' })
     })).then(() => { this.tasks.clear() })
     return this.closing
   }
 
   private checkCapacity(): void {
-    if (this.closed) throw new AgentAbortedError()
+    if (this.closed || this.signal?.aborted) throw new AgentAbortedError()
     if (this.turns >= SUBAGENT_LIMITS.turns) throw new Error('Subagent turn limit reached (8 per parent run).')
     const sessions = new Set([...this.tasks.values()]
       .filter(child => child.starting || this.host.isRunning(child.session.id)).map(child => child.session.id))
@@ -108,7 +113,7 @@ export class SubagentScope {
   }
 
   private get(taskId: string): ChildTask {
-    if (this.closed) throw new AgentAbortedError()
+    if (this.closed || this.signal?.aborted) throw new AgentAbortedError()
     const child = this.tasks.get(taskId)
     if (!child) throw new Error('Unknown task_id: only tasks owned by this parent run are accessible.')
     return child
@@ -128,17 +133,25 @@ export class SubagentScope {
     this.tasks.set(task.taskId, child)
     this.turns++
     try {
-      const handle = await this.host.start(session.id, prompt, task.sink, new DelegatePermissionPresenter(task))
-      void handle.completion.then(() => {
-        if (!isTerminalMcpTaskStatus(task.status())) task.settle({ status: 'failed', error: 'Subagent ended without a final deliverable.' })
-      }, error => task.settle(error instanceof AgentAbortedError
+      const startup = this.host.start(session.id, prompt, task.sink, new DelegatePermissionPresenter(task))
+      // The observer survives the wait: any late handle is drained rather than becoming an orphan.
+      void startup.then(async handle => {
+        void handle.completion.then(() => {
+          if (!isTerminalMcpTaskStatus(task.status())) task.settle({ status: 'failed', error: 'Subagent ended without a final deliverable.' })
+        }, error => task.settle(error instanceof AgentAbortedError
+          ? { status: 'aborted' } : { status: 'failed', error: String(error) }))
+        if (this.closed || this.signal?.aborted) await this.host.stop(session.id)
+      }).catch(error => task.settle(error instanceof AgentAbortedError
         ? { status: 'aborted' } : { status: 'failed', error: String(error) }))
+      await awaitWithSignal(startup, this.signal)
       if (this.closed) {
         await this.host.stop(session.id)
         throw new AgentAbortedError()
       }
+      child.starting = false
       return this.result(child)
     } catch (error) {
+      child.starting = false
       task.settle(error instanceof AgentAbortedError ? { status: 'aborted' } : { status: 'failed', error: String(error) })
       if (error instanceof AgentAbortedError) throw error
       return this.result(child)
@@ -152,6 +165,7 @@ export class SubagentScope {
       : status.status === 'awaiting_permission'
         ? { status: status.status, permission: { permissionId: status.permission.permissionId, toolName: status.permission.toolName, level: status.permission.level } }
         : status.status === 'failed' ? { ...status, error: status.error.slice(0, 1000) } : status
-    return { task_id: child.task.taskId, session_id: child.session.id, ...child.session.subagent, ...bounded }
+    const settled = !child.starting && (!this.isLatest(child) || !this.host.isRunning(child.session.id))
+    return { task_id: child.task.taskId, session_id: child.session.id, ...child.session.subagent, ...bounded, settled }
   }
 }

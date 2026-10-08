@@ -43,7 +43,7 @@ function fixture() {
     addMessage: message => { assert.ok(sessions.has(message.sessionId), 'no write after deletion'); messages.get(message.sessionId)!.push(message) },
     getSessionCompaction: () => null, setSessionCompaction: () => {}, tryUpdateSessionTitleIfDefault: () => false, addTokenUsage: () => {}
   }
-  const running = new Map<string, { options: AgentRunOptions; callbacks: AgentEventCallbacks; resolve: () => void }>()
+  const running = new Map<string, { options: AgentRunOptions; callbacks: AgentEventCallbacks; resolve: () => void; reject: (error: unknown) => void }>()
   const permissions = new PermissionBroker()
   const pending: PermissionRequest[] = []
   permissions.addPresenter({ present: input => { pending.push(input) } })
@@ -57,7 +57,7 @@ function fixture() {
   const service = new SessionService({ store, tools, permissions, getSkillsPrompt: () => '', getMcpStatus: () => [],
     getSystemPromptExtra: async id => sessions.get(id)?.subagent && delayPrompt ? delayPrompt() : '',
     executeAgent: async (options, callbacks) => new Promise((resolve, reject) => {
-      running.set(options.sessionId!, { options, callbacks, resolve: () => resolve([]) })
+      running.set(options.sessionId!, { options, callbacks, resolve: () => resolve([]), reject })
       if (!(stuck && sessions.get(options.sessionId!)?.subagent)) {
         options.signal?.addEventListener('abort', () => reject(new AgentAbortedError()), { once: true })
       }
@@ -210,6 +210,108 @@ const result = (value: object) => value as Result
   assert.equal(f.messages.get(child.id)!.length, 0)
   assert.equal(f.service.isRunning(child.id), false)
   f.permissions.dispose()
+}
+
+// Cancellation must finish the parent tool phase even if prompt preparation never responds.
+{
+  const f = fixture(); const parent = await f.root()
+  f.delayPrompt(() => new Promise<string>(() => {}))
+  const call: ToolCall = { id: 'blocked-spawn', type: 'function', function: {
+    name: 'spawn_subagent', arguments: JSON.stringify(request) } }
+  const conversation = new WorkingConversation('system')
+  conversation.append({ role: 'assistant', content: null, tool_calls: [call] }, 'assistant')
+  const phase = runToolCallPhase([call], 'assistant', { conversation, toolsRegistry: f.tools, workspacePath: 'D:/shared',
+    sessionId: parent.session.id, signal: parent.options.signal, permissionCheck: parent.options.permissionCheck,
+    loopDetector: new LoopDetector(), loopConfig: DEFAULT_LOOP_CONFIG, hardStop: null, cb: {} })
+  await Promise.resolve(); await Promise.resolve()
+  f.service.abort(parent.session.id)
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try {
+    await Promise.race([phase, new Promise((_, reject) => { timer = setTimeout(() => reject(new Error('spawn tool ignored cancellation')), 300) })])
+    assert.equal(conversation.messages.at(-1)?.tool_call_id, call.id, 'cancelled spawn still closes its tool-call group')
+    await assert.rejects(parent.handle.completion, AgentAbortedError)
+    assert.equal(f.service.runningSessionIds().length, 0)
+  } finally {
+    clearTimeout(timer); await f.service.stopAll(); f.permissions.dispose()
+  }
+}
+
+// The same deadline covers task status and cleanup; an aborted, stuck child must not block a zero wait.
+{
+  const f = fixture(); const parent = await f.root(); f.makeStuck()
+  const child = result(await parent.scope.spawn(request)); f.service.abort(child.session_id)
+  try {
+    const began = Date.now(); const snapshot = await parent.scope.wait([child.task_id], 0)
+    assert.equal(snapshot[0].status, 'aborted')
+    assert.equal(snapshot[0].settled, false, 'aborted status does not claim the stuck runner has been released')
+    assert.ok(Date.now() - began < 300, 'wait_ms=0 must not wait for the two-second cleanup fallback')
+    const positive = Date.now(); await parent.scope.wait([child.task_id], 25)
+    assert.ok(Date.now() - positive < 300, 'cleanup must respect the remaining wait budget')
+  } finally { await f.service.stopAll(); f.permissions.dispose() }
+}
+
+// Public completion must follow child cleanup and parent release, with no success after an abort.
+{
+  const f = fixture(); let parentId = ''; let childId = ''
+  const completed: Array<{ parentRunning: boolean; childRunning: boolean }> = []
+  f.service.events.subscribe({ complete: id => {
+    if (id === parentId) completed.push({ parentRunning: f.service.isRunning(id), childRunning: f.service.isRunning(childId) })
+  } })
+  const parent = await f.root(); parentId = parent.session.id; f.makeStuck()
+  childId = result(await parent.scope.spawn(request)).session_id
+  f.finish(parentId)
+  assert.equal(completed.length, 0, 'a generated answer is not public completion while children are draining')
+  await parent.handle.completion
+  assert.deepEqual(completed, [{ parentRunning: false, childRunning: false }])
+  f.permissions.dispose()
+}
+
+// Abort during final draining suppresses success; ordinary errors retain their original rejection.
+{
+  const f = fixture(); let parentId = ''; const completions: string[] = []
+  f.service.events.subscribe({ complete: id => { if (id === parentId) completions.push(id) } })
+  const parent = await f.root(); parentId = parent.session.id; f.makeStuck()
+  await parent.scope.spawn(request); f.finish(parentId); await Promise.resolve()
+  f.service.abort(parentId)
+  await assert.rejects(parent.handle.completion, AgentAbortedError)
+  assert.deepEqual(completions, []); f.permissions.dispose()
+}
+{
+  const f = fixture(); let parentId = ''; let childId = ''; const errors: Error[] = []
+  f.service.events.subscribe({ error: (id, error) => {
+    if (id === parentId) {
+      assert.equal(f.service.isRunning(parentId), false); assert.equal(f.service.isRunning(childId), false); errors.push(error)
+    }
+  } })
+  const parent = await f.root(); parentId = parent.session.id; f.makeStuck()
+  childId = result(await parent.scope.spawn(request)).session_id
+  const failure = new Error('original provider failure'); f.running.get(parentId)!.reject(failure)
+  await assert.rejects(parent.handle.completion, error => error === failure)
+  assert.deepEqual(errors, [failure])
+  const primitive = await f.root('primitive failure')
+  f.running.get(primitive.session.id)!.reject('raw provider failure')
+  await assert.rejects(primitive.handle.completion, error => error === 'raw provider failure')
+  f.permissions.dispose()
+}
+
+// Spawn/continue startup failures are tool errors; querying a failed child remains a successful wait.
+{
+  const f = fixture(); const parent = await f.root()
+  const child = result(await parent.scope.spawn(request)); f.finish(child.session_id); await parent.scope.wait([child.task_id])
+  f.delayPrompt(async () => { throw new Error('prompt preparation failed') })
+  const context = { sessionId: parent.session.id, signal: parent.options.signal, workspacePath: 'D:/shared' }
+  const spawned = await f.tools.get('spawn_subagent')!.handler.execute(request, context)
+  const continued = await f.tools.get('continue_subagent')!.handler.execute({ task_id: child.task_id, prompt: 'more' }, context)
+  assert.equal(typeof spawned, 'object'); assert.equal(typeof continued, 'object')
+  if (typeof spawned !== 'string' && typeof continued !== 'string') {
+    assert.equal(spawned.isError, true); assert.equal(continued.isError, true)
+    const failed = JSON.parse(spawned.content) as Result
+    assert.equal((JSON.parse(spawned.content) as { settled: boolean }).settled, true)
+    const waited = await f.tools.get('wait_subagents')!.handler.execute({ task_ids: [failed.task_id], wait_ms: 0 }, context)
+    assert.equal(typeof waited, 'object')
+    if (typeof waited !== 'string') assert.notEqual(waited.isError, true, 'a failed child does not mean the wait tool failed')
+  }
+  await f.service.stopAll(); f.permissions.dispose()
 }
 
 console.log('Subagent parallelism, model routing, isolation, permissions, limits and cancellation tests passed')

@@ -1,5 +1,4 @@
 import type { ToolCall, UIMessage } from '../../shared/types'
-import type { TokenUsage } from '../llm/provider'
 import type { AgentEventCallbacks } from './eventCallbacks'
 
 export interface AgentEventSink {
@@ -55,127 +54,124 @@ export function createPersistedAgentCallbacks(
   events: AgentEventSink,
   isCurrent: () => boolean = () => true
 ): AgentEventCallbacks {
-  let streamingMsgId: string | null = null
-  let streamingContent = ''
-  let streamingReasoning = ''
-  let roundMsgId: string | null = null
-  let roundReasoning = ''
-  let errorHandled = false
-
-  const ensureRoundMsgId = (): string => {
-    if (!roundMsgId) {
-      roundMsgId = generateId()
-      events.assistantStart?.(sessionId, roundMsgId)
-    }
-    return roundMsgId
-  }
-
+  const messages = new PersistedAgentMessages({ sessionId, persistence, generateId, events })
   return {
-    onToken: token => {
-      if (!isCurrent()) return
-      streamingContent += token
-      events.token?.(sessionId, ensureRoundMsgId(), token)
-    },
-    onReasoningToken: token => {
-      if (!isCurrent()) return
-      roundReasoning += token
-      streamingReasoning = roundReasoning
-      events.reasoning?.(sessionId, ensureRoundMsgId(), token)
-    },
+    onToken: token => { if (isCurrent()) messages.token(token) },
+    onReasoningToken: token => { if (isCurrent()) messages.reasoning(token) },
     onToolCall: (toolCall, assistantMessageId) => {
-      if (!isCurrent()) return
-      events.toolCall?.(sessionId, assistantMessageId, toolCall)
+      if (isCurrent()) events.toolCall?.(sessionId, assistantMessageId, toolCall)
     },
-    onToolResult: (toolCallId, toolName, result, isError, durationMs) => {
-      if (!isCurrent()) return null
-      const message: UIMessage = {
-        id: generateId(), sessionId, role: 'tool', content: result, toolCallId, toolName,
-        timestamp: Date.now(), status: isError ? 'error' : 'done'
-      }
-      persistence.addMessage(message)
-      events.toolResult?.(message, toolCallId, toolName, result, isError, durationMs)
-      return message.id
+    onToolResult: (toolCallId, toolName, result, isError, durationMs) => isCurrent()
+      ? messages.toolResult(toolCallId, toolName, result, isError, durationMs) : null,
+    onAssistantMessage: (content, toolCalls, reasoning) => isCurrent() ? messages.assistant(content, toolCalls, reasoning) : null,
+    onTokenUsage: (usage, model) => {
+      if (isCurrent()) persistence.addTokenUsage(model, usage.prompt_tokens, usage.completion_tokens, Date.now())
     },
-    onAssistantMessage: (content, toolCalls, reasoning) => {
-      if (!isCurrent()) return null
-      let persistedId: string | null = null
-      if (content || toolCalls.length > 0 || reasoning) {
-        const messageId = ensureRoundMsgId()
-        persistence.addMessage({
-          id: messageId,
-          sessionId,
-          role: 'assistant',
-          content: content || '',
-          reasoning: reasoning || roundReasoning || undefined,
-          toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
-          timestamp: Date.now(),
-          status: 'done'
-        })
-        persistedId = messageId
-      }
-      streamingMsgId = roundMsgId
-      streamingContent = content || ''
-      streamingReasoning = reasoning || roundReasoning || ''
-      roundMsgId = null
-      roundReasoning = ''
-      events.assistantEnd?.(
-        sessionId,
-        streamingMsgId || '',
-        content,
-        toolCalls,
-        streamingReasoning || undefined
-      )
-      return persistedId
-    },
-    onTokenUsage: (usage: TokenUsage, model: string) => {
-      if (!isCurrent()) return
-      persistence.addTokenUsage(model, usage.prompt_tokens, usage.completion_tokens, Date.now())
-    },
-    onComplete: () => {
-      if (!isCurrent()) return
-      if (!streamingMsgId) {
-        const messageId = generateId()
-        persistence.addMessage({
-          id: messageId,
-          sessionId,
-          role: 'assistant',
-          content: streamingContent || '',
-          reasoning: streamingReasoning || undefined,
-          timestamp: Date.now(),
-          status: 'done'
-        })
-        streamingMsgId = messageId
-      }
-      events.complete?.(sessionId, streamingMsgId || '', streamingContent)
-    },
-    onError: error => {
-      if (!isCurrent()) return
-      if (errorHandled) return
-      errorHandled = true
-      const errorText = `Error: ${error.message}`
-      if (roundMsgId) {
-        persistence.addMessage({
-          id: roundMsgId,
-          sessionId,
-          role: 'assistant',
-          content: streamingContent ? `${streamingContent}\n\n${errorText}` : errorText,
-          reasoning: roundReasoning || undefined,
-          timestamp: Date.now(),
-          status: 'error'
-        })
-      } else if (!streamingMsgId) {
-        persistence.addMessage({
-          id: generateId(), sessionId, role: 'assistant', content: errorText,
-          timestamp: Date.now(), status: 'error'
-        })
-      }
-      events.error?.(sessionId, error)
-    },
+    onComplete: () => { if (isCurrent()) messages.complete() },
+    onError: error => { if (isCurrent()) messages.error(error) },
     onRetry: (failedAttempt, maxRetries, error) => {
-      if (!isCurrent()) return
-      events.retry?.(sessionId, failedAttempt, maxRetries, error)
+      if (isCurrent()) events.retry?.(sessionId, failedAttempt, maxRetries, error)
     },
     onTruncated: (kind, reason) => { if (isCurrent()) events.truncated?.(sessionId, kind, reason) },
     onCompact: info => { if (isCurrent()) events.compact?.(sessionId, { source: 'auto', ...info }) }
+  }
+}
+
+interface MessageContext {
+  sessionId: string
+  persistence: AgentPersistence
+  generateId: () => string
+  events: AgentEventSink
+}
+
+/** One run's authoritative message IDs and streaming-round state. No lifecycle or run ownership. */
+class PersistedAgentMessages {
+  private streamingMsgId: string | null = null
+  private streamingContent = ''
+  private streamingReasoning = ''
+  private roundMsgId: string | null = null
+  private roundReasoning = ''
+  private errorHandled = false
+  private readonly context: MessageContext
+
+  constructor(context: MessageContext) { this.context = context }
+
+  token(token: string): void {
+    this.streamingContent += token
+    this.context.events.token?.(this.context.sessionId, this.ensureRoundId(), token)
+  }
+
+  reasoning(token: string): void {
+    this.roundReasoning += token
+    this.streamingReasoning = this.roundReasoning
+    this.context.events.reasoning?.(this.context.sessionId, this.ensureRoundId(), token)
+  }
+
+  toolResult(toolCallId: string, toolName: string, content: string, isError: boolean, durationMs: number): string {
+    const message: UIMessage = {
+      id: this.context.generateId(), sessionId: this.context.sessionId, role: 'tool', content, toolCallId, toolName,
+      timestamp: Date.now(), status: isError ? 'error' : 'done'
+    }
+    this.context.persistence.addMessage(message)
+    this.context.events.toolResult?.(message, toolCallId, toolName, content, isError, durationMs)
+    return message.id
+  }
+
+  assistant(content: string, toolCalls: ToolCall[], reasoning?: string): string | null {
+    let id: string | null = null
+    if (content || toolCalls.length || reasoning) {
+      id = this.ensureRoundId()
+      this.context.persistence.addMessage({
+        id, sessionId: this.context.sessionId, role: 'assistant', content: content || '',
+        reasoning: reasoning || this.roundReasoning || undefined,
+        toolCalls: toolCalls.length ? toolCalls : undefined, timestamp: Date.now(), status: 'done'
+      })
+    }
+    this.streamingMsgId = this.roundMsgId
+    this.streamingContent = content || ''
+    this.streamingReasoning = reasoning || this.roundReasoning || ''
+    this.roundMsgId = null
+    this.roundReasoning = ''
+    this.context.events.assistantEnd?.(this.context.sessionId, this.streamingMsgId || '', content, toolCalls,
+      this.streamingReasoning || undefined)
+    return id
+  }
+
+  complete(): void {
+    if (!this.streamingMsgId) {
+      this.streamingMsgId = this.context.generateId()
+      this.context.persistence.addMessage({
+        id: this.streamingMsgId, sessionId: this.context.sessionId, role: 'assistant', content: this.streamingContent || '',
+        reasoning: this.streamingReasoning || undefined, timestamp: Date.now(), status: 'done'
+      })
+    }
+    this.context.events.complete?.(this.context.sessionId, this.streamingMsgId, this.streamingContent)
+  }
+
+  error(error: Error): void {
+    if (this.errorHandled) return
+    this.errorHandled = true
+    const errorText = `Error: ${error.message}`
+    if (this.roundMsgId) {
+      this.context.persistence.addMessage({
+        id: this.roundMsgId, sessionId: this.context.sessionId, role: 'assistant',
+        content: this.streamingContent ? `${this.streamingContent}\n\n${errorText}` : errorText,
+        reasoning: this.roundReasoning || undefined, timestamp: Date.now(), status: 'error'
+      })
+    } else if (!this.streamingMsgId) {
+      this.context.persistence.addMessage({
+        id: this.context.generateId(), sessionId: this.context.sessionId, role: 'assistant', content: errorText,
+        timestamp: Date.now(), status: 'error'
+      })
+    }
+    this.context.events.error?.(this.context.sessionId, error)
+  }
+
+  private ensureRoundId(): string {
+    if (!this.roundMsgId) {
+      this.roundMsgId = this.context.generateId()
+      this.context.events.assistantStart?.(this.context.sessionId, this.roundMsgId)
+    }
+    return this.roundMsgId
   }
 }

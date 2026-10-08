@@ -8,9 +8,12 @@ import type {
 } from '../../shared/types.ts'
 import { AgentAbortedError } from '../../shared/types.ts'
 import { sessionNeedsTitle } from '../../shared/sessionTitle.ts'
-import { buildEffectiveConversation, sanitizeHistoryWithIds } from './history.ts'
+import { compactSession } from './sessionCompaction.ts'
 import { mapPersistedHistory } from './messageMapper.ts'
-import { createPersistedAgentCallbacks, type AgentEventSink } from './persistedCallbacks.ts'
+import type { AgentEventSink } from './persistedCallbacks.ts'
+import type { AgentEventCallbacks } from './eventCallbacks.ts'
+import { createSessionRunCallbacks, publishRunOutcome } from './sessionRunCallbacks.ts'
+import { awaitWithSignal } from './runWait.ts'
 import type { AgentRunOptions, runAgent } from './runner.ts'
 import { collectUserTexts, ensureSessionTitle } from './titleService.ts'
 import { SessionEventHub } from './sessionEventHub.ts'
@@ -90,14 +93,14 @@ export class SessionService {
     run.events.running?.(sessionId, true)
 
     try {
-      const commonPrompt = await this.deps.getSystemPromptExtra?.(sessionId)
+      const commonPrompt = await awaitWithSignal(this.deps.getSystemPromptExtra?.(sessionId) ?? Promise.resolve(undefined), run.controller.signal)
       if (run.controller.signal.aborted) throw new AgentAbortedError()
 
       const userMessage = this.persistUserMessage(sessionId, request.message)
       run.events.userMessage?.(userMessage, request.inputSource || 'renderer')
       const mapped = mapPersistedHistory(this.deps.store.getMessages(sessionId))
       const needsTitle = sessionNeedsTitle(session.title)
-      const callbacks = createPersistedAgentCallbacks(sessionId, this.deps.store, this.nextMessageId, run.events,
+      const callbacks = createSessionRunCallbacks(sessionId, run, this.deps.store, this.nextMessageId,
         () => this.active.get(sessionId) === run)
       const brokerCheck = this.deps.permissions.createCheck({
         sessionId,
@@ -157,6 +160,7 @@ export class SessionService {
       const handleCompletion: Promise<void> = Promise.race([completion, run.settled]).then(
         () => {
           if (run.aborted) throw new AgentAbortedError()
+          if (run.outcome?.kind === 'failed') return completion
         },
         (error: unknown) => {
           if (run.aborted) throw new AgentAbortedError()
@@ -267,32 +271,7 @@ export class SessionService {
     const settings = this.deps.store.getSettings()
     const subagent = this.deps.store.getSession(sessionId)?.subagent
     const provider = this.resolveProvider(settings, subagent?.providerId)
-    const history = this.deps.store.getMessages(sessionId)
-    if (history.length < 4) return { beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: history.length }
-
-    const { messages, ids } = mapPersistedHistory(history)
-    const sanitized = sanitizeHistoryWithIds(messages, ids)
-    const compaction = this.deps.store.getSessionCompaction(sessionId)
-    const built = buildEffectiveConversation(sanitized.messages, sanitized.ids, compaction)
-    const effectiveIds: Array<string | null> = built.hasSummary
-      ? [null, ...sanitized.ids.slice(built.keptFromIndex)]
-      : [...sanitized.ids]
-    const contextWindow = await this.deps.fetchContextWindow(provider, subagent?.model)
-    const plan = await this.deps.planAutoCompact(built.effective, provider, subagent?.model, contextWindow)
-    const info = {
-      beforeTokens: plan.beforeTokens,
-      afterTokens: plan.afterTokens,
-      compressedCount: plan.compressedCount,
-      keptCount: plan.keptCount
-    }
-    if (plan.compressedCount <= 0) return info
-
-    const boundaryMessageId = effectiveIds[plan.keptOffset - 1] || compaction?.upToMessageId || null
-    if (!boundaryMessageId || !plan.summary) throw new Error('Summary generation failed. Check the LLM provider settings and try again.')
-    this.deps.store.setSessionCompaction({ sessionId, upToMessageId: boundaryMessageId, summary: plan.summary, createdAt: this.now() })
-    this.events.publish(sink => sink.compact?.(sessionId, { source: 'manual', boundaryMessageId, ...info }))
-    this.deps.log?.('info', `Manual compact done: sessionId=${sessionId}, boundary=${boundaryMessageId}, ${plan.beforeTokens} → ${plan.afterTokens} tokens`)
-    return info
+    return compactSession(sessionId, provider, subagent?.model, { deps: this.deps, events: this.events, now: this.now })
   }
 
   private resolveProvider(settings: AppSettings, providerId?: string): Provider {
@@ -329,7 +308,7 @@ export class SessionService {
       waitIdle: async id => {
         await this.active.get(id)?.settled
       }
-    })
+    }, run.controller.signal)
   }
 
   private persistUserMessage(sessionId: string, input: UserMessageInput): UIMessage {
@@ -351,7 +330,7 @@ export class SessionService {
     sessionId: string,
     run: ActiveSessionRun,
     options: AgentRunOptions,
-    callbacks: ReturnType<typeof createPersistedAgentCallbacks>,
+    callbacks: AgentEventCallbacks,
     title: { provider: Provider; modelOverride?: string; needsTitle: boolean; userTexts: string[] }
   ): Promise<void> {
     return this.executeAgent(options, callbacks).then(() => undefined).catch(error => {
@@ -425,6 +404,7 @@ export class SessionService {
     this.deps.permissions.cancelSession(sessionId)
     this.active.delete(sessionId)
     run.events.running?.(sessionId, false)
+    publishRunOutcome(sessionId, run)
     run.settle()
   }
 }

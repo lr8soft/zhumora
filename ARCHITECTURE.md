@@ -230,6 +230,10 @@ Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait
 - **生命周期**：子 signal 连接父 run signal，用户中止父任务会立即中止所属子运行；正常结束、错误、删除和退出也会停止未结束子任务并等待有界 settle。单独取消子任务不影响兄弟/无关会话。父 completion 在子清理完成后才 settle，父 scope 随 run 清理释放。强制 cleanup 后迟到的 callback 不再持久化/广播，过期 run 也不能取消新 run 的权限请求。模型必须等待所需子结果才给最终回答；提前结束时遗留子任务被取消。
 - **展示**：renderer 根据 Session.subagent 把子会话分组展示，可打开独立历史、查看创建 provider/model、跳回主会话和停止子任务。主 run 活动时子会话只供查看/停止，不接受额外 UI 输入；main 同时校验父 signal，不能只靠按钮禁用保护。会话和事件继续用既有 shared Session/preload/IPC 契约，无新增通用 IPC 入口。
 
+启动和等待边界：SessionService 的提示词准备及 SubagentScope 的启动/等待 Promise 都通过 `runWait.ts` 响应当前 run 的 signal；底层准备永不返回时，取消也必须及时结束委托工具并生成对应 tool 结果。等待器在完成/中止/到期时清理 listener/timer，并继续观察底层迟到失败；迟到启动 handle 必须停止，不形成孤儿运行。`wait_subagents` 的状态等待和 settle 等待共用一个 deadline，`wait_ms=0` 只取快照。返回的 `settled` 表示该任务运行是否已释放；aborted 可以先于释放，继续任务必须等 settled=true。spawn/continue 的启动失败返回 `isError:true`，wait 成功查询到 failed 任务仍是正常工具查询结果。
+
+终态发布边界：runner 的 onComplete 只完成回答持久化，`sessionRunCallbacks.ts` 把 complete/error 暂存到 SessionService 持有的 ActiveSessionRun.outcome。SessionService 等待子运行清理并从 active 表移除父 run 后，才向 SessionEventHub 和 local sink 发布 complete/error，然后 settle；清理期间用户中止不得再发布成功。aborted 仍立即报告取消意图，实际释放由 running=false/settled 表示。handle.completion 必须保留普通错误的原始 reject，不能因 cleanup 的 settled 竞速而被转换成成功。持久化轮次状态封装为 `persistedCallbacks.ts` 内的 PersistedAgentMessages 实例，callbacks 只做带过期 run 防护的适配，不建立反向契约依赖；手动压缩编排抽到 `sessionCompaction.ts`，仍由 SessionService 调用并注入存储/上下文依赖。
+
 `subagentPolicy.ts` 保存参数/模型解析与模型工作流指导，`sessionContracts.ts` 保存会话应用接口；测试覆盖跨 provider 并行、上下文隔离、权威消息和工具结果顺序、容量预留、续跑、权限拒绝、权限等待、中止、卡死 settle、迟到写入与 fresh/v5 数据迁移。
 
 ```mermaid
