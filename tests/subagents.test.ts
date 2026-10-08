@@ -1,84 +1,28 @@
+import { createSubagentFixture as fixture, createSubagentTestProviders } from './helpers/subagentFixture.ts'
 import assert from 'node:assert/strict'
-import { AgentAbortedError, type AppSettings, type Session, type UIMessage, type ToolCall } from '../src/shared/types.ts'
-import { SessionService } from '../src/main/agent/sessionService.ts'
-import type { SessionStore } from '../src/main/agent/sessionContracts.ts'
-import { PermissionBroker, type PermissionRequest } from '../src/main/agent/permissionBroker.ts'
-import type { AgentEventCallbacks, AgentRunOptions } from '../src/main/agent/runner.ts'
+import { AgentAbortedError, type ToolCall } from '../src/shared/types.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
-import { createSubagentTools } from '../src/main/tools/subagent.ts'
 import { resolveSubagentModel, validateSubagentRequest } from '../src/main/agent/subagentPolicy.ts'
 import { executeToolCall } from '../src/main/agent/toolExecutor.ts'
 import { runToolCallPhase } from '../src/main/agent/turnEffects.ts'
 import { WorkingConversation } from '../src/main/agent/workingConversation.ts'
 import { LoopDetector, DEFAULT_LOOP_CONFIG } from '../src/main/agent/loopDetector.ts'
 
-const providers = [
-  { id: 'a', name: 'A', baseUrl: 'https://a.test/v1', apiKey: 'secret-a', defaultModel: 'a-default', enabled: true },
-  { id: 'b', name: 'B', baseUrl: 'https://b.test/v1', apiKey: 'secret-b', defaultModel: 'b-default', enabled: true },
-  { id: 'off', name: 'Off', baseUrl: 'https://off.test', apiKey: 'secret-off', defaultModel: 'off', enabled: false }
-]
+const providers = createSubagentTestProviders()
 const request = { description: 'research', prompt: 'inspect module' }
 assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'custom-a' }, request), { providerId: 'a', model: 'custom-a' })
 assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'custom-a' }, { ...request, providerId: 'b' }), { providerId: 'b', model: 'b-default' })
 assert.throws(() => resolveSubagentModel(providers, { providerId: 'a', model: 'm' }, { ...request, providerId: 'off' }), /disabled/)
 assert.throws(() => validateSubagentRequest({ description: '', prompt: 'x' }), /description/)
 assert.throws(() => validateSubagentRequest({ description: 'x', prompt: 'x'.repeat(24001) }), /prompt/)
+const savedChildModel = { providerId: 'b', model: 'separate-child' }
+assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'parent' }, request, savedChildModel), savedChildModel)
+assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'parent' }, { ...request, providerId: 'a', model: 'explicit' }, savedChildModel),
+  { providerId: 'a', model: 'explicit' })
+assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'parent' }, { ...request, providerId: 'a' }, savedChildModel),
+  { providerId: 'a', model: 'parent' })
+assert.throws(() => resolveSubagentModel(providers, { providerId: 'a', model: 'parent' }, request, { providerId: 'off', model: 'saved' }), /disabled/)
 
-function fixture() {
-  let sequence = 0
-  const sessions = new Map<string, Session>()
-  const messages = new Map<string, UIMessage[]>()
-  const settings = { providers, activeProviderId: 'a', workspacePath: 'D:/shared', memoryEnabled: false, maxRounds: 20 } as AppSettings
-  const store: SessionStore = {
-    createSession(title = 'root', workspacePath, subagent) {
-      const id = `s${++sequence}`
-      const session: Session = { id, title, workspacePath, subagent, origin: 'renderer', createdAt: 1, updatedAt: 1,
-        messageCount: 0, avatarEnabled: false, ttsEnabled: false }
-      sessions.set(id, session); messages.set(id, []); return session
-    },
-    getSessions: () => [...sessions.values()], getSettings: () => settings, getSession: id => sessions.get(id) ?? null,
-    updateSessionTitle: () => {}, updateSessionWorkspace: () => {},
-    deleteSession: id => { sessions.delete(id); messages.delete(id) },
-    getOrCreateBotSession: () => { throw new Error('unused') }, getMessages: id => [...messages.get(id)!],
-    addMessage: message => { assert.ok(sessions.has(message.sessionId), 'no write after deletion'); messages.get(message.sessionId)!.push(message) },
-    getSessionCompaction: () => null, setSessionCompaction: () => {}, tryUpdateSessionTitleIfDefault: () => false, addTokenUsage: () => {}
-  }
-  const running = new Map<string, { options: AgentRunOptions; callbacks: AgentEventCallbacks; resolve: () => void; reject: (error: unknown) => void }>()
-  const permissions = new PermissionBroker()
-  const pending: PermissionRequest[] = []
-  permissions.addPresenter({ present: input => { pending.push(input) } })
-  const tools = new ToolRegistry()
-  for (const [name, permission, alwaysConfirm] of [['read', 'safe', false], ['write', 'normal', false], ['boundary', 'dangerous', true]] as const) {
-    tools.register(name, { permission, alwaysConfirm, definition: { type: 'function', function: { name, description: name, parameters: {} } },
-      execute: async () => ({ content: 'ok' }) }, name === 'read' ? 'mcp:test' : 'builtin')
-  }
-  let stuck = false
-  let delayPrompt: (() => Promise<string>) | undefined
-  const service = new SessionService({ store, tools, permissions, getSkillsPrompt: () => '', getMcpStatus: () => [],
-    getSystemPromptExtra: async id => sessions.get(id)?.subagent && delayPrompt ? delayPrompt() : '',
-    executeAgent: async (options, callbacks) => new Promise((resolve, reject) => {
-      running.set(options.sessionId!, { options, callbacks, resolve: () => resolve([]), reject })
-      if (!(stuck && sessions.get(options.sessionId!)?.subagent)) {
-        options.signal?.addEventListener('abort', () => reject(new AgentAbortedError()), { once: true })
-      }
-    }), fetchContextWindow: async () => 32000, completeText: async () => '',
-    planAutoCompact: async () => ({ beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: 0, keptOffset: 0, summary: null }) })
-  for (const { name, handler } of createSubagentTools(service)) tools.register(name, handler)
-  const finish = (id: string, text = 'delivered') => {
-    const run = running.get(id)!
-    run.callbacks.onAssistantMessage?.(text, []); run.callbacks.onComplete?.(); run.resolve()
-  }
-  const root = async (title = 'root', approveMode: 'manual' | 'auto' | 'full' = 'auto') => {
-    const session = service.createSession(title, 'D:/parent-workspace')
-    const handle = await service.sendMessage({ sessionId: session.id, message: { text: 'private parent history' },
-      providerId: 'a', modelOverride: 'custom-a', reasoningEffort: 'high', approveMode, sourcePrompt: 'External source rules remain authoritative.' })
-    void handle.completion.catch(() => {})
-    const options = running.get(session.id)!.options
-    return { session, handle, options, scope: service.getSubagentScope(session.id, options.signal) }
-  }
-  return { service, tools, permissions, pending, sessions, messages, running, finish, root,
-    makeStuck: () => { stuck = true }, delayPrompt: (fn: () => Promise<string>) => { delayPrompt = fn } }
-}
 
 type Result = { task_id: string; session_id: string; status: string; reply?: string; truncated?: boolean }
 const result = (value: object) => value as Result
@@ -314,4 +258,57 @@ const result = (value: object) => value as Result
   await f.service.stopAll(); f.permissions.dispose()
 }
 
-console.log('Subagent parallelism, model routing, isolation, permissions, limits and cancellation tests passed')
+// The live settings switch blocks cached scopes and late approvals without hiding other tools or stopping children.
+{
+  const f = fixture(); const parent = await f.root('switch', 'manual')
+  const first = result(await parent.scope.spawn({ ...request, providerId: 'b', model: 'user-picked-b' }))
+  assert.equal(f.running.get(first.session_id)!.options.modelOverride, 'user-picked-b')
+  const approving = parent.options.permissionCheck!('spawn_subagent', request)
+  const permissionId = f.pending.at(-1)!.id
+  f.setDelegation(false); f.permissions.respond(permissionId, true)
+  assert.equal(await approving, false, 'a stale human allow cannot enable delegation after saving off')
+  await assert.rejects(parent.scope.spawn(request), /disabled/)
+  assert.equal(f.service.isRunning(first.session_id), true, 'already started children keep running')
+  const snapshot = parent.options.promptRuntime!.tools; const paused = await f.root('disabled')
+  assert.match(paused.options.systemPromptExtra!, /Subagents are disabled/)
+  assert.deepEqual(paused.options.promptRuntime!.tools, snapshot, 'the global tool catalog remains intact')
+  assert.equal((await parent.scope.wait([first.task_id], 0))[0].status, 'running')
+  f.finish(first.session_id); await parent.scope.wait([first.task_id])
+  await assert.rejects(parent.scope.continue(first.task_id, 'more'), /disabled/)
+  f.setDelegation(true); const continued = result(await parent.scope.continue(first.task_id, 'more'))
+  assert.equal(f.running.get(continued.session_id)!.options.modelOverride, 'user-picked-b')
+  f.setDelegation(false); await parent.scope.cancel(continued.task_id)
+  assert.equal(f.service.isRunning(continued.session_id), false)
+  await f.service.stopAll(); f.permissions.dispose()
+}
+{
+  const f = fixture(); const parent = await f.root(); let release!: (text: string) => void
+  f.delayPrompt(() => new Promise(resolve => { release = resolve }))
+  const starting = parent.scope.spawn(request); await Promise.resolve()
+  f.setDelegation(false); release('ready')
+  const failed = await starting
+  assert.equal(failed.status, 'failed')
+  assert.equal(f.messages.get(failed.session_id)!.length, 0, 'disabled in preparation must not persist a fake child input')
+  await f.service.stopAll(); f.permissions.dispose()
+}
+
+// The independent UI preference controls only new children; explicit per-task routing still wins.
+{
+  const f = fixture(); f.setChildModel(savedChildModel); const parent = await f.root()
+  assert.equal(parent.options.provider.id, 'a'); assert.equal(parent.options.modelOverride, 'custom-a')
+  assert.match(parent.options.systemPromptExtra!, /separate-child/)
+  const selected = result(await parent.scope.spawn(request))
+  assert.equal(f.running.get(selected.session_id)!.options.provider.id, 'b')
+  assert.equal(f.running.get(selected.session_id)!.options.modelOverride, 'separate-child')
+  const explicit = result(await parent.scope.spawn({ ...request, providerId: 'a', model: 'task-override' }))
+  assert.equal(f.running.get(explicit.session_id)!.options.modelOverride, 'task-override')
+  f.finish(selected.session_id); await parent.scope.wait([selected.task_id])
+  f.setChildModel({ providerId: 'a', model: 'changed-default' })
+  const followup = result(await parent.scope.continue(selected.task_id, 'keep model'))
+  assert.equal(f.running.get(followup.session_id)!.options.modelOverride, 'separate-child')
+  const changed = result(await parent.scope.spawn(request))
+  assert.equal(f.running.get(changed.session_id)!.options.modelOverride, 'changed-default')
+  await f.service.stopAll(); f.permissions.dispose()
+}
+
+console.log('Subagent parallelism, routing, separate model defaults, settings gate and cancellation tests passed')

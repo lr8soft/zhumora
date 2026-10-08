@@ -5,17 +5,9 @@ import Database from 'better-sqlite3'
 import * as path from 'node:path'
 import { app } from 'electron'
 import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory, SessionOrigin } from '../../shared/types'
-import { normalizeQQBotConfig } from '../../shared/qq'
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
-import { normalizeTelegramBotConfig } from '../../shared/telegram'
-import { normalizeAvatarModels, resolveDefaultAvatarModelId } from '../../shared/avatar'
-import { normalizeAvatarWindowSize } from '../../shared/avatarWindow'
-import { normalizeTtsModels, resolveDefaultTtsModelId } from '../../shared/tts'
-import { normalizeBrowserTarget, normalizeCustomBrowserPath } from '../../shared/browser'
-import { normalizeBbsConfig } from '../../shared/bbs'
-import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/mcpServer'
-import { normalizeReasoningDialect } from '../../shared/reasoning'
+import { defaultSettings, normalizeSettings } from './settingsNormalization'
 
 let db: Database.Database | null = null
 let settingsCache: AppSettings | null = null
@@ -237,16 +229,14 @@ export function updateMessageContent(id: string, content: string, status?: strin
 // Settings 操作
 // ============================================================
 
-export const SETTINGS_SCHEMA_VERSION = 11
-
 export function getSettings(): AppSettings {
-  if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings()
+  if (!settingsCache) settingsCache = db ? loadSettings() : defaultSettings(defaultWorkspacePath())
   return structuredClone(settingsCache)
 }
 
 export function saveSettings(settings: AppSettings): void {
   if (!db) throw new Error('Database has not been initialized')
-  const normalized = normalizeSettings(settings)
+  const normalized = normalizeSettings(settings, defaultWorkspacePath())
   persistSettings(normalized)
   settingsCache = normalized
 }
@@ -256,104 +246,20 @@ function persistSettings(settings: AppSettings): void {
     .run('app_settings', JSON.stringify(settings))
 }
 
-function defaultSettings(): AppSettings {
+function defaultWorkspacePath(): string {
   let workspacePath = process.cwd()
-  try {
-    if (app.isReady()) workspacePath = app.getPath('home')
-  } catch { /* Electron app is unavailable in isolated unit tests */ }
-  return {
-    schemaVersion: SETTINGS_SCHEMA_VERSION,
-    providers: [
-      {
-        id: 'zhuminet-default',
-        name: '煮米 API',
-        baseUrl: 'https://api.zhuminet.com/v1',
-        apiKey: '',
-        defaultModel: '',
-        enabled: true
-      }
-    ],
-    mcpServers: [],
-    mcpServer: normalizeMcpServerSettings(undefined),
-    telegramBot: normalizeTelegramBotConfig(undefined),
-    qqBot: normalizeQQBotConfig(undefined),
-    skills: [],
-    activeProviderId: 'zhuminet-default',
-    workspacePath,
-    memoryEnabled: true,
-    language: 'auto',
-    maxRetries: 5,
-    maxRounds: 20,
-    browserMode: 'local',
-    browserTarget: 'chrome',
-    customBrowserPath: '',
-    avatarModels: [],
-    defaultAvatarModelId: null,
-    avatarWindowSize: normalizeAvatarWindowSize(undefined),
-    ttsModels: [],
-    defaultTtsModelId: null,
-    bbs: normalizeBbsConfig(undefined)
-  }
+  try { if (app.isReady()) workspacePath = app.getPath('home') }
+  catch { /* Electron is unavailable in isolated storage tests. */ }
+  return workspacePath
 }
 
 function loadSettings(): AppSettings {
   const row = db!.prepare('SELECT value FROM settings WHERE key = ?').get('app_settings') as { value: string } | undefined
-  if (!row) return defaultSettings()
+  if (!row) return defaultSettings(defaultWorkspacePath())
   try {
-    return normalizeSettings(JSON.parse(row.value))
+    return normalizeSettings(JSON.parse(row.value), defaultWorkspacePath())
   } catch {
-    return defaultSettings()
-  }
-}
-
-/**
- * Provider 列表的结构归一化：目前只有思考强度方言需要收口（未知值回落 'auto'）。
- * 其余字段保持原样——它们的默认值由各消费方（上下文窗口探测、模型列表、
- * 用量统计）决定，在这里补默认值会形成第二份默认值定义。
- */
-function normalizeProviders(input: unknown): AppSettings['providers'] | null {
-  if (!Array.isArray(input)) return null
-  return input.map(provider => {
-    if (!provider || typeof provider !== 'object') return provider
-    return {
-      ...provider,
-      reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect)
-    }
-  })
-}
-
-/** JSON blob 的前向迁移与默认值合并集中在存储边界。 */
-export function normalizeSettings(input: unknown): AppSettings {
-  const defaults = defaultSettings()
-  if (!input || typeof input !== 'object') return defaults
-  const raw = input as Partial<AppSettings>
-  const avatarModels = normalizeAvatarModels(raw.avatarModels)
-  const ttsModels = normalizeTtsModels(raw.ttsModels)
-  return {
-    ...defaults,
-    ...raw,
-    schemaVersion: SETTINGS_SCHEMA_VERSION,
-    providers: normalizeProviders(raw.providers) ?? defaults.providers,
-    mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
-    mcpServer: ensureMcpServerToken(normalizeMcpServerSettings(raw.mcpServer)),
-    telegramBot: normalizeTelegramBotConfig(raw.telegramBot),
-    qqBot: normalizeQQBotConfig(raw.qqBot),
-    skills: Array.isArray(raw.skills) ? raw.skills : defaults.skills,
-    avatarModels,
-    avatarWindowSize: normalizeAvatarWindowSize(raw.avatarWindowSize),
-    defaultAvatarModelId: resolveDefaultAvatarModelId(avatarModels, raw.defaultAvatarModelId),
-    ttsModels,
-    defaultTtsModelId: resolveDefaultTtsModelId(ttsModels, raw.defaultTtsModelId),
-    bbs: normalizeBbsConfig(raw.bbs),
-    browserMode: raw.browserMode === 'headless' ? 'headless' : 'local',
-    browserTarget: normalizeBrowserTarget(raw.browserTarget),
-    customBrowserPath: normalizeCustomBrowserPath(raw.customBrowserPath),
-    // 窗口关闭默认收进托盘后台（用户可显式关回"关闭即退出"）
-    backgroundClose: raw.backgroundClose !== false,
-    activeProviderId: typeof raw.activeProviderId === 'string' || raw.activeProviderId === null
-      ? raw.activeProviderId
-      : defaults.activeProviderId,
-    workspacePath: typeof raw.workspacePath === 'string' ? raw.workspacePath : defaults.workspacePath
+    return defaultSettings(defaultWorkspacePath())
   }
 }
 

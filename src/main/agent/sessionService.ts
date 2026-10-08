@@ -19,7 +19,8 @@ import { collectUserTexts, ensureSessionTitle } from './titleService.ts'
 import { SessionEventHub } from './sessionEventHub.ts'
 import { generateId } from '../id.ts'
 import { SubagentScope } from './subagentScope.ts'
-import { resolveSubagentModel, SUBAGENT_CHILD_GUIDANCE, SUBAGENT_PARENT_GUIDANCE } from './subagentPolicy.ts'
+import { assertSubagentsEnabled, resolveSubagentModel, SUBAGENT_CHILD_GUIDANCE, subagentDelegationGuidance } from './subagentPolicy.ts'
+import { createSessionPermissionCheck } from './sessionPermissionCheck.ts'
 import type { ActiveSessionRun, SessionStore, SessionRunRequest, SessionRunHandle, SessionCompactInfo, SessionServiceDependencies } from './sessionContracts.ts'
 
 type Provider = AppSettings['providers'][number]
@@ -95,6 +96,7 @@ export class SessionService {
     try {
       const commonPrompt = await awaitWithSignal(this.deps.getSystemPromptExtra?.(sessionId) ?? Promise.resolve(undefined), run.controller.signal)
       if (run.controller.signal.aborted) throw new AgentAbortedError()
+      if (parentRun) assertSubagentsEnabled(this.deps.store.getSettings().subagentsEnabled)
 
       const userMessage = this.persistUserMessage(sessionId, request.message)
       run.events.userMessage?.(userMessage, request.inputSource || 'renderer')
@@ -102,18 +104,16 @@ export class SessionService {
       const needsTitle = sessionNeedsTitle(session.title)
       const callbacks = createSessionRunCallbacks(sessionId, run, this.deps.store, this.nextMessageId,
         () => this.active.get(sessionId) === run)
-      const brokerCheck = this.deps.permissions.createCheck({
+      const permissionCheck = createSessionPermissionCheck(this.deps.permissions, {
         sessionId,
         mode: () => run.approvalParentId ? this.getApproveMode(run.approvalParentId) : this.getApproveMode(sessionId),
         registry: this.deps.tools,
         presenters: request.permissionPresenters,
-        timeoutMs: request.permissionTimeoutMs
+        timeoutMs: request.permissionTimeoutMs,
+        signal: run.controller.signal,
+        isCurrent: () => this.active.get(sessionId) === run,
+        subagentsEnabled: () => this.deps.store.getSettings().subagentsEnabled
       })
-      const permissionCheck = async (name: string, args: Record<string, unknown>): Promise<boolean> => {
-        if (run.controller.signal.aborted || this.active.get(sessionId) !== run) return false
-        const allowed = await brokerCheck(name, args)
-        return allowed && !run.controller.signal.aborted && this.active.get(sessionId) === run
-      }
       const runnerOptions: AgentRunOptions = {
         messages: mapped.messages,
         messageIds: mapped.ids,
@@ -126,7 +126,7 @@ export class SessionService {
         modelOverride,
         reasoningEffort: request.reasoningEffort,
         systemPromptExtra: [request.sourcePrompt, commonPrompt,
-          session.subagent ? SUBAGENT_CHILD_GUIDANCE : this.deps.tools.get('spawn_subagent') ? SUBAGENT_PARENT_GUIDANCE : undefined]
+          session.subagent ? SUBAGENT_CHILD_GUIDANCE : this.deps.tools.get('spawn_subagent') ? subagentDelegationGuidance(settings.subagentsEnabled, settings.subagentModel) : undefined]
           .filter(Boolean).join('\n\n'),
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
@@ -285,7 +285,11 @@ export class SessionService {
   ): SubagentScope {
     const parent = { providerId: provider.id, model: modelOverride || provider.defaultModel }
     return new SubagentScope({
-      resolveModel: input => resolveSubagentModel(this.deps.store.getSettings().providers, parent, input),
+      assertEnabled: () => assertSubagentsEnabled(this.deps.store.getSettings().subagentsEnabled),
+      resolveModel: input => {
+        const settings = this.deps.store.getSettings()
+        return resolveSubagentModel(settings.providers, parent, input, settings.subagentModel)
+      },
       createSession: (description, model) => {
         if (run.controller.signal.aborted) throw new AgentAbortedError()
         return this.deps.store.createSession(description, session.workspacePath || this.deps.store.getSettings().workspacePath,
@@ -382,13 +386,8 @@ export class SessionService {
     if (!run.abortNotified) {
       run.abortNotified = true
       run.events.aborted?.(sessionId)
-      // 兜底：正常情况下 runner 听到信号后毫秒级 settle 并触发 cleanupRun
-      // （见 finishRun 的 finally）。若 runner 因未响应信号的路径卡死，
-      // 有界超时强制清理，保证 abort 后会话最终一定可再次运行 ——
-      // 这是"停止后切换 provider 报 session busy" bug 的最后一道防线。
-      // 定时器保持引用（不能 unref）：兜底的职责就是在进程其它工作排空时
-      // 也保证触发；runner 正常 settle 时 cleanupRun 会提前清除它，
-      // 正常路径下这个 2s 引用窗口不会真正保留进程。
+      // runner 不响应中止时，兜底必须释放 busy 并让删除/退出 settle。
+      // 定时器保持引用，保证其他工作排空后仍触发；正常 cleanup 会提前清除。
       run.settleTimer = setTimeout(() => {
         this.deps.log?.('error', `Session ${sessionId}: run did not settle within ${ABORT_SETTLE_TIMEOUT_MS}ms after abort, forcing cleanup`)
         void (run.subagents?.close() ?? Promise.resolve()).then(() => this.cleanupRun(sessionId, run))

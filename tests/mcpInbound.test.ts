@@ -26,6 +26,7 @@ import { ensureMcpServerToken, generateMcpServerToken, SERVER_INSTRUCTIONS } fro
 // ---------- fakes（与 sessionService.test.ts 同一模式） ----------
 
 const settings = {
+  subagentsEnabled: true,
   providers: [{
     id: 'provider', name: 'Provider', baseUrl: 'http://localhost', apiKey: '',
     defaultModel: 'model', enabled: true

@@ -132,9 +132,15 @@ Avatar 自带程序生成的待机、说话、点头、摇头、打招呼、挥�
 
 ## 子 Agent（初版）
 
+在 **设置 → 通用 → Agent 行为 → 启用子 Agent** 打开或关闭（点击“保存设置”后生效）。关闭会阻止新建和继续子任务，已启动任务仍可完成、等待或取消。
+
+在同一区域的 **子 Agent 默认模型** 下拉菜单中，独立选择提供商和模型，或选择“继承主 Agent 模型”。点击刷新按钮可加载各启用提供商的模型列表；保存后用于新子任务，不改变主模型，继续已有子任务时保持它原来的模型。
+
+个别任务仍可在聊天中分别指定提供商与模型，例如：“调研子任务使用提供商 A 的模型 X，审查子任务使用提供商 B 的模型 Y，完成后汇总。”显式指定优先于子默认模型。
+
 Zhumora 可以在工作时主动创建多个子 Agent；每个子 Agent 有独立会话历史，并可选择设置中已启用的 LLM provider 和模型。可直接提出：“把这项任务拆成独立子任务并行处理，分别用不同 provider，等结果后汇总。”
 
-主 Agent 使用 `spawn_subagent` 创建、`wait_subagents` 等待、`continue_subagent` 继续已有子会话、`cancel_subagent` 停止自己的子任务，`list_subagent_providers` 查看可选 provider。默认继承主运行的 provider/model；切换 provider 时默认使用该 provider 的默认模型。
+主 Agent 使用 `spawn_subagent` 创建、`wait_subagents` 等待、`continue_subagent` 继续已有子会话、`cancel_subagent` 停止自己的子任务，`list_subagent_providers` 查看可选 provider。默认使用设置中选择的子模型；选择“继承”时使用主运行的 provider/model。显式切换到其他 provider 且未指定模型时，使用其默认模型。
 
 侧边栏“子 Agent”分组可查看各自输出、创建模型和主会话。初版限制一层子 Agent、每个主运行最多 4 个并行和 8 次启动（含继续）。主任务停止或结束时清理未结束子任务，完整子历史保留；重启后不自动恢复任务。工具仍受统一权限控制，文件、浏览器和物理桌面仍是共享资源。
 

@@ -2,6 +2,8 @@ import assert from 'node:assert/strict'
 import { equivalentConfigList } from '../src/main/ipc/settingsChange.ts'
 import { equivalentTelegramBotConfig, normalizeTelegramBotConfig, parseTelegramUserIds } from '../src/shared/telegram.ts'
 import { equivalentQQBotConfig, normalizeQQBotConfig, parseQQUserIds } from '../src/shared/qq.ts'
+import { normalizeSettings, SETTINGS_SCHEMA_VERSION } from '../src/main/store/settingsNormalization.ts'
+import { buildSubagentModelOptions } from '../src/renderer/src/subagentModelOptions.ts'
 
 const first = [
   { id: 'b', name: 'B', enabled: true, env: { Z: '2', A: '1' } },
@@ -47,4 +49,28 @@ assert.equal(equivalentQQBotConfig(
   { enabled: true, appId: '1', appSecret: 's', allowedUserIds: ['a', 'b'], approveMode: 'full' },
   { enabled: true, appId: '1', appSecret: 's', allowedUserIds: ['b', 'a'], approveMode: 'full' }
 ), true)
-console.log('settings semantic comparison tests passed')
+const migrated = normalizeSettings({ schemaVersion: 11, workspacePath: 'D:/kept', maxRounds: 12 }, 'D:/default')
+assert.equal(migrated.schemaVersion, SETTINGS_SCHEMA_VERSION)
+assert.equal(migrated.subagentsEnabled, true, 'legacy settings retain previously enabled delegation')
+assert.equal(migrated.workspacePath, 'D:/kept'); assert.equal(migrated.maxRounds, 12)
+assert.equal(migrated.subagentModel, null)
+const disabled = normalizeSettings({ ...migrated, subagentsEnabled: false })
+assert.equal(disabled.subagentsEnabled, false)
+assert.equal(normalizeSettings(JSON.parse(JSON.stringify(disabled))).subagentsEnabled, false, 'the saved switch survives JSON reload')
+for (const malformed of ['false', 1, null, {}]) assert.equal(normalizeSettings({ subagentsEnabled: malformed }).subagentsEnabled, false)
+assert.equal(normalizeSettings(null).subagentsEnabled, true)
+const parentBeforeChoice = normalizeSettings(migrated)
+const chosen = normalizeSettings({ ...parentBeforeChoice, subagentModel: { providerId: ' child-provider ', model: ' child-model ' } })
+assert.deepEqual(chosen.subagentModel, { providerId: 'child-provider', model: 'child-model' })
+assert.equal(chosen.activeProviderId, parentBeforeChoice.activeProviderId)
+assert.deepEqual(chosen.providers, parentBeforeChoice.providers, 'selecting the child default leaves parent provider/model unchanged')
+assert.deepEqual(normalizeSettings(JSON.parse(JSON.stringify(chosen))).subagentModel, chosen.subagentModel)
+assert.deepEqual(normalizeSettings({ ...chosen, subagentsEnabled: false }).subagentModel, chosen.subagentModel, 'off retains the selected child model')
+for (const malformed of ['model', {}, { providerId: '', model: 'm' }, { providerId: 'p', model: 1 }]) {
+  assert.equal(normalizeSettings({ subagentModel: malformed }).subagentModel, null)
+}
+const options = buildSubagentModelOptions(chosen.providers, { 'zhuminet-default': [{ id: 'remote-model' }, { id: 'remote-model' }] }, chosen.subagentModel)
+assert.equal(options.filter(option => option.model === 'remote-model').length, 1)
+assert.ok(options.find(option => option.providerId === 'child-provider')?.unavailable, 'removed providers retain a visible saved choice')
+
+console.log('settings semantic comparison, child model selection and normalization tests passed')

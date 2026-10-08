@@ -10,11 +10,9 @@
 // ============================================================
 import { create } from 'zustand'
 import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort } from '@shared/types'
-import { DEFAULT_AVATAR_WINDOW_SIZE } from '@shared/avatarWindow'
-import { DEFAULT_MCP_SERVER_SETTINGS } from '@shared/mcpServer'
-import { DEFAULT_BBS_CONFIG } from '@shared/bbs'
 
 export type { ReasoningEffort }
+import { initialSettingsProjection } from './settingsDefaults'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
 
 const api = window.api
@@ -630,40 +628,8 @@ export const useAppStore = create<AppState>((set, get) => ({
   },
 
   // ---- 设置（草稿模式）----
-  settings: {
-    providers: [],
-    mcpServers: [],
-    mcpServer: { ...DEFAULT_MCP_SERVER_SETTINGS },
-    telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
-    qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
-    skills: [],
-    activeProviderId: null,
-    workspacePath: '',
-    avatarModels: [],
-    defaultAvatarModelId: null,
-    avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
-    ttsModels: [],
-    defaultTtsModelId: null,
-    bbs: { ...DEFAULT_BBS_CONFIG }
-  },
-  settingsDraft: {
-    providers: [],
-    mcpServers: [],
-    mcpServer: { ...DEFAULT_MCP_SERVER_SETTINGS },
-    telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
-    qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },
-    skills: [],
-    activeProviderId: null,
-    workspacePath: '',
-    avatarModels: [],
-    defaultAvatarModelId: null,
-    avatarWindowSize: { ...DEFAULT_AVATAR_WINDOW_SIZE },
-    ttsModels: [],
-    defaultTtsModelId: null,
-    bbs: { ...DEFAULT_BBS_CONFIG },
-    theme: 'system',
-    fontSize: DEFAULT_FONT_SIZE
-  },
+  settings: initialSettingsProjection(),
+  settingsDraft: { ...initialSettingsProjection(), theme: 'system', fontSize: DEFAULT_FONT_SIZE },
   isSettingsDirty: false,
   settingsSnapshot: null,
   loadSettings: async () => {

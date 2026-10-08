@@ -7,6 +7,7 @@ import { SUBAGENT_LIMITS, validateSubagentPrompt, validateSubagentRequest, type 
 import { awaitWithSignal, waitUntilDeadline } from './runWait.ts'
 
 export interface SubagentHost {
+  assertEnabled(): void
   resolveModel(request: SubagentRequest): { providerId: string; model: string }
   createSession(description: string, model: { providerId: string; model: string }): Session
   start(sessionId: string, prompt: string, events: AgentEventSink, presenter: PermissionPresenter): Promise<{ completion: Promise<void> }>
@@ -106,6 +107,7 @@ export class SubagentScope {
 
   private checkCapacity(): void {
     if (this.closed || this.signal?.aborted) throw new AgentAbortedError()
+    this.host.assertEnabled()
     if (this.turns >= SUBAGENT_LIMITS.turns) throw new Error('Subagent turn limit reached (8 per parent run).')
     const sessions = new Set([...this.tasks.values()]
       .filter(child => child.starting || this.host.isRunning(child.session.id)).map(child => child.session.id))

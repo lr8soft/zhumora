@@ -220,6 +220,10 @@ Bot 层禁止拥有：
 
 Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。
 
+设置 → 通用 → Agent 行为提供 `subagentsEnabled` 开关（默认 true，保存后生效）和独立的子模型下拉（`subagentModel: {providerId, model} | null`，null 表示继承主模型）。settings JSON schema v12 在 `store/settingsNormalization.ts` 的唯一 normalizeSettings 边界补齐旧配置；开关缺失保留原开启行为，非布尔非法值关闭，旧配置的子模型缺失则继承主模型。db.ts 仍是 settings cache/保存/刷新 owner，不创建第二份配置缓存。关闭后不新建、不继续子运行，但已启动任务可完成、等待和取消；旧子会话历史保留，用户仍可单独打开。SubagentScope 的容量入口和 SessionService 的权限检查均现读权威设置，批准前后重查；启动准备结束、持久化输入前也重查，关闭不能被缓存 scope、迟到批准或在途准备绕过。完整工具注册表不变，新主运行的提示词明确说明委托关闭。
+
+子模型菜单按启用的 provider 分组，使用已有 provider.listModels IPC 懒加载/刷新；主 Agent 的 activeProviderId、提供商 defaultModel 和聊天模型选择均不改动。列表只在视图实例缓存，以草稿 provider 列表身份为 key（配置变化即失效），卸载时释放，过期请求结果不进入新列表；保存选择在接口失败/模型未列出时仍展示，删除或停用 provider 则标为不可用，运行时明确报错而非回退。新增子任务现读已保存子模型偏好；优先级为显式任务 provider/model → 匹配 provider 的独立子默认模型 → 父运行实际模型/所选 provider 默认模型。显式切换 provider 不套用另一个 provider 的子模型。continue 保留创建时选定的 provider/model，不受后续下拉修改影响。用户仍可在聊天中显式要求个别子任务用不同模型，主 Agent 经工具参数覆盖默认值。
+
 - **运行 owner 不变**：`SessionService.active` 按 sessionId 独占运行、AbortController 和批准模式。父 run 持有一个 `SubagentScope`（`subagentScope.ts`），只保存子会话引用与 `taskProtocol.McpTaskSession` 状态投影，不拥有控制器、执行器或全局事件总线。工具必须用当前 run 的 `sessionId + AbortSignal` 取得该 scope；跨会话、上一轮的句柄和子 Agent 嵌套创建均拒绝。
 - **独立历史**：每个子 Agent 是持久化 session，主进程分配消息 ID，经标准 `sendMessage(inputSource='external')` 写消息并广播。子上下文默认仅含委托任务、通用系统提示词和父输入适配器的 sourcePrompt，不复制父对话、不注入父工具调用片段。完整历史、权限、压缩和 MCP 工具均复用正常流程。
 - **provider/model**：spawn 显式 provider 优先，否则继承父运行已解析的 provider；显式 model 优先，同 provider 未指定则继承父运行实际 model，切换 provider 未指定则使用所选 provider 默认 model。只允许启用的 settings provider，未知/停用配置明确失败，不静默回退。API key/baseUrl 不出现在模型可见的 provider 清单。只有 provider 和 model 都与父运行相同时继承 reasoning effort。继续任务保留原子会话及其创建配置。手动压缩子会话也使用其创建 provider/model。

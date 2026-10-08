@@ -7,6 +7,7 @@ import type { AgentEventCallbacks, AgentRunOptions } from '../src/main/agent/run
 import { ToolRegistry } from '../src/main/tools/registry.ts'
 
 const settings = {
+  subagentsEnabled: true,
   providers: [{
     id: 'provider', name: 'Provider', baseUrl: 'http://localhost', apiKey: '',
     defaultModel: 'model', enabled: true

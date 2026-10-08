@@ -3,7 +3,7 @@
 // 对应 mcp/client.ts（出站）的入站版本：
 //   configure 按归一化后的设置启动/停止 loopback HTTP 传输；
 //   设置等价（equivalent）则不动，token 变化触发重启使旧 token 立即失效。
-// token 稳定性：存储边界（db.normalizeSettings）保证生产路径上启用时
+// token 稳定性：存储边界（settingsNormalization.normalizeSettings）保证生产路径上启用时
 // settings 里恒有固定 token（首次启用生成一次并落库，永不随重启轮换）；
 // 运行层只消费它，|| 回退仅覆盖绕过存储边界的内存配置（单测直构）。
 // 不持有会话/运行状态：编排规则在 service.ts，传输在 transport.ts。
@@ -88,7 +88,7 @@ export class McpServerManager {
     // Reconfiguration invalidates protocol sessions and their conversation keys.
     // Stop accepting requests and abort/settle in-flight delegated tasks together.
     await this.stopRuntime()
-    // 存储边界（db.normalizeSettings → ensureMcpServerToken）保证：生产路径上
+    // 存储边界（settingsNormalization.normalizeSettings → ensureMcpServerToken）保证：生产路径上
     // 启用时 settings.token 恒为固定值（首次启用时生成一次并落库，永不随
     // 重启轮换）。这里的 || 回退只覆盖绕过存储边界的内存配置（单测直接
     // 构造 manager 传空 token），生成运行期 token 且不回写数据库。
