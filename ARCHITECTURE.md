@@ -216,6 +216,22 @@ Bot 层禁止拥有：
 
 ## 6. 会话并发与生命周期
 
+### 内部子 Agent（初版）
+
+Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。
+
+- **运行 owner 不变**：`SessionService.active` 按 sessionId 独占运行、AbortController 和批准模式。父 run 持有一个 `SubagentScope`（`subagentScope.ts`），只保存子会话引用与 `taskProtocol.McpTaskSession` 状态投影，不拥有控制器、执行器或全局事件总线。工具必须用当前 run 的 `sessionId + AbortSignal` 取得该 scope；跨会话、上一轮的句柄和子 Agent 嵌套创建均拒绝。
+- **独立历史**：每个子 Agent 是持久化 session，主进程分配消息 ID，经标准 `sendMessage(inputSource='external')` 写消息并广播。子上下文默认仅含委托任务、通用系统提示词和父输入适配器的 sourcePrompt，不复制父对话、不注入父工具调用片段。完整历史、权限、压缩和 MCP 工具均复用正常流程。
+- **provider/model**：spawn 显式 provider 优先，否则继承父运行已解析的 provider；显式 model 优先，同 provider 未指定则继承父运行实际 model，切换 provider 未指定则使用所选 provider 默认 model。只允许启用的 settings provider，未知/停用配置明确失败，不静默回退。API key/baseUrl 不出现在模型可见的 provider 清单。只有 provider 和 model 都与父运行相同时继承 reasoning effort。继续任务保留原子会话及其创建配置。手动压缩子会话也使用其创建 provider/model。
+- **持久化边界**：migration v6 为 sessions 增加 `subagent_parent_id / subagent_provider_id / subagent_model`，投影到 `Session.subagent`。父关系是审计来源，不使用级联删除：删除父会话会先停止并等待它的子运行，但子历史保留，可独立查看；删除单个子会话仍按原规则先 abort/settle。活动 task_id 不落库，应用重启不自动恢复任务，子历史和来源配置仍可查询。
+- **真实并行**：spawn 等待子运行启动后立即返回 task_id（不等待最终回答）；父工具仍按顺序执行，多次 spawn 的子运行可以重叠。wait 复用 taskProtocol 的终态/权限等待，无定时轮询；返回完整状态与最多 12000 字符的回复，截断显式标记，原始完整回复仍在子历史。continue 仅允许最近一轮已 settle 的任务，复用 session 但返回新的 task_id，旧 task_id 不能停止或继续新一轮。没有后台自动启动父 run 或 mailbox 唤醒流程。
+- **资源与预算**：每个父 run 同时最多 4 个子运行、累计最多 8 次子运行（包括继续），限制在异步启动前预留；委托 prompt 最多 24000 字符，嵌套深度固定为 1。限制只作用于该父 run，不锁住无关会话。子 Agent 每轮仍拿完整工具注册表快照，委托工具不筛选/禁用其他工具。文件、浏览器和物理桌面仍共享；prompt 要求明确资源归属并避免竞争，DesktopControlCoordinator 的原有独占策略不变。父会话持有桌面控制时不能依赖子会话再获取桌面完成任务，应改由当前 owner 操作。
+- **权限**：创建/继续/取消为 normal，provider 清单和等待为 safe。子工具始终经过同一个 PermissionBroker；父 run 活动时子运行读取父当前批准模式，子界面或工具不能提高它。父适配器的 permission presenters / timeout 和 sourcePrompt 继承，子任务另加只读权限状态 presenter；内部主 Agent 没有批准子工具的接口。外部 MCP delegate 的既有 normal/非 alwaysConfirm 门禁继续有效，dangerous 与能力边界仍归人。等待返回 awaiting_permission，未裁决请求保持挂起；批准后、执行前再次检查中止信号。
+- **生命周期**：子 signal 连接父 run signal，用户中止父任务会立即中止所属子运行；正常结束、错误、删除和退出也会停止未结束子任务并等待有界 settle。单独取消子任务不影响兄弟/无关会话。父 completion 在子清理完成后才 settle，父 scope 随 run 清理释放。强制 cleanup 后迟到的 callback 不再持久化/广播，过期 run 也不能取消新 run 的权限请求。模型必须等待所需子结果才给最终回答；提前结束时遗留子任务被取消。
+- **展示**：renderer 根据 Session.subagent 把子会话分组展示，可打开独立历史、查看创建 provider/model、跳回主会话和停止子任务。主 run 活动时子会话只供查看/停止，不接受额外 UI 输入；main 同时校验父 signal，不能只靠按钮禁用保护。会话和事件继续用既有 shared Session/preload/IPC 契约，无新增通用 IPC 入口。
+
+`subagentPolicy.ts` 保存参数/模型解析与模型工作流指导，`sessionContracts.ts` 保存会话应用接口；测试覆盖跨 provider 并行、上下文隔离、权威消息和工具结果顺序、容量预留、续跑、权限拒绝、权限等待、中止、卡死 settle、迟到写入与 fresh/v5 数据迁移。
+
 ```mermaid
 stateDiagram-v2
   [*] --> Idle

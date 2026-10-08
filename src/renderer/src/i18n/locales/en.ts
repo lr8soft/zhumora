@@ -24,10 +24,14 @@ export default {
       renderer: 'Desktop',
       telegram: 'Telegram',
       qq: 'QQ',
-      mcp: 'MCP'
+      mcp: 'MCP',
+      subagent: 'Subagents'
     }
   },
   chat: {
+    subagentModel: 'Subagent · {{provider}} / {{model}}',
+    subagentParent: 'Open parent chat',
+    subagentOwned: 'The parent agent assigns work. You can inspect output or stop this child while the parent is running.',
     createSessionToStart: 'Create a session to start chatting',
     newSession: 'New Session',
     session: 'Session',

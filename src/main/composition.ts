@@ -31,6 +31,7 @@ import type { AvatarWindowManager } from './avatar/windowManager'
 import { createAvatarTools } from './tools/avatar'
 import { TtsManager } from './tts/manager'
 import { McpServerManager } from './mcpServer/server'
+import { createSubagentTools } from './tools/subagent'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -85,6 +86,7 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     log
   })
   const botSessions = new BotSessionAdapter({ sessions })
+  for (const { name, handler } of createSubagentTools(sessions)) toolRegistry.register(name, handler, 'builtin')
   const mcpServer = new McpServerManager(sessions, botSessions, permissions, toolRegistry, db.getSettings().mcpServer)
   const telegram = new TelegramBotService(botSessions, permissions)
   const qq = new QQBotService(botSessions, permissions, { getFetch })

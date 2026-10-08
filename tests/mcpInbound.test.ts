@@ -1,3 +1,4 @@
+import type { SessionStore } from '../src/main/agent/sessionContracts.ts'
 // MCP 入站服务器（外部编排器 ↔ Zhumora）测试。
 // 覆盖：会话映射唯一性、chat 状态机（完成/busy/abort/输入校验）、
 // 权限委托门禁（ui 模式外部不可裁决、delegate 模式 normal 可裁决、
@@ -8,7 +9,7 @@ import assert from 'node:assert/strict'
 import net, { type AddressInfo } from 'node:net'
 import { AgentAbortedError, type AppSettings, type Session, type UIMessage } from '../src/shared/types.ts'
 import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
-import { SessionService, type SessionStore } from '../src/main/agent/sessionService.ts'
+import { SessionService } from '../src/main/agent/sessionService.ts'
 import type { AgentEventCallbacks, AgentRunOptions } from '../src/main/agent/runner.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
 import { BotSessionAdapter } from '../src/main/bot/sessionAdapter.ts'

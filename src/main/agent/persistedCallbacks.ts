@@ -52,7 +52,8 @@ export function createPersistedAgentCallbacks(
   sessionId: string,
   persistence: AgentPersistence,
   generateId: () => string,
-  events: AgentEventSink
+  events: AgentEventSink,
+  isCurrent: () => boolean = () => true
 ): AgentEventCallbacks {
   let streamingMsgId: string | null = null
   let streamingContent = ''
@@ -71,18 +72,22 @@ export function createPersistedAgentCallbacks(
 
   return {
     onToken: token => {
+      if (!isCurrent()) return
       streamingContent += token
       events.token?.(sessionId, ensureRoundMsgId(), token)
     },
     onReasoningToken: token => {
+      if (!isCurrent()) return
       roundReasoning += token
       streamingReasoning = roundReasoning
       events.reasoning?.(sessionId, ensureRoundMsgId(), token)
     },
     onToolCall: (toolCall, assistantMessageId) => {
+      if (!isCurrent()) return
       events.toolCall?.(sessionId, assistantMessageId, toolCall)
     },
     onToolResult: (toolCallId, toolName, result, isError, durationMs) => {
+      if (!isCurrent()) return null
       const message: UIMessage = {
         id: generateId(), sessionId, role: 'tool', content: result, toolCallId, toolName,
         timestamp: Date.now(), status: isError ? 'error' : 'done'
@@ -92,6 +97,7 @@ export function createPersistedAgentCallbacks(
       return message.id
     },
     onAssistantMessage: (content, toolCalls, reasoning) => {
+      if (!isCurrent()) return null
       let persistedId: string | null = null
       if (content || toolCalls.length > 0 || reasoning) {
         const messageId = ensureRoundMsgId()
@@ -122,9 +128,11 @@ export function createPersistedAgentCallbacks(
       return persistedId
     },
     onTokenUsage: (usage: TokenUsage, model: string) => {
+      if (!isCurrent()) return
       persistence.addTokenUsage(model, usage.prompt_tokens, usage.completion_tokens, Date.now())
     },
     onComplete: () => {
+      if (!isCurrent()) return
       if (!streamingMsgId) {
         const messageId = generateId()
         persistence.addMessage({
@@ -141,6 +149,7 @@ export function createPersistedAgentCallbacks(
       events.complete?.(sessionId, streamingMsgId || '', streamingContent)
     },
     onError: error => {
+      if (!isCurrent()) return
       if (errorHandled) return
       errorHandled = true
       const errorText = `Error: ${error.message}`
@@ -163,9 +172,10 @@ export function createPersistedAgentCallbacks(
       events.error?.(sessionId, error)
     },
     onRetry: (failedAttempt, maxRetries, error) => {
+      if (!isCurrent()) return
       events.retry?.(sessionId, failedAttempt, maxRetries, error)
     },
-    onTruncated: (kind, reason) => events.truncated?.(sessionId, kind, reason),
-    onCompact: info => events.compact?.(sessionId, { source: 'auto', ...info })
+    onTruncated: (kind, reason) => { if (isCurrent()) events.truncated?.(sessionId, kind, reason) },
+    onCompact: info => { if (isCurrent()) events.compact?.(sessionId, { source: 'auto', ...info }) }
   }
 }

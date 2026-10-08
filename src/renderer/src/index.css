@@ -895,3 +895,15 @@ select.input-field { cursor: pointer; }
   .form-grid .span-2, .provider-fields .span-2 { grid-column: span 1; }
   .settings-tabs { grid-template-columns: repeat(3, minmax(0, 1fr)); }
 }
+.subagent-notice {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 12px;
+  padding: 10px 20px;
+  font-size: 0.8rem;
+  color: var(--app-color-text-soft);
+  border-bottom: 1px solid var(--app-color-border);
+}
+.subagent-notice > span { min-width: 0; overflow-wrap: anywhere; }
+.subagent-notice > button { flex-shrink: 0; }

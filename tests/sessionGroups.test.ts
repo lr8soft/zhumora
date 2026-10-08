@@ -33,3 +33,8 @@ groupSessionsByOrigin(input)
 assert.deepEqual(input.map(s => s.id), snapshot)
 
 console.log('session groups projection tests passed')
+
+const child = { ...session('child', 'renderer', 4), subagent: { parentSessionId: 'parent', providerId: 'p', model: 'm' } }
+const withChild = groupSessionsByOrigin([child, session('parent', 'renderer', 3)])
+assert.deepEqual(withChild.map(group => group.origin), ['renderer', 'subagent'])
+assert.deepEqual(withChild[1].sessions, [child], 'delegated sessions remain visible as a separate projection')

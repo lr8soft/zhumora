@@ -12,6 +12,10 @@ export default function ChatView() {
   const sessions = useAppStore(s => s.sessions)
   const settings = useAppStore(s => s.settings)
   const isRunning = useAppStore(s => activeSessionId ? s.runningIds.has(activeSessionId) : false)
+  const parentRunning = useAppStore(s => {
+    const child = s.sessions.find(session => session.id === s.activeSessionId)?.subagent
+    return child ? s.runningIds.has(child.parentSessionId) : false
+  })
   const compactNotice = useAppStore(s => activeSessionId ? s.compactNotices[activeSessionId] : undefined)
   const truncatedNotice = useAppStore(s => activeSessionId ? s.truncatedNotices[activeSessionId] : undefined)
   const isCompacting = useAppStore(s => s.isCompacting)
@@ -93,6 +97,18 @@ export default function ChatView() {
         </div>
       </div>
 
+      {activeSession?.subagent && (
+        <div className="subagent-notice">
+          <span>{t('chat.subagentModel', { provider: settings.providers.find(provider => provider.id === activeSession.subagent?.providerId)?.name
+            || activeSession.subagent.providerId, model: activeSession.subagent.model })}</span>
+          {sessions.some(session => session.id === activeSession.subagent?.parentSessionId) && (
+            <button className="chat-workspace-change" onClick={() => useAppStore.getState().setActiveSession(activeSession.subagent!.parentSessionId)}>
+              {t('chat.subagentParent')}
+            </button>
+          )}
+        </div>
+      )}
+
       {compactNotice && (
         <div className={`compact-notice ${compactNotice.error ? 'error' : ''}`}>
           {compactNotice.error ? <XCircle size={14} /> : <MinusCircle size={14} />}
@@ -121,7 +137,12 @@ export default function ChatView() {
       )}
 
       <MessageViewport key={activeSessionId} sessionId={activeSessionId} />
-      <ChatComposer sessionId={activeSessionId} />
+      {parentRunning ? (
+        <div className="subagent-notice">
+          <span>{t('chat.subagentOwned')}</span>
+          {isRunning && <button className="chat-workspace-change" onClick={() => void window.api.agent.abort(activeSessionId)}>{t('chat.stop')}</button>}
+        </div>
+      ) : <ChatComposer sessionId={activeSessionId} />}
     </div>
   )
 }

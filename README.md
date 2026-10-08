@@ -130,6 +130,14 @@ Avatar 自带程序生成的待机、说话、点头、摇头、打招呼、挥�
 
 项目不附带角色模型。`@pixiv/three-vrm` 代码采用 MIT 许可证，但每个 VRM 模型拥有独立许可；导入和分发模型前请自行确认模型作者的授权范围。
 
+## 子 Agent（初版）
+
+Zhumora 可以在工作时主动创建多个子 Agent；每个子 Agent 有独立会话历史，并可选择设置中已启用的 LLM provider 和模型。可直接提出：“把这项任务拆成独立子任务并行处理，分别用不同 provider，等结果后汇总。”
+
+主 Agent 使用 `spawn_subagent` 创建、`wait_subagents` 等待、`continue_subagent` 继续已有子会话、`cancel_subagent` 停止自己的子任务，`list_subagent_providers` 查看可选 provider。默认继承主运行的 provider/model；切换 provider 时默认使用该 provider 的默认模型。
+
+侧边栏“子 Agent”分组可查看各自输出、创建模型和主会话。初版限制一层子 Agent、每个主运行最多 4 个并行和 8 次启动（含继续）。主任务停止或结束时清理未结束子任务，完整子历史保留；重启后不自动恢复任务。工具仍受统一权限控制，文件、浏览器和物理桌面仍是共享资源。
+
 ## 文档
 
 会话/消息系统的权威架构与开发约束见 [ARCHITECTURE.md](./ARCHITECTURE.md) 和 [AGENTS.md](./AGENTS.md)；工具系统、上下文管理、长期记忆、MCP 和构建细节见 [TECHNICAL.md](./TECHNICAL.md)。

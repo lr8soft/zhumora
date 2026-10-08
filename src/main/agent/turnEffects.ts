@@ -6,10 +6,10 @@
 // （turnDecision.decideTurnOutcome）分开：决策可单测，副作用可审查。
 // ============================================================
 import type { ChatMessage, ToolCall } from '../../shared/types'
-import { log } from '../llm/logger'
+import { log } from '../llm/logger.ts'
 import type { ToolContext, ToolRegistry } from '../tools/registry'
-import { executeToolCall } from './toolExecutor'
-import { LoopDetector, type LoopDetectionConfig } from './loopDetector'
+import { executeToolCall } from './toolExecutor.ts'
+import { LoopDetector, type LoopDetectionConfig } from './loopDetector.ts'
 import {
   EMPTY_CONTINUE_PROMPT,
   MAX_EMPTY_CONTINUATIONS,
@@ -21,7 +21,7 @@ import {
   STREAM_INTERRUPTED_TOOL_ERROR,
   TRUNCATION_CONTINUE_PROMPT,
   TRUNCATION_TOOL_ERROR
-} from './recoveryPolicy'
+} from './recoveryPolicy.ts'
 import type { IncompleteCause, RecoveryDecision } from './turnDecision'
 import type { WorkingConversation } from './workingConversation'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'

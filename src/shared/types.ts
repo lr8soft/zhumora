@@ -99,6 +99,8 @@ export interface Session {
   updatedAt: number
   messageCount: number
   workspacePath?: string
+  /** Persistent delegation provenance; task handles themselves live only for the parent run. */
+  subagent?: { parentSessionId: string; providerId: string; model: string }
   /**
    * 会话来源。由 store 从 bot_sessions 表派生（该表 UNIQUE(session_id)，
    * 每个外部会话至多一个 channel），不是独立持久化状态；未绑定的会话恒为 'renderer'。

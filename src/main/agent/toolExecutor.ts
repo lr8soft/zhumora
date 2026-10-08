@@ -1,6 +1,6 @@
 import type { ChatMessage, ContentPart, ToolCall } from '../../shared/types'
-import { log } from '../llm/logger'
-import { normalizeToolOutput, type ToolContext, type ToolRegistry } from '../tools/registry'
+import { log } from '../llm/logger.ts'
+import { normalizeToolOutput, type ToolContext, type ToolRegistry } from '../tools/registry.ts'
 
 export interface ToolExecutionOptions {
   toolCall: ToolCall
@@ -51,6 +51,11 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
 
       if (!isError && permissionCheck && !(await permissionCheck(name, parsedArgs))) {
         resultText = 'Permission denied'
+        isError = true
+      }
+
+      if (!isError && context.signal?.aborted) {
+        resultText = 'Execution skipped: aborted by user'
         isError = true
       }
 

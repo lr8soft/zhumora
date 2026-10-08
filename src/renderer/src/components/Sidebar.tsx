@@ -10,9 +10,10 @@ import {
   Plus,
   Send,
   Settings2,
+  GitBranch,
   Trash2
 } from 'lucide-react'
-import type { Session, SessionOrigin } from '@shared/types'
+import type { Session } from '@shared/types'
 import { useAppStore } from '../store'
 import { groupSessionsByOrigin } from '../sessionGroups'
 
@@ -26,11 +27,11 @@ const ORIGIN_ICON = {
 function SessionRow({ session, active, running }: { session: Session; active: boolean; running: boolean }) {
   const { t } = useTranslation()
   const { setActiveSession, requestDeleteSession } = useAppStore.getState()
-  const Icon = session.origin === 'renderer' ? MessageSquare : ORIGIN_ICON[session.origin as keyof typeof ORIGIN_ICON] ?? MessageSquare
+  const Icon = session.subagent ? GitBranch : session.origin === 'renderer' ? MessageSquare : ORIGIN_ICON[session.origin as keyof typeof ORIGIN_ICON] ?? MessageSquare
   return (
     <button
       className={active ? 'active' : ''}
-      title={running ? t('sidebar.running') : undefined}
+      title={session.subagent ? `${session.title} · ${session.subagent.model}` : running ? t('sidebar.running') : undefined}
       onClick={() => setActiveSession(session.id)}
     >
       {running

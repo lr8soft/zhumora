@@ -1,7 +1,8 @@
+import type { SessionStore } from '../src/main/agent/sessionContracts.ts'
 import assert from 'node:assert/strict'
 import { AgentAbortedError, type AppSettings, type Session, type UIMessage } from '../src/shared/types.ts'
 import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
-import { SessionBusyError, SessionService, type SessionStore } from '../src/main/agent/sessionService.ts'
+import { SessionBusyError, SessionService } from '../src/main/agent/sessionService.ts'
 import type { AgentEventCallbacks, AgentRunOptions } from '../src/main/agent/runner.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
 

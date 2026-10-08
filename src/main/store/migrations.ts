@@ -141,6 +141,17 @@ const migrations: Migration[] = [
         database.exec('ALTER TABLE sessions ADD COLUMN tts_enabled INTEGER NOT NULL DEFAULT 0')
       }
     }
+  },
+  {
+    version: 6,
+    up(database) {
+      database.exec(`
+        ALTER TABLE sessions ADD COLUMN subagent_parent_id TEXT;
+        ALTER TABLE sessions ADD COLUMN subagent_provider_id TEXT;
+        ALTER TABLE sessions ADD COLUMN subagent_model TEXT;
+        CREATE INDEX idx_sessions_subagent_parent ON sessions(subagent_parent_id);
+      `)
+    }
   }
 ]
 

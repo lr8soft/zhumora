@@ -45,12 +45,13 @@ function normalizeSessionOrigin(channel: unknown): SessionOrigin {
   return channel === 'telegram' || channel === 'qq' || channel === 'mcp' ? channel : 'renderer'
 }
 
-export function createSession(title = 'New Session', workspacePath?: string): Session {
+export function createSession(title = 'New Session', workspacePath?: string, subagent?: Session['subagent']): Session {
   const id = generateId()
   const now = Date.now()
-  db!.prepare('INSERT INTO sessions (id, title, created_at, updated_at, workspace_path) VALUES (?, ?, ?, ?, ?)')
-    .run(id, title, now, now, workspacePath || null)
-  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, origin: 'renderer', avatarEnabled: false, ttsEnabled: false }
+  db!.prepare(`INSERT INTO sessions (id, title, created_at, updated_at, workspace_path,
+    subagent_parent_id, subagent_provider_id, subagent_model) VALUES (?, ?, ?, ?, ?, ?, ?, ?)`)
+    .run(id, title, now, now, workspacePath || null, subagent?.parentSessionId || null, subagent?.providerId || null, subagent?.model || null)
+  return { id, title, createdAt: now, updatedAt: now, messageCount: 0, workspacePath, subagent, origin: 'renderer', avatarEnabled: false, ttsEnabled: false }
 }
 
 export function getSessions(): Session[] {
@@ -70,6 +71,7 @@ export function getSessions(): Session[] {
     updatedAt: r.updated_at,
     messageCount: r.msg_count,
     workspacePath: r.workspace_path || undefined,
+    subagent: readSubagentProvenance(r),
     origin: normalizeSessionOrigin(r.origin),
     avatarEnabled: r.avatar_enabled === 1,
     avatarModelId: r.avatar_model_id || undefined,
@@ -93,11 +95,18 @@ export function getSession(id: string): Session | null {
     updatedAt: row.updated_at,
     messageCount: msgCount,
     workspacePath: row.workspace_path || undefined,
+    subagent: readSubagentProvenance(row),
     origin: normalizeSessionOrigin(row.origin),
     avatarEnabled: row.avatar_enabled === 1,
     avatarModelId: row.avatar_model_id || undefined,
     ttsEnabled: row.tts_enabled === 1
   }
+}
+
+function readSubagentProvenance(row: { subagent_parent_id?: string; subagent_provider_id?: string; subagent_model?: string }): Session['subagent'] {
+  return row.subagent_parent_id && row.subagent_provider_id && row.subagent_model
+    ? { parentSessionId: row.subagent_parent_id, providerId: row.subagent_provider_id, model: row.subagent_model }
+    : undefined
 }
 
 export function updateSessionTitle(id: string, title: string): void {

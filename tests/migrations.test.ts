@@ -10,7 +10,35 @@ assert.ok((fresh.prepare('PRAGMA table_info(bot_sessions)').all() as { name: str
 assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_enabled'))
 assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_model_id'))
 assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'tts_enabled'))
+for (const name of ['subagent_parent_id', 'subagent_provider_id', 'subagent_model']) {
+  assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === name))
+}
+runDatabaseMigrations(fresh)
 fresh.close()
+
+// Previous production schema (v5): upgrade keeps all existing messages/settings.
+const v5 = new Database(':memory:')
+v5.exec(`
+  CREATE TABLE sessions (id TEXT PRIMARY KEY, title TEXT, created_at INTEGER, updated_at INTEGER,
+    workspace_path TEXT, avatar_enabled INTEGER, avatar_model_id TEXT, tts_enabled INTEGER);
+  CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT, content TEXT);
+  CREATE TABLE settings (key TEXT PRIMARY KEY, value TEXT);
+  INSERT INTO sessions VALUES ('parent', 'preserved', 1, 2, 'D:/work', 0, NULL, 0);
+  INSERT INTO messages VALUES ('m', 'parent', 'complete history');
+  INSERT INTO settings VALUES ('settings', '{"activeProviderId":"p"}');
+  PRAGMA user_version = 5;
+`)
+runDatabaseMigrations(v5)
+runDatabaseMigrations(v5)
+assert.equal(v5.pragma('user_version', { simple: true }), 6)
+assert.equal((v5.prepare('SELECT title FROM sessions').get() as { title: string }).title, 'preserved')
+assert.equal((v5.prepare('SELECT content FROM messages').get() as { content: string }).content, 'complete history')
+assert.equal((v5.prepare('SELECT value FROM settings').get() as { value: string }).value, '{"activeProviderId":"p"}')
+v5.prepare(`INSERT INTO sessions (id, subagent_parent_id, subagent_provider_id, subagent_model)
+  VALUES (?, ?, ?, ?)`).run('child', 'parent', 'provider-b', 'model-b')
+assert.deepEqual(v5.prepare('SELECT subagent_parent_id, subagent_provider_id, subagent_model FROM sessions WHERE id=?').get('child'),
+  { subagent_parent_id: 'parent', subagent_provider_id: 'provider-b', subagent_model: 'model-b' })
+v5.close()
 
 const legacy = new Database(':memory:')
 legacy.exec(`

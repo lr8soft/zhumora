@@ -24,10 +24,14 @@ export default {
       renderer: '桌面',
       telegram: 'Telegram',
       qq: 'QQ',
-      mcp: 'MCP'
+      mcp: 'MCP',
+      subagent: '子 Agent'
     }
   },
   chat: {
+    subagentModel: '子 Agent · {{provider}} / {{model}}',
+    subagentParent: '打开主会话',
+    subagentOwned: '由主 Agent 分配任务；主任务运行期间可查看输出或停止此子任务。',
     createSessionToStart: '创建会话开始对话',
     newSession: '新建会话',
     session: '会话',
