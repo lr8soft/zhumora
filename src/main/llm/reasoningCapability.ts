@@ -7,6 +7,7 @@
 // 需要说明失效条件的缓存状态。llama.cpp 之外的端点 404，返回"未声明"。
 // ============================================================
 import type { ProviderConfig, ReasoningCapability } from '../../shared/types'
+import { createProviderRequestHeaders } from '../../shared/providerHeaders'
 import { getFetch } from '../net/fetch'
 import { log } from './logger'
 import { decodeReasoningCapability, UNKNOWN_REASONING_CAPABILITY } from './reasoning'
@@ -26,8 +27,7 @@ export async function probeReasoningCapability(
   const baseUrl = (provider.baseUrl || '').replace(/\/$/, '')
   if (!baseUrl) return UNKNOWN_REASONING_CAPABILITY
   const root = baseUrl.replace(/\/v1$/, '')
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (provider.apiKey) headers.Authorization = `Bearer ${provider.apiKey}`
+  const headers = createProviderRequestHeaders(provider)
 
   for (const url of [`${root}/props`, `${root}/v1/props`]) {
     try {

@@ -4,6 +4,7 @@
 // ============================================================
 import type { ChatMessage, ProviderConfig, ToolCall, ToolDefinition } from '../../shared/types'
 import { hasValidToolCalls } from '../../shared/toolCalls'
+import { createProviderRequestHeaders } from '../../shared/providerHeaders'
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
 import { HttpError, getMaxRetries, isRetriableError, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
@@ -207,10 +208,7 @@ async function attemptStreamChat(
   try {
     const resp = await getFetch()(url, {
       method: 'POST',
-      headers: {
-        'Content-Type': 'application/json',
-        ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {})
-      },
+      headers: createProviderRequestHeaders(provider),
       body: JSON.stringify(body),
       signal: ctrl.signal
     })
@@ -283,10 +281,7 @@ export async function complete(
     async () => {
       const resp = await getFetch()(url, {
         method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          ...(provider.apiKey ? { Authorization: `Bearer ${provider.apiKey}` } : {})
-        },
+        headers: createProviderRequestHeaders(provider),
         body: JSON.stringify({
           model: model || provider.defaultModel,
           messages: messages.map(m => {

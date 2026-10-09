@@ -1,9 +1,7 @@
-export function createProviderDiscoveryHeaders(apiKey: string): Record<string, string> {
-  const headers: Record<string, string> = { 'Content-Type': 'application/json' }
-  if (apiKey) headers.Authorization = `Bearer ${apiKey}`
-  return headers
-}
+import { createHash } from 'node:crypto'
+import type { ProviderConfig } from '../../shared/types.ts'
+import { providerRequestIdentity } from '../../shared/providerHeaders.ts'
 
-export function providerDiscoveryCacheKey(baseUrl: string, apiKey: string): string {
-  return `${baseUrl}::${apiKey || 'anonymous'}`
+export function providerDiscoveryCacheKey(provider: Pick<ProviderConfig, 'baseUrl' | 'apiKey' | 'headers'>): string {
+  return createHash('sha256').update(providerRequestIdentity(provider)).digest('hex')
 }

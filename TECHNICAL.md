@@ -71,10 +71,19 @@ A provider stores:
 - display name
 - base URL
 - API key
+- custom HTTP headers (optional; case-insensitive names override defaults, including Authorization)
 - default model
 - temperature
 - reasoning effort
 - context window
+
+API keys keep the default Bearer authentication behavior. Custom headers can
+provide alternative authentication with an empty API key, or supplement it.
+Streaming/non-streaming completions, model discovery, context detection and
+reasoning capability probes share the same header validation and merging policy.
+Settings JSON schema v13 fills missing headers with an empty object. Request
+identity includes effective headers for cache invalidation and stale-response
+guards; header ordering and name casing do not change that identity.
 
 ### Reasoning (thinking) content
 

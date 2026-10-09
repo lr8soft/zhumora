@@ -1,6 +1,10 @@
+import { createHash } from 'node:crypto'
+import { providerRequestIdentity } from '../../shared/providerHeaders.ts'
+
 interface ContextDetectionConfig {
   baseUrl: string
   apiKey: string
+  headers?: Record<string, string>
   contextWindow?: number
 }
 
@@ -25,7 +29,7 @@ export function shouldApplyDetectedContextWindow(
 }
 
 export function contextDetectionCacheKey(provider: ContextDetectionConfig, model: string): string {
-  return `${provider.baseUrl}::${model}::${provider.apiKey ? 'authenticated' : 'anonymous'}`
+  return createHash('sha256').update(JSON.stringify([providerRequestIdentity(provider), model])).digest('hex')
 }
 
 /**

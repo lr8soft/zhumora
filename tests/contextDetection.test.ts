@@ -15,6 +15,21 @@ const provider = {
 assert.equal(configuredContextWindow(provider, true), 32_000, 'Agent runtime honors an explicit override')
 assert.equal(configuredContextWindow(provider, false), null, 'fresh settings detection ignores an old manual value')
 assert.notEqual(
+  contextDetectionCacheKey({ ...provider, apiKey: 'other' }, 'large-context-model'),
+  contextDetectionCacheKey(provider, 'large-context-model'),
+  'credential rotation invalidates context detection'
+)
+assert.notEqual(
+  contextDetectionCacheKey({ ...provider, headers: { 'X-Tenant': 'one' } }, 'large-context-model'),
+  contextDetectionCacheKey(provider, 'large-context-model'),
+  'custom headers invalidate context detection'
+)
+assert.equal(
+  contextDetectionCacheKey({ ...provider, headers: { X: '1', Y: '2' } }, 'large-context-model'),
+  contextDetectionCacheKey({ ...provider, headers: { y: '2', x: '1' } }, 'large-context-model'),
+  'header ordering and casing do not invalidate context detection'
+)
+assert.notEqual(
   contextDetectionCacheKey({ ...provider, apiKey: '' }, 'large-context-model'),
   contextDetectionCacheKey(provider, 'large-context-model'),
   'anonymous fallback must not poison authenticated context detection'

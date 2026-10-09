@@ -3,6 +3,8 @@ import { useTranslation } from 'react-i18next'
 import { Circle, CircleDot, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react'
 import type { ProviderConfig, ReasoningCapability } from '@shared/types'
 import type { ReasoningDialect } from '@shared/reasoning'
+import { providerRequestIdentity } from '@shared/providerHeaders'
+import { ProviderHeadersField, type ProviderHeaderDraft } from './ProviderHeadersField'
 import { useProviderContextDetection } from './useProviderContextDetection'
 import { TEMPERATURE_MAX, TEMPERATURE_MIN, TEMPERATURE_STEP, TemperatureInput } from './TemperatureInput'
 
@@ -10,6 +12,8 @@ interface Props {
   providers: ProviderConfig[]
   activeId: string | null
   onChange: (providers: ProviderConfig[], activeId: string | null) => void
+  headerDrafts: Record<string, ProviderHeaderDraft>
+  onHeaderChange: (id: string, text: string) => void
 }
 
 /**
@@ -23,16 +27,16 @@ function reasoningCapabilityHintKey(capability: ReasoningCapability): string {
   return 'settings.providers.reasoningCapability.unknown'
 }
 
-export function ProviderSettings({ providers, activeId, onChange }: Props) {
+export function ProviderSettings({ providers, activeId, onChange, headerDrafts, onHeaderChange }: Props) {
   const { t } = useTranslation()
   const { detecting, detected, detectContextWindow, reasoningCapabilities } = useProviderContextDetection({ providers, activeId, onChange })
-  // 模型列表状态：key = `${providerId}::${baseUrl}`（baseUrl 变了旧列表自动失效）
+  // 视图实例缓存：providerId + 有效请求配置，配置变化失效，卸载时释放。
   const [modelLists, setModelLists] = useState<Record<string, { id: string; name?: string; ownedBy?: string }[]>>({})
   const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
   const [modelsError, setModelsError] = useState<Record<string, string>>({})
   const [openModelList, setOpenModelList] = useState<string | null>(null)
 
-  const listKey = (p: { id: string; baseUrl: string }) => `${p.id}::${p.baseUrl}`
+  const listKey = (p: ProviderConfig) => `${p.id}::${providerRequestIdentity(p)}`
 
   /** 拉取模型列表（聚焦时懒加载；刷新按钮 force 强拉） */
   const loadModels = async (idx: number, force: boolean) => {
@@ -71,6 +75,7 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
       name: 'New Provider',
       baseUrl: 'https://api.zhuminet.com/v1',
       apiKey: '',
+      headers: {},
       defaultModel: '',
       enabled: true,
       temperature: undefined,
@@ -215,10 +220,15 @@ export function ProviderSettings({ providers, activeId, onChange }: Props) {
                 onChange={(e) => updateProvider(i, { apiKey: e.target.value })}
                 onBlur={() => {
                   const current = providers.find(provider => provider.id === p.id)
-                  if (current?.apiKey) void detectContextWindow(current)
+                  if (current) void detectContextWindow(current)
                 }}
               />
             </div>
+            <ProviderHeadersField
+              headers={p.headers}
+              draft={headerDrafts[p.id]}
+              onChange={text => onHeaderChange(p.id, text)}
+            />
             <div className="form-field span-2">
               <div className="switch-row">
                 <div>

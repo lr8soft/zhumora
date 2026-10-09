@@ -1,6 +1,7 @@
 import { ipcMain, dialog, shell, type BrowserWindow } from 'electron'
 import { promises as fsPromises } from 'node:fs'
 import type { AppSettings } from '../../shared/types'
+import { validateProviderRequest } from '../../shared/providerHeaders'
 import * as db from '../store/db'
 import { detectProviderContextWindow } from '../agent/context'
 import { shouldApplyDetectedContextWindow } from '../agent/contextDetectionPolicy'
@@ -152,6 +153,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
   })
   ipcMain.handle('provider:context-window', async (_event, provider: AppSettings['providers'][0], modelOverride?: string, requested?: boolean) => {
     try {
+      provider = validateProviderRequest(provider)
       const detected = await detectProviderContextWindow(provider, modelOverride)
       // 显式手动值优先于探测（TECHNICAL.md）：非用户显式请求时不覆盖已配置值
       if (!shouldApplyDetectedContextWindow(provider, requested === true)) return {}
@@ -161,11 +163,11 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     }
   })
   ipcMain.handle('provider:models', (_event, provider: AppSettings['providers'][0], force?: boolean) =>
-    listProviderModels(provider, force === true))
+    listProviderModels(validateProviderRequest(provider), force === true))
   /** 探测端点是否声明接受"思考强度"参数（llama.cpp /props 的 chat_template_caps）。
    *  只用于设置页如实展示；不落库、不参与运行路径，探测失败返回"未声明"。 */
   ipcMain.handle('provider:reasoning-capability', (_event, provider: AppSettings['providers'][0], modelOverride?: string) =>
-    probeReasoningCapability(provider, modelOverride))
+    probeReasoningCapability(validateProviderRequest(provider), modelOverride))
 
   ipcMain.handle('memory:list', (_event, options?: { category?: string; search?: string; limit?: number }) =>
     db.getMemories({ category: options?.category as any, search: options?.search, limit: options?.limit }))

@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import type { ProviderConfig, ReasoningCapability } from '@shared/types'
+import { providerRequestIdentity } from '@shared/providerHeaders'
 
 interface Options {
   providers: ProviderConfig[]
@@ -8,16 +9,7 @@ interface Options {
 }
 
 const signatureOf = (provider: ProviderConfig) =>
-  `${provider.baseUrl}\u0000${provider.apiKey}\u0000${provider.defaultModel}`
-
-/**
- * Signature for the reasoning-capability probe: only the fields that decide what
- * is probed. Context detection additionally requires a credential, but local
- * endpoints (llama.cpp) usually have no API key and are exactly the ones that
- * declare this capability, so it must not reuse `signatureOf`.
- */
-const capabilitySignatureOf = (provider: ProviderConfig) =>
-  `${provider.baseUrl}\u0000${provider.defaultModel}`
+  `${providerRequestIdentity(provider)}\u0000${provider.defaultModel}`
 
 /**
  * Probes provider endpoints for their declared capabilities: context window and
@@ -52,7 +44,7 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
     const signature = signatureOf(provider)
     const requestKey = `${provider.id}\u0000${signature}`
     if (!provider.baseUrl || inFlight.current.has(requestKey)) return
-    if (provider.apiKey) autoSignatures.current[provider.id] = signatureOf(provider)
+    autoSignatures.current[provider.id] = signatureOf(provider)
     inFlight.current.add(requestKey)
     setDetecting(state => ({ ...state, [provider.id]: true }))
     try {
@@ -81,7 +73,7 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = []
     for (const provider of providers) {
-      if (!provider.baseUrl || !provider.apiKey) {
+      if (!provider.baseUrl || (!provider.apiKey && !Object.keys(provider.headers ?? {}).length)) {
         delete autoSignatures.current[provider.id]
         continue
       }
@@ -94,8 +86,8 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
     return () => timers.forEach(clearTimeout)
   }, [providers])
 
-  // Capability declaration is probed without a credential (see
-  // capabilitySignatureOf) and only re-probed when the target changes.
+  // Capability declaration also supports anonymous local endpoints; credential
+  // changes trigger a new probe and invalidate late results.
   useEffect(() => {
     const timers: ReturnType<typeof setTimeout>[] = []
     for (const provider of providers) {
@@ -103,7 +95,7 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
         delete capabilitySignatures.current[provider.id]
         continue
       }
-      const signature = capabilitySignatureOf(provider)
+      const signature = signatureOf(provider)
       if (capabilitySignatures.current[provider.id] === signature) continue
       timers.push(setTimeout(() => {
         if (capabilitySignatures.current[provider.id] === signature) return
@@ -111,7 +103,7 @@ export function useProviderContextDetection({ providers, activeId, onChange }: O
         void window.api.provider.reasoningCapability(provider, provider.defaultModel)
           .then(capability => {
             const current = providersRef.current.find(item => item.id === provider.id)
-            if (!current || capabilitySignatureOf(current) !== signature) return
+            if (!current || signatureOf(current) !== signature) return
             setReasoningCapabilities(state => ({ ...state, [provider.id]: capability }))
           })
           .catch(() => {

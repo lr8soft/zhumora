@@ -46,6 +46,8 @@ export interface ProviderConfig {
   name: string                     // 用户起的名字
   baseUrl: string                  // OpenAI 兼容端点，如 https://api.openai.com/v1
   apiKey: string
+  /** 自定义 HTTP 请求头，按名称忽略大小写覆盖默认头（包括 Authorization）。 */
+  headers?: Record<string, string>
   defaultModel: string
   enabled: boolean
   temperature?: number             // 采样温度，不设则由 API 默认

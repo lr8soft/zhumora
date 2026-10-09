@@ -323,6 +323,14 @@ stateDiagram-v2
 
 ## 10. 依赖与文件边界
 
+### LLM Provider 请求配置
+
+- Provider 的 `apiKey` 保留默认 `Authorization: Bearer ...` 语义；可选 `headers` 保存字符串键值。`shared/providerHeaders.ts` 是唯一请求头归一化、校验与合并策略：名称按小写规范化，自定义头按名称忽略大小写覆盖默认头（含 Authorization / Content-Type），API Key 留空时不生成默认 Authorization。
+- settings JSON schema v13 由 `normalizeSettings` 为旧 provider 补 `{headers: {}}`，不改变 SQLite 表结构。非法名称、重复名称（忽略大小写）、非字符串值或 HTTP 非法字符拒绝保存；provider 探测 IPC 同时校验 renderer 草稿配置，网络请求不能绕过头校验。preload/renderer 继续共用 `ProviderConfig`，不新增通用 IPC。
+- `llm/provider.ts` 的流式/非流式补全、模型列表、上下文窗口及思考能力探测均使用同一个请求头函数。会话、Bot、子 Agent、标题和压缩沿现有 provider 注入链消费配置，不拥有第二份认证状态。
+- 模型列表/上下文缓存 key 包含端点、有效请求头（上下文另含模型）；main 中以哈希保存身份，配置变化自然失效，header key 大小写和排列变化不失效。模型列表保留 5 分钟 TTL/force，上下文保留进程生命周期/forceRefresh；renderer 的模型列表缓存与迟到探测响应防护同样包含有效头，设置视图卸载释放。
+- 请求头原始编辑文本由设置视图持有，切换标签保留；仅合法文本进入 settings 草稿，非法文本阻止保存，取消/离开设置释放。header 值与 API Key 都是凭据，不进入模型提示词/会话历史，不记录到日志或校验错误。
+
 | 文件/目录 | 允许职责 |
 |---|---|
 | `src/main/agent/sessionService.ts` | 会话应用用例、运行所有权、依赖编排 |

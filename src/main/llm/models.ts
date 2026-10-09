@@ -5,7 +5,8 @@
 import type { ProviderConfig } from '../../shared/types'
 import { getFetch } from '../net/fetch'
 import { log } from './logger'
-import { createProviderDiscoveryHeaders, providerDiscoveryCacheKey } from './providerDiscovery'
+import { providerDiscoveryCacheKey } from './providerDiscovery'
+import { createProviderRequestHeaders } from '../../shared/providerHeaders'
 
 export interface ModelListItem {
   id: string
@@ -38,11 +39,11 @@ export async function listProviderModels(provider: ProviderConfig, force = false
   const baseUrl = (provider.baseUrl || '').replace(/\/$/, '')
   if (!baseUrl) return { models: [], error: 'baseUrl is empty' }
 
-  const cacheKey = providerDiscoveryCacheKey(baseUrl, provider.apiKey)
+  const cacheKey = providerDiscoveryCacheKey(provider)
   const cached = cache.get(cacheKey)
   if (!force && cached && Date.now() - cached.ts < CACHE_TTL_MS) return cached.result
 
-  const headers = createProviderDiscoveryHeaders(provider.apiKey)
+  const headers = createProviderRequestHeaders(provider)
 
   try {
     const resp = await getFetch()(`${baseUrl}/models`, { headers, signal: AbortSignal.timeout(LIST_TIMEOUT_MS) })

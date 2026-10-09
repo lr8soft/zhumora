@@ -1,4 +1,6 @@
-import { useEffect } from 'react'
+import { useEffect, useState } from 'react'
+import { parseProviderHeaders } from '@shared/providerHeaders'
+import type { ProviderHeaderDraft } from './settings/ProviderHeadersField'
 import { useTranslation } from 'react-i18next'
 import { BarChart3, Brain, Cable, MessagesSquare, PlugZap, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
 import { useAppStore, type SettingsTab } from '../store'
@@ -33,6 +35,23 @@ export default function SettingsView() {
   const { t } = useTranslation()
   // 设置页只操作草稿；Save 写库、Cancel 丢弃（草稿模式，避免"改一个字就入库"）
   const { settingsDraft, isSettingsDirty, settingsTab, setSettingsTab, openSettings, saveSettings, cancelSettings, setView } = useAppStore()
+  // Raw header text belongs to this settings view so switching tabs preserves incomplete lines.
+  const [headerDrafts, setHeaderDrafts] = useState<Record<string, ProviderHeaderDraft>>({})
+  const invalidHeaders = settingsDraft.providers.some(provider => headerDrafts[provider.id]?.invalid)
+
+  const updateHeaderDraft = (id: string, text: string) => {
+    let headers: Record<string, string>
+    try {
+      headers = parseProviderHeaders(text)
+    } catch {
+      setHeaderDrafts(state => ({ ...state, [id]: { text, invalid: true } }))
+      return
+    }
+    setHeaderDrafts(state => ({ ...state, [id]: { text, invalid: false } }))
+    const store = useAppStore.getState()
+    const providers = store.settingsDraft.providers.map(provider => provider.id === id ? { ...provider, headers } : provider)
+    store.updateSettingsDraft({ providers })
+  }
 
   // 进入设置页时初始化草稿（每次 mount 都刷新一次，防止上次未保存的草稿残留）
   useEffect(() => {
@@ -42,6 +61,7 @@ export default function SettingsView() {
   const tabs: SettingsTab[] = ['providers', 'mcp', 'mcpServer', 'bots', 'bbs', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
+    if (invalidHeaders) return
     await saveSettings()
     // 保存成功后回到聊天页（与旧行为一致）
     setView('chat')
@@ -80,6 +100,8 @@ export default function SettingsView() {
         {settingsTab === 'providers' && <ProviderSettings
           providers={settingsDraft.providers}
           activeId={settingsDraft.activeProviderId}
+          headerDrafts={headerDrafts}
+          onHeaderChange={updateHeaderDraft}
           onChange={(providers, activeId) => useAppStore.getState().updateSettingsDraft({ providers, activeProviderId: activeId })}
         />}
         {settingsTab === 'mcp' && <McpSettings
@@ -127,6 +149,7 @@ export default function SettingsView() {
 
         {/* 保存 / 取消 */}
         <div className="settings-footer">
+          {invalidHeaders && <span className="settings-dirty-hint" role="alert">{t('settings.providers.customHeadersInvalid')}</span>}
           {isSettingsDirty && <span className="settings-dirty-hint">{t('settings.unsaved')}</span>}
           <button className="btn-ghost" onClick={handleCancel}>
             {t('settings.cancel')}
@@ -134,7 +157,7 @@ export default function SettingsView() {
           <button
             className="btn-primary"
             onClick={handleSave}
-            disabled={!isSettingsDirty}
+            disabled={!isSettingsDirty || invalidHeaders}
           >
             {t('settings.save')}
           </button>

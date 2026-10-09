@@ -9,6 +9,7 @@
 // 多次压缩是增量的：新摘要会把旧摘要一并折叠进去。
 // ============================================================
 import { extractTextContent } from '../../shared/multimodal'
+import { createProviderRequestHeaders } from '../../shared/providerHeaders'
 import type { ChatMessage, ProviderConfig } from '../../shared/types'
 import { COMPACT_SUMMARY_PREFIX } from '../../shared/types'
 import { complete } from '../llm/provider'
@@ -30,8 +31,8 @@ const TOOL_RESULT_CHAR_LIMIT = 2_000
 /** 摘要输入中每条文本的最大字符（防止单条超长消息撑爆摘要 prompt） */
 const MAX_SINGLE_MSG_CHARS = 4_000
 
-// 缓存：endpoint + model + 是否携带认证 → contextWindow。
-// 区分匿名/认证请求，避免“未填 Key 时的保守兜底”污染补填 Key 后的探测。
+// 缓存：endpoint + model + 有效请求头 → contextWindow；配置变化自然失效。
+// 与现有生命周期一致，应用退出释放；forceRefresh 绕过缓存。
 const contextWindowCache = new Map<string, number>()
 
 // ============================================================
@@ -138,12 +139,7 @@ async function resolveContextWindow(
   }
 
   const baseUrl = provider.baseUrl.replace(/\/$/, '')
-  const headers: Record<string, string> = {
-    'Content-Type': 'application/json'
-  }
-  if (provider.apiKey) {
-    headers['Authorization'] = `Bearer ${provider.apiKey}`
-  }
+  const headers = createProviderRequestHeaders(provider)
 
   let nCtx: number | null = null
 

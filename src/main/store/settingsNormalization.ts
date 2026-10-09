@@ -8,9 +8,10 @@ import { normalizeBrowserTarget, normalizeCustomBrowserPath } from '../../shared
 import { normalizeBbsConfig } from '../../shared/bbs.ts'
 import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/mcpServer.ts'
 import { normalizeReasoningDialect } from '../../shared/reasoning.ts'
+import { normalizeProviderHeaders } from '../../shared/providerHeaders.ts'
 import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 12
+export const SETTINGS_SCHEMA_VERSION = 13
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {
@@ -21,6 +22,7 @@ export function defaultSettings(workspacePath: string): AppSettings {
         name: '煮米 API',
         baseUrl: 'https://api.zhuminet.com/v1',
         apiKey: '',
+        headers: {},
         defaultModel: '',
         enabled: true
       }
@@ -51,7 +53,7 @@ export function defaultSettings(workspacePath: string): AppSettings {
 }
 
 /**
- * Provider 列表的结构归一化：目前只有思考强度方言需要收口（未知值回落 'auto'）。
+ * Provider 列表的结构归一化：思考强度方言和自定义请求头在此收口。
  * 其余字段保持原样——它们的默认值由各消费方（上下文窗口探测、模型列表、
  * 用量统计）决定，在这里补默认值会形成第二份默认值定义。
  */
@@ -61,6 +63,7 @@ function normalizeProviders(input: unknown): AppSettings['providers'] | null {
     if (!provider || typeof provider !== 'object') return provider
     return {
       ...provider,
+      headers: normalizeProviderHeaders((provider as AppSettings['providers'][number]).headers),
       reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect)
     }
   })
