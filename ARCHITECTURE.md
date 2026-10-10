@@ -353,16 +353,19 @@ stateDiagram-v2
 
 ### Renderer 聊天页更新边界
 
-聊天页将高频输入和长历史渲染分成两个独立更新边界：
+聊天主页是对话执行画布，高频输入与流程图分成两个独立更新边界：
 
 - `ChatComposer` 持有未发送文字、待发送附件和输入区菜单等短生命周期 UI 状态。键盘输入只允许重渲染 composer，不得把草稿状态提升到消息列表 owner，也不得写入 main/数据库。
-- `MessageViewport` 按显式 `sessionId` 订阅该会话的消息、重试和压缩投影，负责消息列表派生数据与滚动。它不读取 composer 草稿，后台会话更新也不得触发当前 viewport。长历史由 Virtuoso 按动态高度虚拟化；row key 必须来自权威消息 ID 或显式派生事件 key，不能使用数组位置。
-- 工具调用展示是两层纯投影，共享同一节点视图（`ToolCallChainView`，节点 = 一次 `toolCall`，横向滚动 + 链下固定详情面板）：
-  - **单消息并行链**：`MessageBubble` 把一条 assistant 消息内的 `toolCalls`（并行调用占多格）渲染为一条横向链条；该消息的正文与 reasoning 块照常独立展示。这是主力路径——reasoning 类 provider 的每个工具轮几乎都携带 reasoning/content，靠跨轮聚合组不成链。
-  - **跨轮工具链**：`buildTimelineRows` 把连续的**纯工具轮**（有 `toolCalls`、无正文、无 reasoning 的 assistant 消息）聚合为一条链行（`ToolChainTimelineRow`），对会发纯工具轮的 provider 进一步压缩垂直空间。行 key 取首个成员 id 保持稳定，结果落位/状态翻转/成员追加走 revision 变化重渲染。
-- 两层都不拥有或改写消息：节点状态只按 `toolCall.id → role=tool 消息` 精确映射；虚拟列表只渲染投影结果；DB 和 renderer session cache 仍保存完整历史。节点选中、详情展开、横向滚动跟随都是组件短生命周期 UI 状态，不进 store，不新增 IPC/持久化状态。
-- 自动跟随输出只在用户已经位于底部时开启；用户上翻阅读后，新 token 不得强制抢回滚动位置。切换会话时按该会话的末尾初始化 viewport。
-- `ChatView` 只组合 header、通知、viewport 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。
+- `ConversationFlow` 按显式 `sessionId` 挂载独立 React Flow 画布。`useFlowGraph` 只订阅主会话与当前展开委托的消息、运行/权限/重试投影；未展开旧轮次的子历史不预加载，无关会话 token 不触发当前画布。输入草稿不进入图组件。
+- `flow/history.ts` 在唯一解码边界识别内置 `spawn_subagent / continue_subagent / wait_subagents` 的结构化 JSON 文本结果，核对 task/session 与 `Session.subagent.parentSessionId`；普通工具输出不能创建分支。每次继续使用该子会话下一条 user input 对应的轮次，不把后续独立 UI 对话串进旧委托。
+- `flow/buildGraph.ts` 与 `projection.ts` 是纯投影：用户输入、每轮 LLM、每个工具调用、摘要/压缩边界和折叠轮次分别生成节点；消息节点从 sessionId + 权威 messageId 派生，工具节点另带该 assistant messageId + toolCallId，防止 provider 在后续轮次复用调用 ID 时覆盖旧节点。`indexToolResults` 仅在声明的 assistant/tool 原子组内按调用 ID 精确合入结果，孤儿结果单独保留，不按工具名或最后 streaming 消息猜测。普通工具按 runner 的串行顺序连线，尚未返回的后续工具为待执行，非活动会话的残留调用为未完成，不能伪装成运行中。
+- 子任务从具体创建/继续调用节点分叉，在独立泳道展开。子完成本身不产生回流；只有 `wait_subagents` 实际取回匹配 task/session 的终态结果才连到该 wait 节点。布局在汇合时把主流程推进到子结果之后，执行边保持从左向右。失败、取消结果也可被父任务取回，但 running/awaiting_permission 快照不得伪装为完成汇合。
+- 图是历史与事件的可丢弃投影，DB 和 renderer session cache 始终保存完整消息。历史默认按用户轮次折叠，最新轮次始终展开；展开、选中、详情 tab、缩放、平移、跟随开关均属于组件短生命周期状态，不新增 Agent runtime 或持久化图状态。
+- 正文/reasoning、参数、工具结果与用户图片在 `FlowInspector` 显示；Markdown 与 Mermaid 继续走原安全渲染边界。权限保持原全局 FIFO 确认弹窗，画布仅显示按会话等待确认的只读投影，不猜测缺失的 toolCallId、不产生新裁决入口。
+- 图卡片固定尺寸，流式 token 不重排图或移动镜头；结构变化才推进自动跟随。用户平移/缩放后停用跟随，可显式恢复。节点 memo + 视口裁剪限制重渲染；主题沿用既有浅色冷白、深色中性灰令牌。
+- 初次加载子历史时，`applyHistorySnapshot` 按权威 ID 保留在读取期间收到、尚未包含在快照中的活动消息与流式内容；匹配的 DB 行是已落库终态，始终优先，非活动会话完全采用 DB 快照。迟到的 renderer invoke 用 `applyAuthoritativeUserMessage` 替换 pending：已在快照中出现的权威 user 只更新一次并移除占位，不能重复追加或移到回答之后。complete/error/abort 后的原重拉校准语义保持不变。
+- 当前恢复的是消息中可验证的执行拓扑，未新增持久化 run/task 日志。历史工具耗时、完整重试/审批轨迹仍不能凭空还原；活动 task_id 的 owner 与生命周期仍是父 run 的 SubagentScope。
+- `ChatView` 只组合 header、通知、canvas 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。旧 MessageViewport/MessageBubble/ToolCallChain 展示路径已移除。
 
 完整历史仍由数据库和 renderer session cache 保存。展示层的组件拆分、memo 和虚拟化只能减少渲染工作，不得改变消息 ID、持久化内容、压缩边界或 `SessionService` 所有权。
 

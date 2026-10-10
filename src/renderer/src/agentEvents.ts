@@ -19,6 +19,23 @@ export interface TokenDelta {
   reasoning: string
 }
 
+/** A history read can settle after live child events. Preserve those authoritative IDs while the run is active. */
+export function applyHistorySnapshot(snapshot: UIMessage[], current: UIMessage[], running: boolean): UIMessage[] {
+  if (!running || !current.length) return snapshot
+  const loadedIds = new Set(snapshot.map(message => message.id))
+  // Assistant messages only enter the DB at turn end. A matching DB row is final and must win over streaming overlays.
+  return [...snapshot, ...current.filter(message => !loadedIds.has(message.id))]
+}
+
+/** A fast run can land in a history snapshot before its invoke returns. Replace pending by ID without duplicating that DB row. */
+export function applyAuthoritativeUserMessage(message: UIMessage, pendingId: string, messages: UIMessage[]): UIMessage[] {
+  if (messages.some(item => item.id === message.id)) {
+    return applyPersistedMessage(message, messages.filter(item => item.id !== pendingId))
+  }
+  if (messages.some(item => item.id === pendingId)) return messages.map(item => item.id === pendingId ? message : item)
+  return applyPersistedMessage(message, messages)
+}
+
 /** A main-persisted message (including external bot user input) is authoritative by ID. */
 export function applyPersistedMessage(message: UIMessage, messages: UIMessage[]): UIMessage[] {
   const index = messages.findIndex(item => item.id === message.id)

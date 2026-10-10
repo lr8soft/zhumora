@@ -15,7 +15,9 @@ import {
   applyPersistedMessage,
   applyToolCallEvent,
   applyToolResultEvent,
-  applyTokenDeltas
+  applyTokenDeltas,
+  applyHistorySnapshot,
+  applyAuthoritativeUserMessage
 } from '../src/renderer/src/agentEvents.ts'
 
 const NOW = 1_700_000_000_000
@@ -25,6 +27,29 @@ const msg = (over: Partial<UIMessage> & { id: string }): UIMessage => ({
 const toolCall = (id: string, name = 'read'): ToolCall => ({
   id, type: 'function', function: { name, arguments: '{}' }
 })
+
+// A child history IPC read must not overwrite messages delivered while it was in flight.
+{
+  const user = msg({ id: 'u', role: 'user', content: 'task', status: 'done' })
+  const streaming = msg({ id: 'a', content: 'new streamed content', status: 'streaming' })
+  const tool = msg({ id: 't', role: 'tool', toolCallId: 'c', content: 'live result', status: 'done' })
+  const snapshot = [user]
+  const live = applyHistorySnapshot(snapshot, [user, streaming, tool], true)
+  assert.deepEqual(live.map(message => message.id), ['u', 'a', 't'])
+  assert.equal(live[1], streaming, 'streamed content stays aligned with its main ID')
+  assert.deepEqual(applyHistorySnapshot(snapshot, live, false), snapshot, 'settled history is wholly authoritative')
+  const ended = { ...streaming, content: 'complete authoritative answer', status: 'done' as const }
+  assert.equal(applyHistorySnapshot([user, ended], live, true)[1], ended, 'a matching finalized DB message wins')
+}
+{
+  const pending = msg({ id: 'pending-u', role: 'user', content: 'task' })
+  const user = { ...pending, id: 'main-u', status: 'done' as const }
+  const answer = msg({ id: 'answer', content: 'done', status: 'done' })
+  assert.deepEqual(applyAuthoritativeUserMessage(user, pending.id, [pending, answer]), [user, answer])
+  assert.deepEqual(applyAuthoritativeUserMessage(user, pending.id, [user, answer, pending]), [user, answer],
+    'a history snapshot followed by a late invoke cannot duplicate the user node or move it after its answer')
+  assert.deepEqual(applyAuthoritativeUserMessage(user, pending.id, []), [user], 'the authoritative invoke cannot be lost')
+}
 
 // ---- applyPersistedMessage ----
 {

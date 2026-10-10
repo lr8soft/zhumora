@@ -4,7 +4,8 @@ import { FolderOpen, MinusCircle, Scissors, Shrink, XCircle } from 'lucide-react
 
 import { useAppStore } from '../store'
 import ChatComposer from './ChatComposer'
-import MessageViewport, { EmptyConversationHero } from './MessageViewport'
+import ConversationFlow from './ConversationFlow'
+import EmptyConversationHero from './EmptyConversationHero'
 
 export default function ChatView() {
   const { t } = useTranslation()
@@ -136,7 +137,7 @@ export default function ChatView() {
         </div>
       )}
 
-      <MessageViewport key={activeSessionId} sessionId={activeSessionId} />
+      <ConversationFlow key={activeSessionId} sessionId={activeSessionId} />
       {parentRunning ? (
         <div className="subagent-notice">
           <span>{t('chat.subagentOwned')}</span>

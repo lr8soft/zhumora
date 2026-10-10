@@ -11,6 +11,7 @@ import ja from './locales/ja'
 import es from './locales/es'
 import fr from './locales/fr'
 import de from './locales/de'
+import { flowTranslations } from '../flow/translations'
 
 export type AppLanguage = 'en' | 'zh' | 'ja' | 'es' | 'fr' | 'de' | 'auto'
 
@@ -84,12 +85,12 @@ const effectiveLang = getEffectiveLanguage(storedLang)
 
 i18n.use(initReactI18next).init({
   resources: {
-    en: { translation: en },
-    zh: { translation: zh },
-    ja: { translation: ja },
-    es: { translation: es },
-    fr: { translation: fr },
-    de: { translation: de }
+    en: { translation: { ...en, flow: flowTranslations.en } },
+    zh: { translation: { ...zh, flow: flowTranslations.zh } },
+    ja: { translation: { ...ja, flow: flowTranslations.ja } },
+    es: { translation: { ...es, flow: flowTranslations.es } },
+    fr: { translation: { ...fr, flow: flowTranslations.fr } },
+    de: { translation: { ...de, flow: flowTranslations.de } }
   },
   lng: effectiveLang,
   fallbackLng: 'en',

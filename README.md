@@ -17,6 +17,7 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 
 ## 功能
 
+- 以可视化流程图查看对话、LLM 轮次与工具执行，展开子 Agent 分支并查看结果汇合
 - 支持 OpenAI 兼容 API，也可接入 Ollama、llama.cpp、vLLM 等本地端点
 - 在指定工作目录内读取、编辑、搜索和管理文件
 - 通过按格式划分的内置工具读写 Word、Excel、PowerPoint 和 PDF 文件

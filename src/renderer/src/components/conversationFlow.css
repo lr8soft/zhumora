@@ -1,0 +1,115 @@
+/* The execution canvas uses the existing theme tokens: neutral surfaces, restrained accents, visible borders. */
+.conversation-flow { flex: 1; min-height: 0; min-width: 0; display: flex; flex-direction: column; overflow: hidden; }
+.flow-toolbar { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 11px 18px; flex: 0 0 auto; border-bottom: 1px solid var(--app-color-border); background: var(--app-color-bg); }
+.flow-toolbar-title { display: flex; align-items: center; gap: 8px; min-width: 0; white-space: nowrap; }
+.flow-toolbar-title > svg { color: var(--app-color-text-soft); }
+.flow-toolbar-title strong { font-size: .867rem; font-weight: 650; }
+.flow-toolbar-title > span { font-size: .733rem; color: var(--app-color-text-mute); padding-left: 8px; border-left: 1px solid var(--app-color-border); }
+.flow-toolbar-actions { display: flex; gap: 5px; }
+.flow-toolbar-actions button, .flow-zoom-tools, .flow-inspector-footer button, .flow-load-error button {
+  display: inline-flex; align-items: center; justify-content: center; gap: 5px; padding: 5px 9px; border: 1px solid var(--app-color-border);
+  border-radius: var(--app-radius-md); background: var(--app-color-surface); color: var(--app-color-text-soft); font-size: .733rem; cursor: pointer;
+}
+.flow-toolbar-actions button:hover, .flow-inspector-footer button:hover { color: var(--app-color-text); background: var(--app-muted-bg); }
+.flow-toolbar-actions button.active { border-color: var(--app-color-primary); color: var(--app-color-primary-strong); background: var(--app-color-primary-soft); }
+.flow-toolbar-actions button[aria-pressed='false'] { color: var(--app-color-text-mute); }
+.flow-workspace { flex: 1; display: flex; min-width: 0; min-height: 0; position: relative; overflow: hidden; }
+.flow-canvas { flex: 1; min-width: 0; min-height: 0; position: relative; background: var(--app-card-bg); }
+.flow-canvas .react-flow { --xy-background-color: var(--app-card-bg); --xy-node-color: var(--app-color-text); --xy-node-background-color: var(--app-color-surface); }
+.flow-canvas .react-flow__node-conversation { border-radius: 9px; }
+.flow-card { height: 100%; width: 100%; display: flex; flex-direction: column; border: 1px solid var(--app-color-border-strong); border-radius: 9px;
+  background: var(--app-color-surface); box-shadow: 0 2px 6px color-mix(in srgb, var(--app-color-text) 4%, transparent); overflow: hidden; }
+.flow-card.flow-user { --flow-accent: var(--app-color-primary); }
+.flow-llm, .flow-delegate { --flow-accent: var(--app-color-info); }
+.flow-tool { --flow-accent: var(--app-color-cyan); }
+.flow-join { --flow-accent: var(--app-color-success); }
+.flow-summary, .flow-compaction, .flow-turn { --flow-accent: var(--app-color-text-soft); }
+.flow-card header { display: flex; align-items: center; gap: 8px; padding: 9px 11px; min-height: 37px;
+  border-bottom: 1px solid var(--app-color-border); background: color-mix(in srgb, var(--flow-accent) 5%, var(--app-color-surface)); }
+.flow-card-icon { display: grid; place-items: center; color: var(--flow-accent); flex-shrink: 0; }
+.flow-card header strong { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; flex: 1; font-size: .8rem; font-weight: 600; }
+.flow-card-preview { margin: 9px 11px 5px; font-size: .767rem; line-height: 1.5; overflow: hidden; overflow-wrap: anywhere;
+  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical; color: var(--app-color-text-soft); }
+.flow-card footer { margin-top: auto; display: flex; justify-content: space-between; align-items: center; gap: 8px; padding: 8px 11px; font-size: .667rem; }
+.flow-card footer > span:last-child { display: flex; align-items: center; gap: 2px; color: var(--app-color-text-mute); }
+.flow-node-status { flex-shrink: 0; }
+.flow-status { font-size: .667rem; color: var(--app-color-text-mute); }
+.flow-status.done, .flow-node-status.done { color: var(--app-color-success); }
+.flow-status.error, .flow-node-status.error { color: var(--app-color-danger); }
+.flow-status.running, .flow-node-status.running { color: var(--app-color-primary); }
+.flow-status.unresolved { color: var(--app-color-warn); }
+.flow-card.is-selected { border-color: var(--app-color-primary); box-shadow: 0 0 0 2px color-mix(in srgb, var(--app-color-primary) 22%, transparent); }
+.flow-card:hover { border-color: var(--flow-accent); }
+.flow-canvas .react-flow__handle { width: 7px; height: 7px; min-width: 7px; min-height: 7px; background: var(--app-color-surface); border: 1.5px solid var(--app-color-border-strong); }
+.flow-canvas .react-flow__handle-bottom { border-color: var(--flow-accent); }
+.flow-canvas .react-flow__node:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 3px; }
+.flow-lane { height: 100%; width: 100%; border: 1px dashed color-mix(in srgb, var(--app-color-info) 35%, var(--app-color-border));
+  border-radius: 10px; background: color-mix(in srgb, var(--app-color-info) 3%, var(--app-card-bg)); pointer-events: none; }
+.flow-lane-label { display: flex; align-items: center; gap: 7px; padding: 11px 15px; height: 34px; font-size: .733rem; color: var(--app-color-info); }
+.flow-lane-label strong { flex-shrink: 0; font-weight: 600; }
+.flow-lane-label > span { color: var(--app-color-text-mute); font-size: .667rem; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.flow-lane-label small { margin-left: auto; color: var(--app-color-text-soft); white-space: nowrap; }
+.flow-lane-label small.permission, .flow-runtime-status .permission { color: var(--app-color-warn); }
+.flow-icon-button { width: 26px; height: 26px; display: inline-grid; place-items: center; padding: 0; border: 0; border-radius: 5px; background: transparent;
+  color: var(--app-color-text-mute); cursor: pointer; flex-shrink: 0; }
+.flow-icon-button:hover { background: var(--app-muted-bg); color: var(--app-color-text); }
+.conversation-flow button:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: 2px; }
+.flow-zoom-tools { position: absolute; bottom: 12px; left: 14px; z-index: 5; padding: 2px 3px; gap: 2px; box-shadow: 0 2px 5px color-mix(in srgb, var(--app-color-text) 4%, transparent); }
+.flow-zoom-tools > span { width: 40px; text-align: center; font-variant-numeric: tabular-nums; color: var(--app-color-text-soft); }
+.flow-canvas .react-flow__minimap { width: 144px; height: 88px; border: 1px solid var(--app-color-border); border-radius: 7px;
+  overflow: hidden; background: var(--app-color-surface); margin: 12px; box-shadow: none; }
+.flow-statusbar { flex: 0 0 auto; display: flex; align-items: center; justify-content: space-between; gap: 14px; padding: 8px 18px;
+  border-top: 1px solid var(--app-color-border); background: var(--app-color-bg); font-size: .667rem; color: var(--app-color-text-mute); }
+.flow-legend, .flow-runtime-status { display: flex; align-items: center; gap: 12px; min-width: 0; }
+.flow-legend > span { display: flex; align-items: center; gap: 5px; white-space: nowrap; }
+.flow-legend > span::before { content: ''; width: 5px; height: 5px; border-radius: 50%; background: var(--app-color-info); }
+.flow-legend > span.tool::before { background: var(--app-color-cyan); }
+.flow-runtime-status button { display: flex; align-items: center; gap: 4px; color: var(--app-color-primary-strong); padding: 0; border: 0; background: transparent; font-size: inherit; cursor: pointer; }
+.flow-runtime-status .pulse-dot { width: 5px; height: 5px; }
+.flow-inspector { width: 348px; flex: 0 0 348px; min-height: 0; display: flex; flex-direction: column;
+  background: var(--app-color-bg); border-left: 1px solid var(--app-color-border); z-index: 6; }
+.flow-inspector-header { display: flex; align-items: center; justify-content: space-between; padding: 11px 15px; border-bottom: 1px solid var(--app-color-border); }
+.flow-inspector-header strong { font-size: .8rem; font-weight: 650; }
+.flow-inspector-summary { padding: 16px; }
+.flow-inspector-kind { color: var(--flow-accent, var(--app-color-text-soft)); font-size: .667rem; }
+.flow-inspector-summary h2 { margin: 5px 0 7px; font-size: 1rem; font-weight: 600; overflow-wrap: anywhere; }
+.flow-inspector-summary p { margin-top: 8px; color: var(--app-color-text-mute); font-size: .733rem; overflow-wrap: anywhere; }
+.flow-detail-tabs { display: flex; gap: 12px; padding: 0 16px; border-bottom: 1px solid var(--app-color-border); }
+.flow-detail-tabs button { padding: 9px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--app-color-text-mute); cursor: pointer; font-size: .733rem; }
+.flow-detail-tabs button.active { border-bottom-color: var(--app-color-primary); color: var(--app-color-primary-strong); }
+.flow-detail-body { flex: 1; min-height: 0; padding: 10px 16px 18px; overflow: auto; }
+.flow-detail-section { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; color: var(--app-color-text-mute); font-size: .733rem; }
+.flow-detail-body pre { margin: 0; padding: 12px; border: 1px solid var(--app-color-border); border-radius: var(--app-radius-md); background: var(--app-card-bg);
+  font-family: Consolas, Monaco, monospace; font-size: .733rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }
+.flow-detail-body pre.error { color: var(--app-color-danger); }
+.flow-detail-body .markdown-body { font-size: .8rem; overflow-wrap: anywhere; }
+.flow-detail-body .markdown-body h1 { font-size: 1.2rem; }
+.flow-detail-body .markdown-body h2 { font-size: 1.05rem; }
+.flow-detail-body .markdown-body h3 { font-size: .933rem; }
+.flow-detail-body .markdown-body table { display: block; overflow-x: auto; max-width: 100%; }
+.flow-detail-images { display: grid; gap: 10px; margin-top: 12px; }
+.flow-detail-images img { width: 100%; height: auto; border: 1px solid var(--app-color-border); border-radius: 7px; }
+.flow-detail-model { display: flex; align-items: center; gap: 6px; margin-top: 18px; color: var(--app-color-text-mute); font-size: .733rem; }
+.flow-inspector-footer { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px; border-top: 1px solid var(--app-color-border); }
+.flow-inspector-footer button.danger { color: var(--app-color-danger); }
+.flow-load-error { display: flex; align-items: center; gap: 8px; padding: 8px 18px; color: var(--app-color-danger); font-size: .733rem; }
+.flow-empty { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; pointer-events: none; padding: 24px; }
+.flow-empty .chat-empty { padding: 0 0 28px; max-width: 650px; }
+.flow-empty .chat-empty h2 { font-size: 1.467rem; }
+.flow-empty-path { display: flex; align-items: center; gap: 12px; color: var(--app-color-text-mute); font-size: .733rem; }
+.flow-empty-path > span { padding: 7px 10px; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
+@media (max-width: 1200px) {
+  .flow-toolbar-actions button > span { display: none; }
+  .flow-toolbar-actions button { width: 29px; height: 29px; padding: 0; }
+  .flow-inspector { width: 310px; flex-basis: 310px; }
+  .flow-legend { gap: 8px; }
+  .flow-count { display: none; }
+}
+@media (max-width: 1000px) {
+  .flow-inspector { position: absolute; top: 0; bottom: 0; right: 0; width: 310px; box-shadow: var(--app-shadow-panel); }
+  .flow-workspace.has-inspector .flow-canvas { margin-right: 0; }
+  .flow-toolbar-title > span { display: none; }
+}
+@media (prefers-reduced-motion: reduce) {
+  .conversation-flow .spin, .conversation-flow .pulse-dot { animation: none; }
+}

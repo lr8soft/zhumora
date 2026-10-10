@@ -14,6 +14,7 @@ import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort 
 export type { ReasoningEffort }
 import { initialSettingsProjection } from './settingsDefaults'
 import { createSessionModelSlice, sessionModelSelection, type SessionModelSlice } from './sessionModelSlice'
+import { applyHistorySnapshot, applyAuthoritativeUserMessage } from '../agentEvents'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
 
 const api = window.api
@@ -392,7 +393,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     const p = (async () => {
       try {
         const msgs = await api.session.messages(sessionId)
-        set((s) => ({ messages: { ...s.messages, [sessionId]: msgs } }))
+        set((s) => ({ messages: { ...s.messages, [sessionId]: applyHistorySnapshot(msgs, s.messages[sessionId] ?? [], s.runningIds.has(sessionId)) } }))
       } finally {
         loadingMessages.delete(sessionId)
       }
@@ -522,9 +523,7 @@ export const useAppStore = create<AppState>((set, get) => ({
         set((s) => ({
           messages: {
             ...s.messages,
-            [sid]: (s.messages[sid] || []).map(message =>
-              message.id === pendingUserId ? result.userMessage! : message
-            )
+            [sid]: applyAuthoritativeUserMessage(result.userMessage!, pendingUserId, s.messages[sid] || [])
           }
         }))
       }

@@ -16,6 +16,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 
 ## Features
 
+- Explore conversations as execution graphs with LLM turns, tool nodes, subagent branches, and returned results
 - Connect to OpenAI-compatible APIs, including local endpoints such as Ollama, llama.cpp, and vLLM
 - Read, edit, search, and manage files in the selected workspace
 - Read and write Word, Excel, PowerPoint, and PDF artifacts with format-specific built-in tools

@@ -21,6 +21,7 @@ The agent can use built-in local tools, browser automation, desktop capture, mem
 | Desktop shell | Electron 43 |
 | Build | electron-vite + Vite 7 + electron-builder |
 | UI | React 19 + TypeScript 5.9 |
+| Conversation canvas | React Flow 12 (`@xyflow/react`), pure history-to-graph projection |
 | Styling | Vanilla CSS |
 | State | Zustand |
 | i18n | i18next + react-i18next |
@@ -35,6 +36,16 @@ The agent can use built-in local tools, browser automation, desktop capture, mem
 Supported UI languages currently include Chinese, English, Japanese, Spanish, French, and German.
 
 ## 3. Runtime architecture
+
+The home page displays the conversation as an execution graph. User inputs, LLM
+turns and serial tool calls become selectable nodes; subagents branch into
+separate lanes, and terminal results join only at the `wait_subagents` call that
+retrieved them. Earlier user turns can be folded without changing stored history.
+The canvas supports pan/zoom, a minimap and opt-in following; its inspector uses
+the existing safe Markdown/Mermaid renderer. Node positions have fixed dimensions,
+so streaming text does not move the layout or camera. Graph state is a disposable
+renderer projection, not a second Agent runtime or a persisted workflow engine.
+Full historical timing and permission/retry traces are not inferred from messages.
 
 The authoritative architecture, ownership rules, and UI/Bot message sequence diagrams live in [ARCHITECTURE.md](./ARCHITECTURE.md). Any change to session execution must update that document and the corresponding tests.
 
