@@ -5,6 +5,7 @@ import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { chromium } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
+import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 
 // No Electron, provider requests or user database: this drives the production renderer with explicit IPC fixtures.
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
@@ -29,6 +30,7 @@ try {
   assert.equal(Math.round((await page.locator('.app-shell').boundingBox()).y), 0, 'the content starts at the top edge')
   assert.equal(Math.round((await page.locator('.chat-topbar').boundingBox()).y), 0)
   assert.equal(await page.locator('.window-controls button').count(), 3)
+  await assertWindowControlHitAreas(page, '.chat-topbar')
   for (let index = 0; index < 3; index++) await page.locator('.window-controls button').nth(index).click()
   assert.deepEqual(await page.evaluate(() => flowUiFixture.calls.filter(call => call[0] === 'window').map(call => call[1])),
     ['minimize', 'toggleMaximize', 'close'], 'window controls keep the original main IPC boundary')
@@ -131,6 +133,7 @@ try {
     sessionId: 'child-a', permId: 'perm-1', toolName: 'write', args: { file_path: 'report.md' }, level: 'normal'
   }))
   await page.getByRole('dialog').waitFor()
+  await assertWindowControlHitAreas(page, '.chat-topbar')
   assert.match(await page.getByRole('dialog').innerText(), /架构梳理/)
   await page.getByRole('button', { name: '允许', exact: true }).click()
   const permissionCall = await page.evaluate(() => flowUiFixture.calls.find(call => call[1] === 'respondPermission'))

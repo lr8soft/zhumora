@@ -1,6 +1,7 @@
 /** Browser-only fixture: exercises the real renderer through the same typed event payloads as preload. */
 export function installFlowUiFixture() {
   const nativePanels = window.panelNativeApi?.panels ?? window.api?.panels
+  const nativeWindow = window.panelNativeApi?.window
   localStorage.setItem('zhumora-language', 'zh')
   localStorage.setItem('zhumora.theme', 'light')
   const sessions = ['parent', 'child-a', 'child-b', 'other'].map((id, index) => ({
@@ -57,7 +58,7 @@ export function installFlowUiFixture() {
       return { ...initialSettingsProjection(), language: 'zh', workspacePath: 'D:\\mini-agent',
         providers: [{ id: 'local', name: '本地模型', enabled: true, defaultModel: '默认模型', baseUrl: 'http://fixture.invalid', apiKey: '' }], activeProviderId: 'local' }
     } }),
-    window: section('window', { isMaximized: async () => false }),
+    window: nativeWindow ?? section('window', { isMaximized: async () => false }),
     panels: nativePanels ?? section('panels', { prepare: async () => ({ key: `zhumora-panel-${crypto.randomUUID()}` }), control: async () => true }),
     agent: section('agent', { running: async () => [], abort: async id => { calls.push(['abort', id]); return true } }),
     provider: section('provider', { listModels: async () => ['默认模型'] }),

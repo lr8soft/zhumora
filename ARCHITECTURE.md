@@ -373,7 +373,7 @@ stateDiagram-v2
 - 初次加载子历史时，`applyHistorySnapshot` 按权威 ID 保留在读取期间收到、尚未包含在快照中的活动消息与流式内容；匹配的 DB 行是已落库终态，始终优先，非活动会话完全采用 DB 快照。迟到的 renderer invoke 用 `applyAuthoritativeUserMessage` 替换 pending：已在快照中出现的权威 user 只更新一次并移除占位，不能重复追加或移到回答之后。complete/error/abort 后的原重拉校准语义保持不变。
 - 当前恢复的是消息中可验证的执行拓扑，未新增持久化 run/task 日志。历史工具耗时、完整重试/审批轨迹仍不能凭空还原；活动 task_id 的 owner 与生命周期仍是父 run 的 SubagentScope。
 - `ChatView` 只组合 header、通知、canvas 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。旧 MessageViewport/MessageBubble/ToolCallChain 展示路径已移除。
-- 无独立窗口标题栏行：`WindowControls` 叠放在现有顶部区域，chat header/侧栏品牌/设置标题与空态上缘声明拖拽区，交互按钮显式 no-drag；最小化、最大化/还原、关闭仍使用原 typed preload API。renderer 不复制 hide/quit 策略，关闭语义仍由 main 生命周期边界决定。
+- 无独立窗口标题栏行：`WindowControls` 在外壳之后渲染，叠放在现有顶部区域；按钮与图标显式 no-drag。聊天/设置标题与空态上缘仅用避开右侧 138px 控制区的独立背景矩形声明拖拽区，不能把整条 header 标成 drag 后仅靠 z-index 覆盖按钮；Electron 原生命中区域不会按视觉层级避让。权限/删除遮罩从 56px 控制条下缘开始，不能挡住按钮。最小化、最大化/还原、关闭仍使用原 typed preload API。renderer 不复制 hide/quit 策略，关闭语义仍由 main 生命周期边界决定。
 
 完整历史仍由数据库和 renderer session cache 保存。展示层的组件拆分、memo 和虚拟化只能减少渲染工作，不得改变消息 ID、持久化内容、压缩边界或 `SessionService` 所有权。
 

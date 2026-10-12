@@ -389,8 +389,6 @@ export default function App() {
 
   return (
     <div className="app-frame">
-      <WindowControls />
-
       <div
         className={sidebarCollapsed ? 'app-shell sidebar-is-collapsed' : 'app-shell'}
         style={{ ['--sidebar-width' as string]: `${sidebarWidth}px` }}
@@ -403,6 +401,8 @@ export default function App() {
           {view === 'chat' ? <ChatView /> : <SettingsView />}
         </main>
       </div>
+
+      <WindowControls />
 
       {/* 权限确认弹窗（多会话并行时按 FIFO 逐个确认） */}
       <PermissionDialog />

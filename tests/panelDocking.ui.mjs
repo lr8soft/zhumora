@@ -7,6 +7,7 @@ import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { _electron } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
+import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 
 // Real hidden Electron windows and production renderer; no user database, providers or Agent runs.
 const output = resolve('.temp/panel-ui')
@@ -38,6 +39,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.flow-count')?.textContent === '11 个节点')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 11)
+  await assertWindowControlHitAreas(page, '.chat-topbar')
   await page.locator('.flow-inner-step.tool').filter({ hasText: /^read$/ }).click()
   await page.locator('.dock-details').waitFor()
   assert.match(await page.locator('.flow-detail-body').innerText(), /SessionService/)
@@ -155,6 +157,26 @@ try {
   await lastDetails.locator('.flow-inspector').waitFor()
   await page.locator('.sidebar').getByText('浏览器任务', { exact: true }).click()
   await page.waitForFunction(() => !document.querySelector('.dock-details'))
+  await page.locator('.sidebar').getByText('设置', { exact: true }).click()
+  await page.locator('.settings-page-title').waitFor()
+  await assertWindowControlHitAreas(page, '.settings-page-title')
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/index.ts')
+    useAppStore.setState({ view: 'chat', activeSessionId: null })
+  })
+  await page.locator('.chat-view-empty').waitFor()
+  await assertWindowControlHitAreas(page, '.chat-view-empty')
+  await page.locator('.window-controls button').nth(1).click()
+  await page.waitForFunction(() => document.querySelector('.window-controls button:nth-child(2)')?.getAttribute('aria-label') === '还原')
+  assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMaximized()), true)
+  await page.locator('.window-controls button').nth(1).click()
+  await page.waitForFunction(() => document.querySelector('.window-controls button:nth-child(2)')?.getAttribute('aria-label') === '最大化')
+  await page.locator('.window-controls button').first().click()
+  assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].isMinimized()), true)
+  await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows()[0].restore())
+  await page.locator('.window-controls button').last().click()
+  assert.equal(await electron.evaluate(({ BrowserWindow }) => { const owner = BrowserWindow.getAllWindows()[0]; return !owner.isDestroyed() && !owner.isVisible() }), true,
+    'closing the main window still hides it without destroying the session owner')
   assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1, 'unmounting a workspace cleans its auxiliary windows')
   // Packaged apps use file:// rather than the dev origin. The portal DOM remains accessible there too.
   const fileProbe = resolve(output, 'file-origin.html')
@@ -176,7 +198,10 @@ try {
   console.log(`Panel UI passed: dragging, four-side docks, floating/resize, real Electron windows, shared streaming/theme, return and security. Screenshots: ${output}`)
 } catch (error) {
   if (nativeLog) console.error(nativeLog)
-  if (page && !page.isClosed()) { console.error(await page.locator('body').innerText()); await page.screenshot({ path: resolve(output, 'failure.png') }) }
+  if (page && !page.isClosed()) {
+    console.error(await page.locator('body').innerText())
+    await page.screenshot({ path: resolve(output, 'failure.png') }).catch(() => {})
+  }
   throw error
 } finally {
   clearTimeout(watchdog)
