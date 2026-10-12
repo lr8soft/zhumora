@@ -4,10 +4,30 @@ import { COMPACT_SUMMARY_PREFIX } from '../src/shared/types.ts'
 import { buildConversationGraph, type GraphInput } from '../src/renderer/src/flow/buildGraph.ts'
 import { decodeTaskReferences, messageNodeId, toolNodeId } from '../src/renderer/src/flow/history.ts'
 import { nestedSteps, previewRowCount, previewSteps, primaryStep } from '../src/renderer/src/flow/nestedSteps.ts'
+import { estimateSpeechHeight, responsiveSpeechWidth } from '../src/renderer/src/flow/speechSizing.ts'
+import { hasVisibleFlowNodes, shouldRecoverFlowViewport } from '../src/renderer/src/flow/viewportRecovery.ts'
+import type { ConversationGraph } from '../src/renderer/src/flow/types.ts'
 
 const message = (id: string, overrides: Partial<UIMessage> = {}): UIMessage => ({
   id, sessionId: 'parent', role: 'user', content: id, timestamp: 1, status: 'done', ...overrides
 })
+
+{
+  const graphAt = (x: number, kind: 'user' | 'lane' = 'user'): ConversationGraph => ({ nodes: [{
+    id: `n${x}`, data: { kind, sessionId: 'parent', title: '', preview: '', status: 'done' },
+    position: { x, y: 80 }, width: 238, height: 144
+  }], edges: [], turnIds: ['u'], childCount: 0 })
+  const previous = graphAt(20000), folded = graphAt(48), viewport = { x: -19900, y: 0, zoom: 1 }
+  assert.ok(shouldRecoverFlowViewport(previous, folded, viewport, 900, 600), 'folding a long previous turn recovers its now-empty viewport')
+  assert.equal(shouldRecoverFlowViewport(previous, previous, viewport, 900, 600), false)
+  assert.equal(shouldRecoverFlowViewport(previous, { ...previous, nodes: [...previous.nodes, ...graphAt(21000).nodes] }, viewport, 900, 600), false,
+    'ordinary new nodes preserve a paused camera while existing nodes remain in view')
+  assert.equal(shouldRecoverFlowViewport(previous, folded, { ...viewport, y: -5000 }, 900, 600), false,
+    'intentional navigation to blank space remains under user control')
+  assert.equal(hasVisibleFlowNodes(graphAt(20000, 'lane'), viewport, 900, 600), false, 'decorative lanes cannot stand in for visible cards')
+  assert.equal(shouldRecoverFlowViewport(previous, { ...folded, nodes: [] }, viewport, 900, 600), false)
+  assert.ok(shouldRecoverFlowViewport(previous, folded, { ...viewport, x: NaN }, 900, 600), 'a malformed camera cannot permanently hide a nonempty graph')
+}
 const call = (id: string, name = 'read'): ToolCall => ({ id, type: 'function', function: { name, arguments: '{}' } })
 const assistant = (id: string, calls: ToolCall[] = []): UIMessage => message(id, { role: 'assistant', toolCalls: calls })
 const result = (id: string, callId: string, content = 'ok'): UIMessage => message(id, { role: 'tool', toolCallId: callId, content })
@@ -17,6 +37,24 @@ const task = { task_id: 'task-1', session_id: 'child', parentSessionId: 'parent'
 const input = (messages: UIMessage[], overrides: Partial<GraphInput> = {}): GraphInput => ({
   sessionId: 'parent', sessions: [], messages: { parent: messages }, runningIds: new Set(), detailLevel: 'steps', ...overrides
 })
+
+{
+  const short = buildConversationGraph(input([assistant('short')], { detailLevel: undefined })).nodes[0]
+  const long = { ...short.data, message: { ...short.data.message!, content: '完整输出。\n'.repeat(80) } }
+  assert.ok(short.height < 144, 'a short utterance without tools has no reserved tool space')
+  assert.ok(estimateSpeechHeight(long, 352) > short.height, 'text grows the card within its limit')
+  const max = estimateSpeechHeight(long, 352)
+  assert.equal(estimateSpeechHeight({ ...long, message: { ...long.message, content: long.message.content.repeat(10) } }, 352), max,
+    'longer output scrolls instead of growing the card indefinitely')
+  assert.equal(responsiveSpeechWidth(500), 280)
+  assert.equal(responsiveSpeechWidth(2000), 420)
+  const narrow = buildConversationGraph(input([assistant('one'), assistant('two')], {
+    detailLevel: undefined, speechSizing: { width: 280, fontSize: 18 }
+  }))
+  assert.ok(narrow.nodes.every(node => node.width === 280))
+  assert.ok(narrow.nodes[0].position.x + narrow.nodes[0].width < narrow.nodes[1].position.x,
+    'responsive widths preserve space between consecutive nodes')
+}
 
 {
   const history = [message('u'), assistant('a', [call('c')]), result('t', 'c'), assistant('answer')]
@@ -169,6 +207,12 @@ console.log('Conversation graph sequencing, delegation, joins, continuation, iso
     < graph.nodes.find(node => node.id === edge.target)!.position.x), 'sequences and returns to a later utterance advance horizontally')
   assert.ok(graph.edges.filter(edge => edge.kind === 'delegate').every(edge => graph.nodes.find(node => node.id === edge.source)!.position.y
     < graph.nodes.find(node => node.id === edge.target)!.position.y), 'inner dispatch ports branch downward into child lanes')
+  const tallParent = parent.map(item => item.id === 'dispatch' ? { ...item, content: '长正文。\n'.repeat(80) } : item)
+  const tall = buildConversationGraph(input(tallParent, { detailLevel: undefined, sessions: [child, secondChild],
+    messages: { ...histories, parent: tallParent } }))
+  const lanes = tall.nodes.filter(node => node.data.kind === 'lane').sort((a, b) => a.position.y - b.position.y)
+  assert.equal(lanes[1].position.y - lanes[0].position.y - lanes[0].height, 20,
+    'a tall parent does not reserve equally tall blank space between short child lanes')
 }
 {
   const spoken = Array.from({ length: 20 }, (_, index) => assistant(`said-${index}`, [call(`call-${index}`)]))
@@ -181,8 +225,10 @@ console.log('Conversation graph sequencing, delegation, joins, continuation, iso
   const pending = buildConversationGraph(input(history, { detailLevel: undefined, runningIds: new Set(['parent']) }))
   const delta = buildConversationGraph(input([...history.slice(0, -1), { ...live, content: 'Hello' }], {
     detailLevel: undefined, runningIds: new Set(['parent']) }))
-  assert.deepEqual(pending.nodes.map(node => [node.id, node.position, node.width, node.height]),
-    delta.nodes.map(node => [node.id, node.position, node.width, node.height]), 'first live text delta does not change topology')
+  assert.deepEqual(pending.nodes.map(node => [node.id, node.position, node.width]),
+    delta.nodes.map(node => [node.id, node.position, node.width]), 'first live text delta preserves node IDs and the horizontal topology')
+  assert.ok(pending.nodes.at(-1)!.height > delta.nodes.at(-1)!.height,
+    'the waiting mini-row releases its space when the first spoken text arrives')
   const toolEnd = buildConversationGraph(input([...history.slice(0, -1), { ...live, status: 'done', toolCalls: [call('late')] }], { detailLevel: undefined }))
   assert.equal(toolEnd.nodes.length, 1, 'a transient live round which ends tool-only folds back into its owner')
   const beforeWords = buildConversationGraph(input([prefix, result('r', 'read'), assistant('spoken')], { detailLevel: undefined }))
@@ -205,7 +251,8 @@ console.log('Conversation graph sequencing, delegation, joins, continuation, iso
   assert.ok(visible.includes(toolNodeId('parent', 'spawn', 'speech')))
   assert.ok(visible.includes(toolNodeId('parent', 'w', 'wait')), 'connected ports stay visible beyond the regular six-item preview')
   assert.equal(previewRowCount(owner.data), 5, 'each connected tool owns a full row beside its clear side port')
-  assert.equal(owner.height, 342, 'the card grows vertically for connected rows without lengthening the main chain')
+  assert.ok(owner.height > graph.nodes.find(node => node.id === messageNodeId('parent', 'final'))!.height,
+    'tool rows consume actual bounded space rather than reserving a fixed tall card')
   assert.ok(graph.nodes.find(node => node.id === messageNodeId('parent', 'final'))!.position.x
     > graph.nodes.find(node => node.id === returned.source)!.position.x, 'the next spoken message follows the returned child')
   const noJoin = buildConversationGraph(input(parent.slice(0, -2), { detailLevel: undefined, sessions: [child], messages: { parent: parent.slice(0, -2), child: childHistory } }))

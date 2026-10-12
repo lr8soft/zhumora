@@ -1,4 +1,4 @@
-import { memo, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Edge, type OnNodesChange } from '@xyflow/react'
@@ -8,6 +8,7 @@ import type { ConversationGraph, FlowNode } from '../flow/types'
 import { stepHandleId } from '../flow/nestedSteps'
 import { useFlowCamera } from '../flow/useFlowCamera'
 import { useFlowSelection } from '../flow/useFlowSelection'
+import { useFlowSizing, useMeasuredFlowGraph } from '../flow/useFlowSizing'
 import DockWorkspace from '../docking/DockWorkspace'
 import ConversationFlowNode, { flowTitle, type ConversationNode } from './ConversationFlowNode'
 import FlowInspector from './FlowInspector'
@@ -32,22 +33,30 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   const [foldHistory, setFoldHistory] = useState(true)
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set())
   const [showChildren, setShowChildren] = useState(true)
-  const { graph, running, permissions, loadError, retryLoad, loading } = useFlowGraph(sessionId, foldHistory, expandedTurns, showChildren)
+  const sizing = useFlowSizing()
+  const { graph: source, running, permissions, loadError, retryLoad, loading } = useFlowGraph(sessionId, foldHistory, expandedTurns, showChildren, sizing.sizing)
+  const geometry = useMeasuredFlowGraph(source, sizing.sizing.fontSize)
+  const { graph } = geometry
   const flow = useReactFlow<ConversationNode, Edge>()
   const camera = useFlowCamera(graph)
   const { follow, zoom, fitAll, focusLatest, stopFollowing } = camera
+  const setCanvas = useCallback((element: HTMLDivElement | null) => {
+    sizing.setCanvas(element); camera.setCanvas(element)
+  }, [sizing.setCanvas, camera.setCanvas])
   const selection = useFlowSelection(graph, follow, stopFollowing)
   const { selected, detailFocus, selectStep } = selection
   const workspacePath = useAppStore(state => state.sessions.find(session => session.id === sessionId)?.workspacePath || state.settings.workspacePath)
   const latest = graph.nodes.find(node => node.id === graph.latestNodeId)
 
   const nodes = useMemo<ConversationNode[]>(() => graph.nodes.map(node => ({ ...node,
-    data: { ...node.data, onStepSelect: selectStep },
+    height: node.data.kind === 'speech' ? undefined : node.height,
+    measured: node.data.kind === 'speech' ? { width: node.width, height: node.height } : undefined,
+    data: { ...node.data, onStepSelect: selectStep, onMount: geometry.onMount, onMeasure: geometry.onMeasure },
     type: 'conversation', selected: node.data.kind !== 'lane' && node.id === selected?.id, selectable: node.data.kind !== 'lane',
     focusable: node.data.kind !== 'lane', draggable: false, connectable: false, zIndex: node.data.kind === 'lane' ? -1 : 1,
-    style: { width: node.width, height: node.height, ...(node.data.kind === 'lane' ? { pointerEvents: 'none' as const } : {}) },
+    style: { width: node.width, height: node.data.kind === 'speech' ? 'auto' : node.height, ...(node.data.kind === 'lane' ? { pointerEvents: 'none' as const } : {}) },
     ariaLabel: `${flowTitle(node.data, t)} · ${t(`flow.status.${node.data.status}`)}`
-  })), [graph.nodes, selected?.id, t, selectStep])
+  })), [graph.nodes, selected?.id, t, selectStep, geometry.onMount, geometry.onMeasure])
   const edges = useMemo(() => flowEdges(graph), [graph])
 
   const openLatest = () => {
@@ -84,7 +93,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   return <section className="conversation-flow" aria-label={t('flow.title')}>
     {loadError && <div className="flow-load-error" role="alert">{t('flow.loadError')}<button onClick={retryLoad}><RotateCcw size={12} />{t('flow.retry')}</button></div>}
     <DockWorkspace panels={[{ id: 'conversation', title: `${t('flow.title')} · ${t('flow.turnCount', { count: graph.turnIds.length })}`, toolbar, content: <div className="flow-pane">
-      <div className="flow-canvas" ref={camera.setCanvas}>
+      <div className="flow-canvas" ref={setCanvas}>
         <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={(_event, node) => selectNode(node)}
           onNodesChange={onNodesChange} onPaneClick={selection.close} onInit={camera.onInit}
           onMoveStart={event => { if (event) stopFollowing() }} onMove={(_event, viewport) => camera.setZoom(viewport.zoom)}

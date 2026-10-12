@@ -29,10 +29,11 @@ export function stepHandleId(role: 'source' | 'target', stepId: string): string 
 }
 
 /** Connected tool rows span both columns, leaving their side ports clear of other inner nodes. */
-export function previewRowCount(data: FlowData): number {
+export function previewRowCount(data: FlowData, columns = 2): number {
   const connected = new Set(data.ports?.map(port => port.stepId) ?? [])
   let rows = 0, halfRow = false
   for (const item of previewSteps(data).visible) {
+    if (columns === 1) { rows++; continue }
     if (connected.has(item.step.id)) { rows += halfRow ? 2 : 1; halfRow = false }
     else if (halfRow) { rows++; halfRow = false }
     else halfRow = true

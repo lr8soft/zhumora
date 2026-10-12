@@ -46,8 +46,10 @@ Subagents branch from named ports on the exact dispatch tool; terminal results
 return only to the wait tool that actually retrieved them. Dispatch and wait may
 share an utterance container, so a return can enter a later inner step of the same
 parent. The next main node still follows returned child results. Connected tools
-remain visible beyond the six-item preview, each on a full row with side ports
-outside the opaque parent surface. Graph keys encode authoritative ID
+remain in the preview beyond the six-item limit, each on a full row. Named ports
+sit outside the bounded tool scroll area; hidden rows anchor to its nearest edge
+and scrolling refreshes handle positions without losing dispatch/wait provenance.
+Graph keys encode authoritative ID
 tuples for safe dynamic port lookup, without changing stored message IDs.
 Earlier turns can be folded without changing stored history.
 Folded cards use the existing amber theme token, a layers icon and an explicit
@@ -61,8 +63,13 @@ Its selected content/reasoning follows live output to the bottom, including
 asynchronous content sizing. Scrolling back pauses this until the reader returns
 to the bottom; selecting another step/tab resets its reading position. Observers
 and animation frames belong to the pane's actual document, including native windows.
-Card dimensions
-depend on step/port structure, so text deltas do not move layout or camera. A live
+Speech widths respond to canvas space within 280–420px. Text grows from one to six
+lines and follows its tail; tools take only their actual space up to 12rem and
+switch to one column in narrow cards. `useSpeechMeasure` observes natural DOM
+heights in the pane's own document. `useMeasuredFlowGraph` scopes its cache to
+current nodes, widths and fonts; offscreen changed content/structure uses a bounded
+estimate. Measurements update lanes, the minimap and camera bounds. At the content
+limit, text deltas scroll without moving geometry or camera. A live
 utterance is allocated before its first text token; a tool-only end folds it back.
 `useFlowCamera` fits projected bounds directly, so offscreen nodes do not need
 DOM measurements before they can be followed. Enabling follow centers the latest
@@ -73,8 +80,14 @@ Manual card/step/tab selection pauses following; resuming clears the old step/ta
 focus. Pausing retains the latest followed node, and closed details stay closed.
 Initialization
 and panel remounts use the same scheduler, and manual navigation cancels pending
-automatic moves. `npm run test:ui:camera` covers long virtualized histories,
-resuming follow, new nodes, stable text deltas and inspector/panel layout changes.
+automatic moves.
+When a projection change moves all previously visible cards out of view (for
+example, folding a long previous round on send), `viewportRecovery` schedules
+one move to the new latest node without enabling follow or reloading history.
+Ordinary additions and deliberate navigation into empty space preserve the camera.
+Camera regression tests cover the real send action and retained message IDs.
+`npm run test:ui:camera` also covers long virtualized histories, resuming follow,
+new nodes, stable text deltas and inspector/panel layout changes.
 Graph state is a disposable
 renderer projection, not a second Agent runtime or a persisted workflow engine.
 Full historical timing and permission/retry traces are not inferred from messages.

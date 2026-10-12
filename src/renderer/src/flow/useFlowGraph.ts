@@ -4,10 +4,12 @@ import type { UIMessage } from '../../../shared/types'
 import { useAppStore } from '../store'
 import { buildConversationGraph } from './buildGraph'
 import { collectDelegations, splitConversationTurns, toolNodeId } from './history'
+import { DEFAULT_SPEECH_SIZE, type SpeechSizing } from './speechSizing'
 
 const EMPTY_MESSAGES: UIMessage[] = []
 
-export function useFlowGraph(sessionId: string, foldHistory: boolean, expandedTurns: ReadonlySet<string>, showChildren: boolean) {
+export function useFlowGraph(sessionId: string, foldHistory: boolean, expandedTurns: ReadonlySet<string>, showChildren: boolean,
+  speechSizing: SpeechSizing = DEFAULT_SPEECH_SIZE) {
   const messages = useAppStore(state => state.messages[sessionId] ?? EMPTY_MESSAGES)
   const family = useAppStore(useShallow(state => state.sessions.filter(session => session.id === sessionId || session.subagent?.parentSessionId === sessionId)))
   const turns = useMemo(() => splitConversationTurns(messages), [messages])
@@ -44,14 +46,14 @@ export function useFlowGraph(sessionId: string, foldHistory: boolean, expandedTu
 
   const graph = useMemo(() => {
     const projection = buildConversationGraph({ sessionId, sessions, messages: histories,
-      runningIds: new Set(running), collapsedTurns, showChildren, compaction })
+      runningIds: new Set(running), collapsedTurns, showChildren, compaction, speechSizing })
     const awaiting = new Set(permissions)
     for (const node of projection.nodes) {
       if (node.data.kind === 'lane') node.data.awaitingPermission = awaiting.has(node.data.sessionId)
       node.data.retry = retries[node.data.sessionId]
     }
     return projection
-  }, [sessionId, sessions, histories, running, collapsedTurns, showChildren, compaction, permissions, retries])
+  }, [sessionId, sessions, histories, running, collapsedTurns, showChildren, compaction, permissions, retries, speechSizing])
 
   return { graph, running, permissions, loadError, retryLoad: () => setReload(value => value + 1),
     loading: ids.some(id => useAppStore.getState().messages[id] === undefined) }

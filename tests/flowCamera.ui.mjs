@@ -5,6 +5,7 @@ import react from '@vitejs/plugin-react'
 import { chromium } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertFocusedNode, settleViewport, viewportStyle } from './helpers/flowCameraChecks.mjs'
+import { assertNewTurnVisible } from './helpers/newTurnChecks.mjs'
 
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
   resolve: { alias: { '@shared': resolve('src/shared'), '@renderer': resolve('src/renderer/src') } },
@@ -118,8 +119,9 @@ try {
   await panel.locator('.dock-panel-menu summary').click()
   await page.getByRole('menuitem', { name: '停靠中央', exact: true }).click()
   await assertFocusedNode(page, '下一节点')
+  await assertNewTurnVisible(page)
   assert.deepEqual(errors, [])
-  console.log('Camera UI passed: unmeasured latest, synchronized inspector, reasoning/content, manual browse and resume, closed inspector, token stability and pane remounts')
+  console.log('Camera UI passed: new-turn collapse recovery through the real send action, unmeasured latest, synchronized inspector, manual navigation, token stability and pane remounts')
 } finally {
   await browser?.close()
   await server.close()

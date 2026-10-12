@@ -62,7 +62,7 @@ export default memo(ConversationFlowNode, (previous, next) => {
     && a.returnedTaskCount === b.returnedTaskCount && a.totalTaskCount === b.totalTaskCount
     && a.retry === b.retry
     && a.toolCount === b.toolCount && a.llmCount === b.llmCount
-    && a.onStepSelect === b.onStepSelect && sameInnerStructure(a, b)
+    && a.onStepSelect === b.onStepSelect && a.onMeasure === b.onMeasure && a.onMount === b.onMount && sameInnerStructure(a, b)
 })
 
 function sameInnerStructure(a: FlowData, b: FlowData): boolean {

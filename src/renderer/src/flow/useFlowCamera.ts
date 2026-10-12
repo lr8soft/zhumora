@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { getViewportForBounds, useReactFlow } from '@xyflow/react'
 import type { ConversationGraph, FlowNode } from './types'
+import { shouldRecoverFlowViewport } from './viewportRecovery'
 
 function graphBounds(nodes: readonly FlowNode[]) {
   if (!nodes.length) return null
@@ -19,6 +20,7 @@ export function useFlowCamera(graph: ConversationGraph) {
   const current = useRef({ graph, flow, follow, canvas })
   current.current = { graph, flow, follow, canvas }
   const pending = useRef<{ owner: Window; frame: number } | null>(null)
+  const previousGraph = useRef(graph)
   const cancel = useCallback(() => {
     if (pending.current) pending.current.owner.cancelAnimationFrame(pending.current.frame)
     pending.current = null
@@ -57,7 +59,11 @@ export function useFlowCamera(graph: ConversationGraph) {
   }, [cancel])
   const topology = graph.nodes.map(node => `${node.id}:${node.position.x}:${node.position.y}:${node.width}:${node.height}`).join('|')
   useEffect(() => {
-    if (follow && flow.viewportInitialized) focus('latest')
+    const previous = previousGraph.current
+    previousGraph.current = graph
+    const element = current.current.canvas
+    if (!flow.viewportInitialized || !element) return
+    if (follow || shouldRecoverFlowViewport(previous, graph, flow.getViewport(), element.clientWidth, element.clientHeight)) focus('latest')
   }, [topology, follow, flow.viewportInitialized, focus])
   useEffect(() => {
     if (!canvas) return

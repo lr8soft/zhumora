@@ -8,6 +8,7 @@ import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 import { assertPassiveLanes } from './helpers/flowLaneChecks.mjs'
 import { assertFoldedAppearance, assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
+import { assertResponsiveSpeech } from './helpers/speechSizingChecks.mjs'
 
 // No Electron, provider requests or user database: this drives the production renderer with explicit IPC fixtures.
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
@@ -227,7 +228,7 @@ try {
   const dispatch = page.locator('.flow-speech').filter({ hasText: '分别委托架构梳理和权限审查' })
   assert.equal(await dispatch.locator('.react-flow__handle.source[data-handleid]').count(), 2)
   assert.equal(await dispatch.locator('.react-flow__handle.target[data-handleid]').count(), 1)
-  assert.ok(await dispatch.evaluate(card => [...card.querySelectorAll('.flow-inner-step .react-flow__handle')].every(handle => {
+  assert.ok(await dispatch.evaluate(card => [...card.querySelectorAll('.flow-inner-port')].every(handle => {
     const port = handle.getBoundingClientRect()
     return port.x + port.width / 2 >= card.getBoundingClientRect().right
   })), 'inner ports sit outside the opaque parent surface, so their edges stay visible')
@@ -244,8 +245,9 @@ try {
   await page.getByRole('button', { name: '最新输出', exact: true }).click()
   await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('实时详情。'))
   await assertStreamingDetail(page, page, 'detail-live', true)
+  await assertResponsiveSpeech(page, output)
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
-  console.log(`Flow UI passed: light/dark folding, passive lanes, live content/reasoning scroll with pause/resume, streaming ID routing, camera stability and compact window. Screenshots: ${output}`)
+  console.log(`Flow UI passed: responsive speech height/width, latest text, bounded tool scrolling/ports, light/dark, folding, live details, ID routing and camera stability. Screenshots: ${output}`)
 } catch (error) {
   if (page) { console.error(await page.locator('body').innerText()); await page.screenshot({ path: resolve(output, 'failure.png') }) }
   throw error

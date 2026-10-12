@@ -4,6 +4,7 @@ import { buildTurnNodes, flowNode, foldedTurn } from './projection.ts'
 import { FLOW_GAP, FLOW_SIZE, type ConversationGraph, type FlowEdge, type FlowNode } from './types.ts'
 import { compactTurnNodes, flowSteps, includesBoundary } from './compactNodes.ts'
 import { finishGraphLayout } from './graphLayout.ts'
+import type { SpeechSizing } from './speechSizing.ts'
 
 export interface GraphInput {
   sessionId: string
@@ -13,6 +14,7 @@ export interface GraphInput {
   collapsedTurns?: ReadonlySet<string>
   showChildren?: boolean
   detailLevel?: 'compact' | 'steps'
+  speechSizing?: SpeechSizing
   compaction?: { upToMessageId: string; summary?: string } | null
 }
 
@@ -34,7 +36,7 @@ export function buildConversationGraph(input: GraphInput): ConversationGraph {
     const collapsed = input.collapsedTurns?.has(turn.id) && turn !== turns.at(-1)
     const raw = collapsed ? [foldedTurn(turn, input.sessionId)]
       : buildTurnNodes(turn, input.sessionId, input.runningIds.has(input.sessionId) && turn === turns.at(-1))
-    const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw, input.compaction?.upToMessageId)
+    const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw, input.compaction?.upToMessageId, input.speechSizing?.width)
     for (const node of nodes) {
       annotateJoin(node, input.runningIds.has(input.sessionId) && turn === turns.at(-1))
       const priorReturns = branchesReturnedTo(node, branches)
@@ -73,7 +75,7 @@ export function buildConversationGraph(input: GraphInput): ConversationGraph {
   }
   graph.latestNodeId = previous?.id
   graph.childCount = childIds.size
-  finishGraphLayout(graph)
+  finishGraphLayout(graph, undefined, input.speechSizing?.fontSize)
   return graph
 }
 
@@ -112,7 +114,7 @@ function addBranch(
   const running = input.runningIds.has(session.id) && (!turn || turn.id === lastTurn?.id)
   const expanded = input.showChildren !== false && turn
   const raw = expanded ? buildTurnNodes(turn, session.id, running) : []
-  const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw)
+  const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw, undefined, input.speechSizing?.width)
   if (!nodes.length) nodes.push(flowNode(graphNodeId('task', session.id, task.task_id), {
     kind: 'delegate', sessionId: session.id, title: session.title, preview: session.subagent?.model ?? '',
     status: running ? 'running' : turn?.messages.some(message => message.status === 'error') ? 'error' : turn ? 'done' : 'unresolved', childSessionId: session.id,

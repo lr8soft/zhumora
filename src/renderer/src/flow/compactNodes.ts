@@ -1,14 +1,15 @@
 import { messageNodeId } from './history.ts'
 import { flowNode } from './projection.ts'
 import type { FlowNode, FlowStatus, FlowStep } from './types.ts'
+import { DEFAULT_SPEECH_SIZE, estimateSpeechHeight } from './speechSizing.ts'
 
 /** Each actual utterance owns its reasoning/tools. Empty completed LLM rounds never create another speech node. */
-export function compactTurnNodes(nodes: readonly FlowNode[], boundary?: string): FlowNode[] {
+export function compactTurnNodes(nodes: readonly FlowNode[], boundary?: string, width = DEFAULT_SPEECH_SIZE.width): FlowNode[] {
   const compact: FlowNode[] = []
   let group: FlowNode[] = []
   let spoken = false
   const flush = () => {
-    if (group.length) compact.push(speechNode(group))
+    if (group.length) compact.push(speechNode(group, width))
     group = []
     spoken = false
   }
@@ -37,7 +38,7 @@ export function includesBoundary(node: FlowStep, boundary?: string): boolean {
     && node.id === messageNodeId(node.data.sessionId, boundary))
 }
 
-function speechNode(members: readonly FlowNode[]): FlowNode {
+function speechNode(members: readonly FlowNode[], width: number): FlowNode {
   const spoken = members.find(node => node.data.kind === 'llm' && node.data.message?.content.trim())
   const processing = [...members].reverse().find(node => node.data.kind === 'llm')
   const node = flowNode(members[0].id, {
@@ -47,8 +48,8 @@ function speechNode(members: readonly FlowNode[]): FlowNode {
     toolCount: members.filter(node => node.data.call).length,
     llmCount: members.filter(node => node.data.kind === 'llm').length
   })
-  node.width = 352
-  node.height = 264
+  node.width = width
+  node.height = estimateSpeechHeight(node.data, width)
   return node
 }
 

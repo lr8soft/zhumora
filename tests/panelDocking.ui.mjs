@@ -10,6 +10,7 @@ import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 import { assertFocusedNode, settleViewport } from './helpers/flowCameraChecks.mjs'
 import { assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
+import { assertNewTurnVisible } from './helpers/newTurnChecks.mjs'
 
 // Real hidden Electron windows and production renderer; no user database, providers or Agent runs.
 const output = resolve('.temp/panel-ui')
@@ -167,6 +168,14 @@ try {
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 12)
   await page.screenshot({ path: resolve(output, 'docked-dark.png') })
+  const newTurnFlow = electron.waitForEvent('window')
+  await page.locator('.dock-conversation').getByRole('button', { name: '在独立窗口打开', exact: true }).click()
+  const newTurnWindow = await newTurnFlow
+  observe(newTurnWindow)
+  await newTurnWindow.locator('.flow-canvas').waitFor()
+  await assertNewTurnVisible(page, newTurnWindow)
+  await newTurnWindow.getByRole('button', { name: '停靠回主窗口', exact: true }).click()
+  await page.getByRole('button', { name: '最新输出', exact: true }).click()
   const teardownWindow = electron.waitForEvent('window')
   await page.locator('.dock-details').getByRole('button', { name: '在独立窗口打开', exact: true }).click()
   const lastDetails = await teardownWindow
