@@ -9,7 +9,9 @@ import MarkdownView from './MarkdownView'
 import { flowTitle } from './ConversationFlowNode'
 import FlowStepList from './FlowStepList'
 
-export default function FlowInspector({ node, focus, onClose }: { node: FlowNode; focus?: FlowDetailFocus; onClose: () => void }) {
+export default function FlowInspector({ node, focus, following, onBrowse, onClose }: {
+  node: FlowNode; focus?: FlowDetailFocus; following: boolean; onBrowse: () => void; onClose: () => void
+}) {
   const { t } = useTranslation()
   const sessions = useAppStore(state => state.sessions)
   const running = useAppStore(state => state.runningIds.has(node.data.sessionId))
@@ -26,6 +28,9 @@ export default function FlowInspector({ node, focus, onClose }: { node: FlowNode
     setTab(focus?.tab ? { stepId: focus.stepId, value: focus.tab } : null)
     setCopyState('idle')
   }, [focus])
+  useEffect(() => {
+    if (following) { setSelectedStepId(null); setTab(null); setCopyState('idle') }
+  }, [following])
   const activeTab = tab?.stepId === detail.id && tabs.includes(tab.value) ? tab.value : defaultTab(value)
   const text = activeTab === 'args' ? formatArguments(value.call?.function.arguments ?? '')
     : activeTab === 'result' ? value.result?.content ?? t('flow.noResult')
@@ -36,7 +41,7 @@ export default function FlowInspector({ node, focus, onClose }: { node: FlowNode
     try { await (owner ?? window).navigator.clipboard.writeText(text); setCopyState('copied') }
     catch { setCopyState('error') }
   }
-  const selectStep = useCallback((id: string) => { setSelectedStepId(id); setTab(null); setCopyState('idle') }, [])
+  const selectStep = useCallback((id: string) => { onBrowse(); setSelectedStepId(id); setTab(null); setCopyState('idle') }, [onBrowse])
   const openSession = () => useAppStore.getState().setActiveSession(value.childSessionId ?? data.sessionId)
   return <aside className="flow-inspector" aria-label={t('flow.details')}>
     <header className="flow-inspector-header"><strong>{t('flow.details')}</strong>
@@ -49,7 +54,7 @@ export default function FlowInspector({ node, focus, onClose }: { node: FlowNode
     {data.steps && <FlowStepList steps={data.steps} selectedId={detail.id} onSelect={selectStep} />}
     <div className="flow-detail-tabs" role="tablist" aria-label={t('flow.details')}>
       {tabs.map(key => <button key={key} role="tab" aria-selected={activeTab === key} className={activeTab === key ? 'active' : ''}
-        onClick={() => { setSelectedStepId(detail.id); setTab({ stepId: detail.id, value: key }); setCopyState('idle') }}>{t(`flow.tab.${key}`)}</button>)}
+        onClick={() => { onBrowse(); setSelectedStepId(detail.id); setTab({ stepId: detail.id, value: key }); setCopyState('idle') }}>{t(`flow.tab.${key}`)}</button>)}
     </div>
     <div className="flow-detail-body" role="tabpanel" ref={bodyRef} tabIndex={0}>
       <div className="flow-detail-content">

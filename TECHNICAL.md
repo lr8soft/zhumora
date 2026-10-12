@@ -66,7 +66,12 @@ depend on step/port structure, so text deltas do not move layout or camera. A li
 utterance is allocated before its first text token; a tool-only end folds it back.
 `useFlowCamera` fits projected bounds directly, so offscreen nodes do not need
 DOM measurements before they can be followed. Enabling follow centers the latest
-main node; new geometry and canvas resizing maintain that focus. Initialization
+main node; new geometry and canvas resizing maintain that focus.
+`useFlowSelection` uses the same follow flag and latest node ID to advance an open
+inspector immediately and when new main nodes arrive, in any dock or native window.
+Manual card/step/tab selection pauses following; resuming clears the old step/tab
+focus. Pausing retains the latest followed node, and closed details stay closed.
+Initialization
 and panel remounts use the same scheduler, and manual navigation cancels pending
 automatic moves. `npm run test:ui:camera` covers long virtualized histories,
 resuming follow, new nodes, stable text deltas and inspector/panel layout changes.

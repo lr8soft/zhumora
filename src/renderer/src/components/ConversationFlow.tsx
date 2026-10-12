@@ -1,12 +1,13 @@
-import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { memo, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Edge, type OnNodesChange } from '@xyflow/react'
 import { ArrowRight, Focus, GitBranch, Layers, LocateFixed, Maximize2, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useFlowGraph } from '../flow/useFlowGraph'
-import type { ConversationGraph, FlowDetailFocus, FlowNode } from '../flow/types'
+import type { ConversationGraph, FlowNode } from '../flow/types'
 import { stepHandleId } from '../flow/nestedSteps'
 import { useFlowCamera } from '../flow/useFlowCamera'
+import { useFlowSelection } from '../flow/useFlowSelection'
 import DockWorkspace from '../docking/DockWorkspace'
 import ConversationFlowNode, { flowTitle, type ConversationNode } from './ConversationFlowNode'
 import FlowInspector from './FlowInspector'
@@ -31,18 +32,14 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   const [foldHistory, setFoldHistory] = useState(true)
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set())
   const [showChildren, setShowChildren] = useState(true)
-  const [selectedId, setSelectedId] = useState<string | null>(null)
-  const [detailFocus, setDetailFocus] = useState<FlowDetailFocus>()
   const { graph, running, permissions, loadError, retryLoad, loading } = useFlowGraph(sessionId, foldHistory, expandedTurns, showChildren)
   const flow = useReactFlow<ConversationNode, Edge>()
   const camera = useFlowCamera(graph)
   const { follow, zoom, fitAll, focusLatest, stopFollowing } = camera
+  const selection = useFlowSelection(graph, follow, stopFollowing)
+  const { selected, detailFocus, selectStep } = selection
   const workspacePath = useAppStore(state => state.sessions.find(session => session.id === sessionId)?.workspacePath || state.settings.workspacePath)
-  const selected = graph.nodes.find(node => node.id === selectedId) ?? graph.nodes.find(node => node.data.steps?.some(step => step.id === selectedId))
   const latest = graph.nodes.find(node => node.id === graph.latestNodeId)
-  const selectStep = useCallback((_ownerId: string, stepId: string, tab?: FlowDetailFocus['tab']) => {
-    setSelectedId(stepId); setDetailFocus({ stepId, tab })
-  }, [])
 
   const nodes = useMemo<ConversationNode[]>(() => graph.nodes.map(node => ({ ...node,
     data: { ...node.data, onStepSelect: selectStep },
@@ -55,22 +52,22 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
 
   const openLatest = () => {
     if (!latest) return
-    setSelectedId(latest.id)
-    setDetailFocus(undefined)
+    selection.openLatest()
     focusLatest()
   }
 
-  const selectNode = (_event: React.MouseEvent, node: ConversationNode) => {
+  const selectNode = (node: ConversationNode) => {
     if (node.data.kind === 'lane') return
     if (node.data.kind === 'turn' && node.data.turnId) {
       setExpandedTurns(previous => new Set([...previous, node.data.turnId!]))
-      setSelectedId(null); setDetailFocus(undefined)
+      selection.close()
       stopFollowing()
-    } else { setSelectedId(node.id); setDetailFocus(undefined) }
+    } else selection.select(node.id)
   }
   const onNodesChange: OnNodesChange<ConversationNode> = changes => {
-    const selection = changes.find(change => change.type === 'select' && change.selected)
-    if (selection?.type === 'select' && graph.nodes.some(node => node.id === selection.id && node.data.kind !== 'lane')) setSelectedId(selection.id)
+    const change = changes.find(change => change.type === 'select' && change.selected)
+    const node = change?.type === 'select' ? nodes.find(node => node.id === change.id) : undefined
+    if (node) selectNode(node)
   }
 
   const toolbar = <div className="flow-toolbar-actions">
@@ -88,8 +85,8 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
     {loadError && <div className="flow-load-error" role="alert">{t('flow.loadError')}<button onClick={retryLoad}><RotateCcw size={12} />{t('flow.retry')}</button></div>}
     <DockWorkspace panels={[{ id: 'conversation', title: `${t('flow.title')} · ${t('flow.turnCount', { count: graph.turnIds.length })}`, toolbar, content: <div className="flow-pane">
       <div className="flow-canvas" ref={camera.setCanvas}>
-        <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={selectNode}
-          onNodesChange={onNodesChange} onPaneClick={() => setSelectedId(null)} onInit={camera.onInit}
+        <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={(_event, node) => selectNode(node)}
+          onNodesChange={onNodesChange} onPaneClick={selection.close} onInit={camera.onInit}
           onMoveStart={event => { if (event) stopFollowing() }} onMove={(_event, viewport) => camera.setZoom(viewport.zoom)}
           nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} elevateNodesOnSelect={false} deleteKeyCode={null}
           panOnScroll={false} zoomOnScroll panOnDrag zoomOnDoubleClick={false} minZoom={.08} maxZoom={1.8} onlyRenderVisibleElements
@@ -110,8 +107,8 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
         </div>}
       </div><FlowStatusbar graph={graph} latest={latest} running={running} permissions={permissions} openLatest={openLatest} />
       </div> }, { id: 'composer', title: t('dock.composer'), content: composer }, ...(selected ? [{ id: 'details' as const, title: t('flow.details'),
-        content: <FlowInspector key={selected.id} node={selected} focus={detailFocus} onClose={() => setSelectedId(null)} />,
-        onClose: () => setSelectedId(null) }] : [])]} />
+        content: <FlowInspector key={selected.id} node={selected} focus={detailFocus} following={follow} onBrowse={stopFollowing} onClose={selection.close} />,
+        onClose: selection.close }] : [])]} />
   </section>
 }
 
