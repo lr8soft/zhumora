@@ -1,4 +1,4 @@
-import { memo, useCallback, useEffect, useMemo, useRef, useState } from 'react'
+import { memo, useCallback, useMemo, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Edge, type OnNodesChange } from '@xyflow/react'
@@ -6,6 +6,7 @@ import { ArrowRight, Focus, GitBranch, Layers, LocateFixed, Maximize2, Minus, Pl
 import { useFlowGraph } from '../flow/useFlowGraph'
 import type { ConversationGraph, FlowDetailFocus, FlowNode } from '../flow/types'
 import { stepHandleId } from '../flow/nestedSteps'
+import { useFlowCamera } from '../flow/useFlowCamera'
 import DockWorkspace from '../docking/DockWorkspace'
 import ConversationFlowNode, { flowTitle, type ConversationNode } from './ConversationFlowNode'
 import FlowInspector from './FlowInspector'
@@ -30,17 +31,14 @@ function FlowWorkspace({ sessionId }: { sessionId: string }) {
   const [foldHistory, setFoldHistory] = useState(true)
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set())
   const [showChildren, setShowChildren] = useState(true)
-  const [follow, setFollow] = useState(true)
   const [selectedId, setSelectedId] = useState<string | null>(null)
   const [detailFocus, setDetailFocus] = useState<FlowDetailFocus>()
-  const [zoom, setZoom] = useState(1)
   const { graph, running, permissions, loadError, retryLoad, loading } = useFlowGraph(sessionId, foldHistory, expandedTurns, showChildren)
   const flow = useReactFlow<ConversationNode, Edge>()
-  const initialised = useRef(false)
-  const canvasRef = useRef<HTMLDivElement>(null)
+  const camera = useFlowCamera(graph)
+  const { follow, zoom, fitAll, focusLatest, stopFollowing } = camera
   const workspacePath = useAppStore(state => state.sessions.find(session => session.id === sessionId)?.workspacePath || state.settings.workspacePath)
   const selected = graph.nodes.find(node => node.id === selectedId) ?? graph.nodes.find(node => node.data.steps?.some(step => step.id === selectedId))
-  const topology = graph.nodes.map(node => `${node.id}:${node.position.x}:${node.position.y}:${node.width}:${node.height}`).join('|')
   const latest = graph.nodes.find(node => node.id === graph.latestNodeId)
   const selectStep = useCallback((_ownerId: string, stepId: string, tab?: FlowDetailFocus['tab']) => {
     setSelectedId(stepId); setDetailFocus({ stepId, tab })
@@ -54,36 +52,17 @@ function FlowWorkspace({ sessionId }: { sessionId: string }) {
   })), [graph.nodes, selected?.id, t, selectStep])
   const edges = useMemo(() => flowEdges(graph), [graph])
 
-  const fitAll = useCallback(() => { void flow.fitView({ padding: .16, duration: 250, minZoom: .08, maxZoom: 1 }) }, [flow])
-  const focusLatest = useCallback(() => {
-    const root = graph.nodes.filter(node => node.data.sessionId === sessionId && node.data.kind !== 'lane').slice(-3)
-    if (root.length) void flow.fitView({ nodes: root.map(node => ({ id: node.id })), padding: .22, duration: 250, maxZoom: 1 })
-  }, [flow, graph.nodes, sessionId])
   const openLatest = () => {
     if (!latest) return
     setSelectedId(latest.id)
     setDetailFocus(undefined)
-    // Let the inspector commit and the canvas ResizeObserver publish its new bounds before fitting.
-    const owner = canvasRef.current?.ownerDocument.defaultView ?? window
-    owner.requestAnimationFrame(() => owner.requestAnimationFrame(focusLatest))
+    focusLatest()
   }
-
-  useEffect(() => {
-    if (!flow.viewportInitialized || !graph.nodes.length) return
-    // Text deltas never relayout or move the camera; only structural changes can advance following.
-    if (!initialised.current) {
-      initialised.current = true
-      if (graph.nodes.length < 16) fitAll()
-      else focusLatest()
-    } else if (follow) focusLatest()
-    // The topology key deliberately excludes content and statuses.
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [topology, follow, flow.viewportInitialized])
 
   const selectNode = (_event: React.MouseEvent, node: ConversationNode) => {
     if (node.data.kind === 'turn' && node.data.turnId) {
       setExpandedTurns(previous => new Set([...previous, node.data.turnId!]))
-      setFollow(false)
+      stopFollowing()
     } else { setSelectedId(node.id); setDetailFocus(undefined) }
   }
   const onNodesChange: OnNodesChange<ConversationNode> = changes => {
@@ -92,23 +71,23 @@ function FlowWorkspace({ sessionId }: { sessionId: string }) {
   }
 
   const toolbar = <div className="flow-toolbar-actions">
-        <button onClick={() => { setFollow(false); fitAll() }} title={t('flow.fit')}><Maximize2 size={13} /><span>{t('flow.fit')}</span></button>
+        <button onClick={fitAll} title={t('flow.fit')}><Maximize2 size={13} /><span>{t('flow.fit')}</span></button>
         <button aria-pressed={foldHistory} aria-label={t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')} title={t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}
-          onClick={() => { setFoldHistory(value => !value); setExpandedTurns(new Set()); setFollow(false) }}>
+          onClick={() => { setFoldHistory(value => !value); setExpandedTurns(new Set()); stopFollowing() }}>
           <Layers size={13} /><span>{t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}</span></button>
         <button aria-pressed={showChildren} aria-label={t('flow.children')} title={t('flow.children')}
-          onClick={() => { setShowChildren(value => !value); setFollow(false) }}><GitBranch size={13} /><span>{t('flow.children')}</span></button>
+          onClick={() => { setShowChildren(value => !value); stopFollowing() }}><GitBranch size={13} /><span>{t('flow.children')}</span></button>
         <button className={follow ? 'active' : ''} aria-pressed={follow} aria-label={t('flow.follow')} title={t('flow.follow')}
-          onClick={() => { setFollow(value => !value); if (!follow) focusLatest() }}>
+          onClick={camera.toggleFollow}>
           <LocateFixed size={13} /><span>{t('flow.follow')}</span></button>
       </div>
   return <section className="conversation-flow" aria-label={t('flow.title')}>
     {loadError && <div className="flow-load-error" role="alert">{t('flow.loadError')}<button onClick={retryLoad}><RotateCcw size={12} />{t('flow.retry')}</button></div>}
     <DockWorkspace panels={[{ id: 'conversation', title: `${t('flow.title')} · ${t('flow.turnCount', { count: graph.turnIds.length })}`, toolbar, content: <div className="flow-pane">
-      <div className="flow-canvas" ref={canvasRef}>
+      <div className="flow-canvas" ref={camera.setCanvas}>
         <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={selectNode}
-          onNodesChange={onNodesChange} onPaneClick={() => setSelectedId(null)} onInit={fitAll}
-          onMoveStart={event => { if (event) setFollow(false) }} onMove={(_event, viewport) => setZoom(viewport.zoom)}
+          onNodesChange={onNodesChange} onPaneClick={() => setSelectedId(null)} onInit={camera.onInit}
+          onMoveStart={event => { if (event) stopFollowing() }} onMove={(_event, viewport) => camera.setZoom(viewport.zoom)}
           nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} deleteKeyCode={null}
           panOnScroll={false} zoomOnScroll panOnDrag zoomOnDoubleClick={false} minZoom={.08} maxZoom={1.8} onlyRenderVisibleElements
           autoPanOnNodeFocus={false} proOptions={{ hideAttribution: true }}>
@@ -121,10 +100,10 @@ function FlowWorkspace({ sessionId }: { sessionId: string }) {
             <ArrowRight size={16} /><span>{t('flow.kind.llm')}</span><ArrowRight size={16} /><span>{t('flow.kind.tool')}</span>
             <ArrowRight size={16} /><span>{t('flow.finalReply')}</span></div></>}</div>}
         {graph.nodes.length > 0 && <div className="flow-zoom-tools">
-          <button className="flow-icon-button" onClick={() => { setFollow(false); void flow.zoomOut() }} aria-label={t('flow.zoomOut')} title={t('flow.zoomOut')}><Minus size={14} /></button>
+          <button className="flow-icon-button" onClick={() => { stopFollowing(); void flow.zoomOut() }} aria-label={t('flow.zoomOut')} title={t('flow.zoomOut')}><Minus size={14} /></button>
           <span>{Math.round(zoom * 100)}%</span>
-          <button className="flow-icon-button" onClick={() => { setFollow(false); void flow.zoomIn() }} aria-label={t('flow.zoomIn')} title={t('flow.zoomIn')}><Plus size={14} /></button>
-          <button className="flow-icon-button" onClick={() => { setFollow(false); fitAll() }} aria-label={t('flow.fit')} title={t('flow.fit')}><Focus size={14} /></button>
+          <button className="flow-icon-button" onClick={() => { stopFollowing(); void flow.zoomIn() }} aria-label={t('flow.zoomIn')} title={t('flow.zoomIn')}><Plus size={14} /></button>
+          <button className="flow-icon-button" onClick={fitAll} aria-label={t('flow.fit')} title={t('flow.fit')}><Focus size={14} /></button>
         </div>}
       </div><FlowStatusbar graph={graph} latest={latest} running={running} permissions={permissions} openLatest={openLatest} />
       </div> }, ...(selected ? [{ id: 'details' as const, title: t('flow.details'),

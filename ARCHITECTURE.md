@@ -369,7 +369,7 @@ stateDiagram-v2
 - 子任务从创建/继续工具小节点的具名 source handle 分叉，泳道同样按发言展开，delegate edge 的 `sourceStepId` 保留具体调用来源。子完成本身不产生回流；只有 `wait_subagents` 实际取回匹配 task/session 的终态结果才连到具体 wait 小节点的 target handle，return edge 的 `targetStepId` 保留具体 wait 调用。创建与等待可属于同一发言容器，此时回流回该容器内的后续 wait，而非 Agent 执行循环；下一主节点布局仍推进到已返回子结果之后。失败/取消结果可被父任务取回，但 running/awaiting_permission 快照不得伪装成完成汇合。
 - 图是历史与事件的可丢弃投影，DB 和 renderer session cache 始终保存完整消息。历史默认按用户轮次折叠，最新轮次始终展开；展开、选中、详情 tab、缩放、平移、跟随开关均属于组件短生命周期状态，不新增 Agent runtime 或持久化图状态。
 - `FlowInspector` 用 `FlowStepList` 导航发言内的精确步骤，点击主卡片默认展示该句正文，点击思考/工具小节点直接定位对应步骤与 tab，用户选择后按步骤 ID 固定；正文/reasoning、参数、结果与用户图片继续使用原安全渲染边界。步骤行 memo 避免 token 让整段导航重渲染。权限保持原全局 FIFO 确认弹窗，画布仅显示按会话等待确认的只读投影，不猜测缺失的 toolCallId、不产生新裁决入口。
-- 图卡片尺寸只随内部步骤/端口结构变化，流式文本增量不重排图或移动镜头；结构变化才推进自动跟随。画布鼠标滚轮用于缩放，拖拽用于平移；用户平移/缩放后停用跟随，可显式恢复。节点 memo + 视口裁剪限制重渲染；主题沿用既有浅色冷白、深色中性灰令牌。
+- 图卡片尺寸只随内部步骤/端口结构变化，流式文本增量不重排图或移动镜头；结构变化才推进自动跟随。`useFlowCamera` 是画布镜头的唯一调度点：用纯投影的坐标/尺寸计算 bounds 并 setViewport，不依赖视口外尚未 DOM 测量的节点；开启/恢复跟随时居中最新主节点，新节点/卡片结构/画布尺寸变化继续跟随。初始化与停靠重挂载不能另行 fit 全图覆盖跟随目标，延迟请求在当前 canvas 文档中合并并可取消。滚轮缩放、拖拽平移或显式适应全图会停用跟随并取消待执行的自动请求，可显式恢复。节点 memo + 视口裁剪限制重渲染；主题沿用既有浅色冷白、深色中性灰令牌。
 - 初次加载子历史时，`applyHistorySnapshot` 按权威 ID 保留在读取期间收到、尚未包含在快照中的活动消息与流式内容；匹配的 DB 行是已落库终态，始终优先，非活动会话完全采用 DB 快照。迟到的 renderer invoke 用 `applyAuthoritativeUserMessage` 替换 pending：已在快照中出现的权威 user 只更新一次并移除占位，不能重复追加或移到回答之后。complete/error/abort 后的原重拉校准语义保持不变。
 - 当前恢复的是消息中可验证的执行拓扑，未新增持久化 run/task 日志。历史工具耗时、完整重试/审批轨迹仍不能凭空还原；活动 task_id 的 owner 与生命周期仍是父 run 的 SubagentScope。
 - `ChatView` 只组合 header、通知、canvas 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。旧 MessageViewport/MessageBubble/ToolCallChain 展示路径已移除。

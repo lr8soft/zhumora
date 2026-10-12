@@ -8,6 +8,7 @@ import react from '@vitejs/plugin-react'
 import { _electron } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
+import { assertFocusedNode, settleViewport } from './helpers/flowCameraChecks.mjs'
 
 // Real hidden Electron windows and production renderer; no user database, providers or Agent runs.
 const output = resolve('.temp/panel-ui')
@@ -119,6 +120,7 @@ try {
   await flowWindow.locator('.react-flow').waitFor()
   await flowWindow.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await flowWindow.waitForFunction(() => document.querySelectorAll('.flow-card').length === 11)
+  await settleViewport(flowWindow)
   const flowBounds = await flowWindow.locator('.flow-canvas').boundingBox()
   await flowWindow.mouse.move(flowBounds.x + flowBounds.width / 2, flowBounds.y + 24)
   const zoom = await flowWindow.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a)
@@ -129,6 +131,8 @@ try {
     flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'native-live', phase: 'start', content: '', toolCalls: [] })
     flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'native-live', token: '独立窗口的实时输出' })
   })
+  await flowWindow.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await assertFocusedNode(flowWindow, '独立窗口的实时输出')
   await flowWindow.getByRole('button', { name: '最新输出', exact: true }).click()
   await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('独立窗口的实时输出'))
   await flowWindow.screenshot({ path: resolve(output, 'flow-window-dark.png') })
@@ -147,6 +151,7 @@ try {
   await page.locator('.flow-inspector').waitFor()
   await flowWindow.getByRole('button', { name: '停靠回主窗口', exact: true }).click()
   await page.locator('.flow-canvas').waitFor()
+  await assertFocusedNode(page, '独立窗口的实时输出')
   assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1, 'return closes only auxiliary windows')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 12)

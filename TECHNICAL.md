@@ -54,6 +54,12 @@ zooms and dragging pans; manual navigation disables following until resumed.
 The inspector uses the existing safe Markdown/Mermaid renderer. Card dimensions
 depend on step/port structure, so text deltas do not move layout or camera. A live
 utterance is allocated before its first text token; a tool-only end folds it back.
+`useFlowCamera` fits projected bounds directly, so offscreen nodes do not need
+DOM measurements before they can be followed. Enabling follow centers the latest
+main node; new geometry and canvas resizing maintain that focus. Initialization
+and panel remounts use the same scheduler, and manual navigation cancels pending
+automatic moves. `npm run test:ui:camera` covers long virtualized histories,
+resuming follow, new nodes, stable text deltas and inspector/panel layout changes.
 Graph state is a disposable
 renderer projection, not a second Agent runtime or a persisted workflow engine.
 Full historical timing and permission/retry traces are not inferred from messages.
