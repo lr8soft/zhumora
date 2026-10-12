@@ -1,6 +1,6 @@
 import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
+import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider,
   type Edge, type OnNodesChange } from '@xyflow/react'
 import { ArrowRight, Focus, GitBranch, Layers, LocateFixed, Maximize2, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useFlowGraph } from '../flow/useFlowGraph'
@@ -9,6 +9,7 @@ import { stepHandleId } from '../flow/nestedSteps'
 import { useFlowCamera } from '../flow/useFlowCamera'
 import { useFlowSelection } from '../flow/useFlowSelection'
 import { useFlowSizing, useMeasuredFlowGraph } from '../flow/useFlowSizing'
+import { CAMERA_ZOOM } from '../flow/cameraZoom'
 import DockWorkspace from '../docking/DockWorkspace'
 import ConversationFlowNode, { flowTitle, type ConversationNode } from './ConversationFlowNode'
 import FlowInspector from './FlowInspector'
@@ -37,7 +38,6 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   const { graph: source, running, permissions, loadError, retryLoad, loading } = useFlowGraph(sessionId, foldHistory, expandedTurns, showChildren, sizing.sizing)
   const geometry = useMeasuredFlowGraph(source, sizing.sizing.fontSize)
   const { graph } = geometry
-  const flow = useReactFlow<ConversationNode, Edge>()
   const camera = useFlowCamera(graph)
   const { follow, zoom, fitAll, focusLatest, stopFollowing } = camera
   const setCanvas = useCallback((element: HTMLDivElement | null) => {
@@ -96,9 +96,9 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
       <div className="flow-canvas" ref={setCanvas}>
         <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={(_event, node) => selectNode(node)}
           onNodesChange={onNodesChange} onPaneClick={selection.close} onInit={camera.onInit}
-          onMoveStart={event => { if (event) stopFollowing() }} onMove={(_event, viewport) => camera.setZoom(viewport.zoom)}
+          onMoveStart={camera.onMoveStart} onMove={camera.onMove} onMoveEnd={camera.onMoveEnd}
           nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} elevateNodesOnSelect={false} deleteKeyCode={null}
-          panOnScroll={false} zoomOnScroll panOnDrag zoomOnDoubleClick={false} minZoom={.08} maxZoom={1.8} onlyRenderVisibleElements
+          panOnScroll={false} zoomOnScroll panOnDrag zoomOnDoubleClick={false} minZoom={CAMERA_ZOOM.min} maxZoom={CAMERA_ZOOM.max} onlyRenderVisibleElements
           autoPanOnNodeFocus={false} proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--app-color-border)" />
           {graph.nodes.length > 0 && <MiniMap nodeColor={node => MINIMAP_COLORS[(node.data as FlowNode['data']).kind]}
@@ -109,9 +109,9 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
             <ArrowRight size={16} /><span>{t('flow.kind.llm')}</span><ArrowRight size={16} /><span>{t('flow.kind.tool')}</span>
             <ArrowRight size={16} /><span>{t('flow.finalReply')}</span></div></>}</div>}
         {graph.nodes.length > 0 && <div className="flow-zoom-tools">
-          <button className="flow-icon-button" onClick={() => { stopFollowing(); void flow.zoomOut() }} aria-label={t('flow.zoomOut')} title={t('flow.zoomOut')}><Minus size={14} /></button>
+          <button className="flow-icon-button" onClick={camera.zoomOut} aria-label={t('flow.zoomOut')} title={t('flow.zoomOut')}><Minus size={14} /></button>
           <span>{Math.round(zoom * 100)}%</span>
-          <button className="flow-icon-button" onClick={() => { stopFollowing(); void flow.zoomIn() }} aria-label={t('flow.zoomIn')} title={t('flow.zoomIn')}><Plus size={14} /></button>
+          <button className="flow-icon-button" onClick={camera.zoomIn} aria-label={t('flow.zoomIn')} title={t('flow.zoomIn')}><Plus size={14} /></button>
           <button className="flow-icon-button" onClick={fitAll} aria-label={t('flow.fit')} title={t('flow.fit')}><Focus size={14} /></button>
         </div>}
       </div><FlowStatusbar graph={graph} latest={latest} running={running} permissions={permissions} openLatest={openLatest} />

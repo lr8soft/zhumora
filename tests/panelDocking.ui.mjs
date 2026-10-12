@@ -131,6 +131,8 @@ try {
   const zoom = await flowWindow.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a)
   await flowWindow.mouse.wheel(0, -240)
   await flowWindow.waitForFunction(previous => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a > previous, zoom)
+  await settleViewport(flowWindow)
+  const selectedZoom = await flowWindow.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a)
   await page.evaluate(() => {
     flowUiFixture.emit('agent.onRunningChange', { sessionId: 'parent', running: true })
     flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'native-live', phase: 'start', content: '', toolCalls: [] })
@@ -138,6 +140,8 @@ try {
   })
   await flowWindow.getByRole('button', { name: '跟随运行', exact: true }).click()
   await assertFocusedNode(flowWindow, '独立窗口的实时输出')
+  assert.ok(Math.abs(await flowWindow.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a) - selectedZoom) < .000001,
+    'native flow windows follow at the selected wheel zoom')
   await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('独立窗口的实时输出'))
   await flowWindow.getByRole('button', { name: '最新输出', exact: true }).click()
   await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('独立窗口的实时输出'))

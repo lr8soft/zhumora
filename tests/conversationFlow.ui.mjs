@@ -90,7 +90,7 @@ try {
   await page.mouse.wheel(0, -240)
   await page.waitForFunction(zoom => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a > zoom, wheelStart.zoom)
   await waitViewportSettled(page)
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false')
+  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'true', 'wheel zoom keeps follow enabled')
   const enlarged = await readViewport(page)
   await page.mouse.wheel(0, 240)
   await page.waitForFunction(zoom => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a < zoom, enlarged.zoom)
@@ -103,6 +103,7 @@ try {
   const dragged = await readViewport(page)
   assert.equal(dragged.zoom, dragStart.zoom, 'dragging preserves zoom')
   assert.ok(dragged.x > dragStart.x && dragged.y > dragStart.y, 'dragging still pans the canvas')
+  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false', 'dragging pauses follow')
 
   // A live token updates its ID and neither relayouts the graph nor steals the user's camera.
   const before = await page.locator('.react-flow__viewport').getAttribute('style')

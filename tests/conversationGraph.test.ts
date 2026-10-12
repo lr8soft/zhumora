@@ -7,6 +7,7 @@ import { nestedSteps, previewRowCount, previewSteps, primaryStep } from '../src/
 import { estimateSpeechHeight, responsiveSpeechWidth } from '../src/renderer/src/flow/speechSizing.ts'
 import { hasVisibleFlowNodes, shouldRecoverFlowViewport } from '../src/renderer/src/flow/viewportRecovery.ts'
 import type { ConversationGraph } from '../src/renderer/src/flow/types.ts'
+import { centerAtZoom, clampCameraZoom, isZoomGesture } from '../src/renderer/src/flow/cameraZoom.ts'
 
 const message = (id: string, overrides: Partial<UIMessage> = {}): UIMessage => ({
   id, sessionId: 'parent', role: 'user', content: id, timestamp: 1, status: 'done', ...overrides
@@ -37,6 +38,21 @@ const task = { task_id: 'task-1', session_id: 'child', parentSessionId: 'parent'
 const input = (messages: UIMessage[], overrides: Partial<GraphInput> = {}): GraphInput => ({
   sessionId: 'parent', sessions: [], messages: { parent: messages }, runningIds: new Set(), detailLevel: 'steps', ...overrides
 })
+
+{
+  for (const zoom of [.3, .8, 1.4]) {
+    const bounds = { x: 20000, y: 80, width: 420, height: 320 }
+    const view = centerAtZoom(bounds, 1000, 600, zoom)
+    assert.equal(view.zoom, zoom, 'following preserves the chosen scale')
+    assert.equal(view.x + (bounds.x + bounds.width / 2) * zoom, 500)
+    assert.equal(view.y + (bounds.y + bounds.height / 2) * zoom, 300)
+  }
+  assert.equal(clampCameraZoom(3), 1.8)
+  assert.equal(clampCameraZoom(.01), .08)
+  assert.ok(isZoomGesture({ type: 'wheel' }))
+  assert.ok(isZoomGesture({ type: 'touchstart', touches: { length: 2 } }))
+  assert.equal(isZoomGesture({ type: 'mousedown' }), false)
+}
 
 {
   const short = buildConversationGraph(input([assistant('short')], { detailLevel: undefined })).nodes[0]

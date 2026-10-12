@@ -57,7 +57,11 @@ expand hint. Decorative subagent lanes ignore pointer/selection events at the
 React Flow wrapper and retain a fixed background layer, so clicking their empty
 area cannot cover child cards. Selection does not elevate graph elements.
 The mouse wheel
-zooms and dragging pans; manual navigation disables following until resumed.
+zooms and dragging pans. Wheel/pinch and zoom buttons retain follow and record the
+chosen scale; tracking new nodes, resized panes and pane remounts centers without
+changing it. Panning or manual node/step browsing pauses follow. Explicit fit resets
+the zoom preference and pauses follow; before any user zoom, latest-node framing
+uses automatic fitting. Programmatic camera moves cannot overwrite the preference.
 The inspector uses the existing safe Markdown/Mermaid renderer.
 Its selected content/reasoning follows live output to the bottom, including
 asynchronous content sizing. Scrolling back pauses this until the reader returns
