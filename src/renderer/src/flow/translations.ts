@@ -1,4 +1,5 @@
 const en = {
+  folded: 'Folded', expandTurn: 'Expand · {{count}} messages',
   title: 'Conversation flow', turnCount: '{{count}} turns', stepCount: '{{count}} steps', messageCount: '{{count}} messages', receivedCount: 'Received {{received}} / {{total}} task results',
   fit: 'Fit canvas', expandHistory: 'Expand history', foldHistory: 'Fold history', children: 'Subagents', follow: 'Follow run',
   details: 'Node details', close: 'Close details', copy: 'Copy', copied: 'Copied', copyError: 'Copy failed. Select the text to copy it.',
@@ -13,6 +14,7 @@ const en = {
   tab: { content: 'Content', reasoning: 'Reasoning', args: 'Arguments', result: 'Result' }
 }
 const zh = {
+  folded: '已折叠', expandTurn: '点击展开 · {{count}} 条消息',
   title: '对话流程', turnCount: '{{count}} 轮对话', stepCount: '{{count}} 个节点', messageCount: '{{count}} 条消息', receivedCount: '已接收 {{received}} / {{total}} 个任务结果',
   fit: '适应画布', expandHistory: '展开历史', foldHistory: '折叠历史', children: '子 Agent', follow: '跟随运行',
   details: '节点详情', close: '关闭详情', copy: '复制', copied: '已复制', copyError: '复制失败，请选中文字复制。',
@@ -28,6 +30,7 @@ const zh = {
 }
 const ja = {
   ...en, title: '会話フロー', turnCount: '{{count}} ターン', stepCount: '{{count}} ノード', messageCount: '{{count}} メッセージ', receivedCount: '{{received}} / {{total}} 件の結果を受信',
+  folded: '折りたたみ', expandTurn: '展開 · {{count}} メッセージ',
   fit: '全体を表示', expandHistory: '履歴を展開', foldHistory: '履歴を折りたたむ', children: 'サブエージェント', follow: '実行を追跡',
   details: 'ノードの詳細', close: '詳細を閉じる', copy: 'コピー', copied: 'コピー済み', copyError: 'コピーに失敗しました。テキストを選択してください。',
   branch: '委任', receive: '結果を受信', inspect: '詳細', waitingOutput: 'モデルの出力を待機中…', noContent: 'テキストなし',
@@ -41,6 +44,7 @@ const ja = {
 }
 const es = {
   ...en, title: 'Flujo de conversación', turnCount: '{{count}} turnos', stepCount: '{{count}} nodos', messageCount: '{{count}} mensajes', receivedCount: '{{received}} / {{total}} resultados recibidos',
+  folded: 'Plegado', expandTurn: 'Expandir · {{count}} mensajes',
   fit: 'Ajustar lienzo', expandHistory: 'Expandir historial', foldHistory: 'Plegar historial', children: 'Subagentes', follow: 'Seguir ejecución',
   details: 'Detalles del nodo', close: 'Cerrar detalles', copy: 'Copiar', copied: 'Copiado', copyError: 'No se pudo copiar. Seleccione el texto.',
   branch: 'Delegación', receive: 'Recibir resultados', inspect: 'Detalles', waitingOutput: 'Esperando al modelo…', noContent: 'Sin texto',
@@ -54,6 +58,7 @@ const es = {
 }
 const fr = {
   ...en, title: 'Flux de conversation', turnCount: '{{count}} tours', stepCount: '{{count}} nœuds', messageCount: '{{count}} messages', receivedCount: '{{received}} / {{total}} résultats reçus',
+  folded: 'Replié', expandTurn: 'Déplier · {{count}} messages',
   fit: 'Ajuster la vue', expandHistory: 'Déplier l’historique', foldHistory: 'Replier l’historique', children: 'Sous-agents', follow: 'Suivre l’exécution',
   details: 'Détails du nœud', close: 'Fermer les détails', copy: 'Copier', copied: 'Copié', copyError: 'Échec de la copie. Sélectionnez le texte.',
   branch: 'Délégation', receive: 'Recevoir les résultats', inspect: 'Détails', waitingOutput: 'En attente du modèle…', noContent: 'Aucun texte',
@@ -67,6 +72,7 @@ const fr = {
 }
 const de = {
   ...en, title: 'Gesprächsablauf', turnCount: '{{count}} Runden', stepCount: '{{count}} Knoten', messageCount: '{{count}} Nachrichten', receivedCount: '{{received}} / {{total}} Ergebnisse empfangen',
+  folded: 'Eingeklappt', expandTurn: 'Aufklappen · {{count}} Nachrichten',
   fit: 'Ansicht einpassen', expandHistory: 'Verlauf aufklappen', foldHistory: 'Verlauf einklappen', children: 'Unteragenten', follow: 'Ausführung folgen',
   details: 'Knotendetails', close: 'Details schließen', copy: 'Kopieren', copied: 'Kopiert', copyError: 'Kopieren fehlgeschlagen. Bitte Text auswählen.',
   branch: 'Delegation', receive: 'Ergebnisse empfangen', inspect: 'Details', waitingOutput: 'Warten auf Modellausgabe…', noContent: 'Kein Text',

@@ -1,13 +1,13 @@
 import { memo } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
-import { Archive, Brain, Check, ChevronRight, GitBranch, GitMerge, LoaderCircle, MessageSquare, UserRound, Wrench, XCircle } from 'lucide-react'
+import { Archive, Brain, Check, ChevronRight, GitBranch, GitMerge, Layers, LoaderCircle, MessageSquare, UserRound, Wrench, XCircle } from 'lucide-react'
 import type { FlowData } from '../flow/types'
 import SpeechFlowNode, { type SpeechNodeData } from './SpeechFlowNode'
 
 export type ConversationNode = Node<SpeechNodeData, 'conversation'>
 const icons = { user: UserRound, llm: Brain, tool: Wrench, delegate: GitBranch, join: GitMerge,
-  speech: MessageSquare, summary: Archive, turn: MessageSquare, compaction: Archive, lane: GitBranch }
+  speech: MessageSquare, summary: Archive, turn: Layers, compaction: Archive, lane: GitBranch }
 
 export function flowTitle(data: FlowData, t: (key: string) => string): string {
   return data.call ? data.title : data.kind === 'lane' ? data.title : data.title || t(`flow.kind.${data.kind}`)
@@ -33,12 +33,13 @@ function ConversationFlowNode({ id, data, selected }: NodeProps<ConversationNode
   return <div className={`flow-card flow-${data.kind}${selected ? ' is-selected' : ''}`}>
     <Handle type="target" position={Position.Left} isConnectable={false} />
     <header><span className="flow-card-icon"><Icon size={15} /></span><strong>{flowTitle(data, t)}</strong>
+      {data.kind === 'turn' && <span className="flow-folded-badge">{t('flow.folded')}</span>}
       {StatusIcon && <StatusIcon size={13} className={`flow-node-status ${data.status}${data.status === 'running' ? ' spin' : ''}`} />}
     </header>
     {data.steps && <div className="flow-card-meta">{t('flow.executionCounts', { llm: data.llmCount, tools: data.toolCount })}</div>}
     <div className="flow-card-preview">{cardPreview(preview, data.kind) || t(data.kind === 'llm' ? 'flow.waitingOutput' : 'flow.noContent')}</div>
     <footer><span className={`flow-status ${data.status}`}>{t(`flow.status.${data.status}`)}</span>
-      {data.kind === 'turn' ? <span>{t('flow.messageCount', { count: data.messageCount })}<ChevronRight size={12} /></span>
+      {data.kind === 'turn' ? <span>{t('flow.expandTurn', { count: data.messageCount })}<ChevronRight size={12} /></span>
         : <span>{t(data.kind === 'delegate' ? 'flow.branch' : data.kind === 'join' ? 'flow.receive' : 'flow.inspect')}<ChevronRight size={12} /></span>}
     </footer>
     <Handle type="source" position={Position.Right} isConnectable={false} />

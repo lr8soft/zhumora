@@ -20,7 +20,7 @@ const EDGE_COLORS = { sequence: 'var(--app-color-border-strong)', delegate: 'var
 const MINIMAP_COLORS = { user: 'var(--app-color-primary)', llm: 'var(--app-color-info)', tool: 'var(--app-color-cyan)',
   speech: 'var(--app-color-primary)',
   delegate: 'var(--app-color-info)', join: 'var(--app-color-success)', summary: 'var(--app-color-text-mute)',
-  turn: 'var(--app-color-text-mute)', compaction: 'var(--app-color-text-mute)', lane: 'transparent' }
+  turn: 'var(--app-color-warn)', compaction: 'var(--app-color-text-mute)', lane: 'transparent' }
 
 export default memo(function ConversationFlow({ sessionId, composer }: { sessionId: string; composer: ReactNode }) {
   return <ReactFlowProvider><FlowWorkspace sessionId={sessionId} composer={composer} /></ReactFlowProvider>
@@ -46,9 +46,10 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
 
   const nodes = useMemo<ConversationNode[]>(() => graph.nodes.map(node => ({ ...node,
     data: { ...node.data, onStepSelect: selectStep },
-    type: 'conversation', selected: node.id === selected?.id, selectable: node.data.kind !== 'lane',
+    type: 'conversation', selected: node.data.kind !== 'lane' && node.id === selected?.id, selectable: node.data.kind !== 'lane',
     focusable: node.data.kind !== 'lane', draggable: false, connectable: false, zIndex: node.data.kind === 'lane' ? -1 : 1,
-    style: { width: node.width, height: node.height }, ariaLabel: `${flowTitle(node.data, t)} · ${t(`flow.status.${node.data.status}`)}`
+    style: { width: node.width, height: node.height, ...(node.data.kind === 'lane' ? { pointerEvents: 'none' as const } : {}) },
+    ariaLabel: `${flowTitle(node.data, t)} · ${t(`flow.status.${node.data.status}`)}`
   })), [graph.nodes, selected?.id, t, selectStep])
   const edges = useMemo(() => flowEdges(graph), [graph])
 
@@ -60,14 +61,16 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   }
 
   const selectNode = (_event: React.MouseEvent, node: ConversationNode) => {
+    if (node.data.kind === 'lane') return
     if (node.data.kind === 'turn' && node.data.turnId) {
       setExpandedTurns(previous => new Set([...previous, node.data.turnId!]))
+      setSelectedId(null); setDetailFocus(undefined)
       stopFollowing()
     } else { setSelectedId(node.id); setDetailFocus(undefined) }
   }
   const onNodesChange: OnNodesChange<ConversationNode> = changes => {
     const selection = changes.find(change => change.type === 'select' && change.selected)
-    if (selection?.type === 'select') setSelectedId(selection.id)
+    if (selection?.type === 'select' && graph.nodes.some(node => node.id === selection.id && node.data.kind !== 'lane')) setSelectedId(selection.id)
   }
 
   const toolbar = <div className="flow-toolbar-actions">
@@ -88,7 +91,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
         <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={selectNode}
           onNodesChange={onNodesChange} onPaneClick={() => setSelectedId(null)} onInit={camera.onInit}
           onMoveStart={event => { if (event) stopFollowing() }} onMove={(_event, viewport) => camera.setZoom(viewport.zoom)}
-          nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} deleteKeyCode={null}
+          nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} elevateNodesOnSelect={false} deleteKeyCode={null}
           panOnScroll={false} zoomOnScroll panOnDrag zoomOnDoubleClick={false} minZoom={.08} maxZoom={1.8} onlyRenderVisibleElements
           autoPanOnNodeFocus={false} proOptions={{ hideAttribution: true }}>
           <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="var(--app-color-border)" />

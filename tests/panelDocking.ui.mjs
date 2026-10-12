@@ -9,6 +9,7 @@ import { _electron } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 import { assertFocusedNode, settleViewport } from './helpers/flowCameraChecks.mjs'
+import { assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
 
 // Real hidden Electron windows and production renderer; no user database, providers or Agent runs.
 const output = resolve('.temp/panel-ui')
@@ -141,6 +142,7 @@ try {
   const secondDetails = await anotherDetails
   observe(secondDetails)
   await secondDetails.locator('.flow-inspector').waitFor()
+  await assertStreamingDetail(page, secondDetails, 'native-live')
   assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 3)
   const security = await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().map(window => {
     const preferences = window.webContents.getLastWebPreferences()
@@ -149,9 +151,13 @@ try {
   assert.ok(security.every(([isolated, node]) => isolated && !node))
   await secondDetails.getByRole('button', { name: '停靠回主窗口', exact: true }).click()
   await page.locator('.flow-inspector').waitFor()
+  await setPanelMode(page, 'details', '窗口内浮动')
+  await assertStreamingDetail(page, page, 'native-live')
+  await setPanelMode(page, 'details', '停靠右侧')
+  const livePreview = await flowWindow.locator('.flow-speech-text').filter({ hasText: '独立窗口的实时输出' }).textContent()
   await flowWindow.getByRole('button', { name: '停靠回主窗口', exact: true }).click()
   await page.locator('.flow-canvas').waitFor()
-  await assertFocusedNode(page, '独立窗口的实时输出')
+  await assertFocusedNode(page, livePreview)
   assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1, 'return closes only auxiliary windows')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 12)

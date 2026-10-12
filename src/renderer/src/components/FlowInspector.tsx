@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { ArrowUpRight, Check, Copy, GitBranch, X } from 'lucide-react'
 import type { FlowData, FlowDetailFocus, FlowDetailTab as DetailTab, FlowNode } from '../flow/types'
 import { primaryStep } from '../flow/nestedSteps'
+import { useDetailAutoScroll } from '../flow/useDetailAutoScroll'
 import { useAppStore } from '../store'
 import MarkdownView from './MarkdownView'
 import { flowTitle } from './ConversationFlowNode'
@@ -11,6 +12,7 @@ import FlowStepList from './FlowStepList'
 export default function FlowInspector({ node, focus, onClose }: { node: FlowNode; focus?: FlowDetailFocus; onClose: () => void }) {
   const { t } = useTranslation()
   const sessions = useAppStore(state => state.sessions)
+  const running = useAppStore(state => state.runningIds.has(node.data.sessionId))
   const { data } = node
   const session = sessions.find(session => session.id === data.sessionId)
   const [selectedStepId, setSelectedStepId] = useState<string | null>(focus?.stepId ?? null)
@@ -29,6 +31,7 @@ export default function FlowInspector({ node, focus, onClose }: { node: FlowNode
     : activeTab === 'result' ? value.result?.content ?? t('flow.noResult')
       : activeTab === 'reasoning' ? value.message?.reasoning ?? ''
         : value.message?.content ?? value.preview
+  const bodyRef = useDetailAutoScroll(`${detail.id}:${activeTab}`, text, running || value.status === 'running')
   const copy = async (owner: Window | null) => {
     try { await (owner ?? window).navigator.clipboard.writeText(text); setCopyState('copied') }
     catch { setCopyState('error') }
@@ -48,7 +51,8 @@ export default function FlowInspector({ node, focus, onClose }: { node: FlowNode
       {tabs.map(key => <button key={key} role="tab" aria-selected={activeTab === key} className={activeTab === key ? 'active' : ''}
         onClick={() => { setSelectedStepId(detail.id); setTab({ stepId: detail.id, value: key }); setCopyState('idle') }}>{t(`flow.tab.${key}`)}</button>)}
     </div>
-    <div className="flow-detail-body" role="tabpanel">
+    <div className="flow-detail-body" role="tabpanel" ref={bodyRef} tabIndex={0}>
+      <div className="flow-detail-content">
       <div className="flow-detail-section"><span>{t(`flow.tab.${activeTab}`)}</span>
         <button className="flow-icon-button" onClick={event => void copy(event.currentTarget.ownerDocument.defaultView)} title={t(copyState === 'copied' ? 'flow.copied' : 'flow.copy')} aria-label={t('flow.copy')}>
           {copyState === 'copied' ? <Check size={13} /> : <Copy size={13} />}
@@ -61,6 +65,7 @@ export default function FlowInspector({ node, focus, onClose }: { node: FlowNode
         {value.message.images.map((src, index) => <img key={index} src={src} alt={t('chat.attachImage')} />)}
       </div> : null}
       {session?.subagent && <div className="flow-detail-model"><GitBranch size={13} />{session.subagent.model}</div>}
+      </div>
     </div>
     <footer className="flow-inspector-footer"><button onClick={openSession}><ArrowUpRight size={14} />{t('flow.openSession')}</button>
       {data.sessionId !== useAppStore.getState().activeSessionId && useAppStore.getState().runningIds.has(data.sessionId)

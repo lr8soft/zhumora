@@ -24,7 +24,13 @@
 .flow-speech { --flow-accent: var(--app-color-primary); }
 .flow-tool { --flow-accent: var(--app-color-cyan); }
 .flow-join { --flow-accent: var(--app-color-success); }
-.flow-summary, .flow-compaction, .flow-turn { --flow-accent: var(--app-color-text-soft); }
+.flow-summary, .flow-compaction { --flow-accent: var(--app-color-text-soft); }
+.flow-card.flow-turn { --flow-accent: var(--app-color-warn); cursor: pointer;
+  border-color: color-mix(in srgb, var(--flow-accent) 65%, var(--app-color-border)); border-left: 3px solid var(--flow-accent);
+  background: color-mix(in srgb, var(--flow-accent) 8%, var(--app-color-surface)); }
+.flow-card.flow-turn header { background: color-mix(in srgb, var(--flow-accent) 14%, var(--app-color-surface)); }
+.flow-folded-badge { flex-shrink: 0; padding: 2px 5px; border-radius: 4px; font-size: .6rem; color: var(--flow-accent);
+  background: color-mix(in srgb, var(--flow-accent) 13%, var(--app-color-surface)); }
 .flow-card header { display: flex; align-items: center; gap: 8px; padding: 9px 11px; min-height: 37px;
   border-bottom: 1px solid var(--app-color-border); background: color-mix(in srgb, var(--flow-accent) 5%, var(--app-color-surface)); }
 .flow-card-icon { display: grid; place-items: center; color: var(--flow-accent); flex-shrink: 0; }
@@ -117,7 +123,7 @@
 .flow-step-list button small { flex-shrink: 0; }
 .flow-detail-tabs button { padding: 9px 0; border: 0; border-bottom: 2px solid transparent; background: transparent; color: var(--app-color-text-mute); cursor: pointer; font-size: .733rem; }
 .flow-detail-tabs button.active { border-bottom-color: var(--app-color-primary); color: var(--app-color-primary-strong); }
-.flow-detail-body { flex: 1; min-height: 0; padding: 10px 16px 18px; overflow: auto; }
+.flow-detail-body { flex: 1; min-height: 0; padding: 10px 16px 18px; overflow: auto; overflow-anchor: none; }
 .flow-detail-section { display: flex; align-items: center; justify-content: space-between; padding-bottom: 6px; color: var(--app-color-text-mute); font-size: .733rem; }
 .flow-detail-body pre { margin: 0; padding: 12px; border: 1px solid var(--app-color-border); border-radius: var(--app-radius-md); background: var(--app-card-bg);
   font-family: Consolas, Monaco, monospace; font-size: .733rem; line-height: 1.7; white-space: pre-wrap; overflow-wrap: anywhere; }

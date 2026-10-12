@@ -49,9 +49,19 @@ parent. The next main node still follows returned child results. Connected tools
 remain visible beyond the six-item preview, each on a full row with side ports
 outside the opaque parent surface. Graph keys encode authoritative ID
 tuples for safe dynamic port lookup, without changing stored message IDs.
-Earlier turns can be folded without changing stored history. The mouse wheel
+Earlier turns can be folded without changing stored history.
+Folded cards use the existing amber theme token, a layers icon and an explicit
+expand hint. Decorative subagent lanes ignore pointer/selection events at the
+React Flow wrapper and retain a fixed background layer, so clicking their empty
+area cannot cover child cards. Selection does not elevate graph elements.
+The mouse wheel
 zooms and dragging pans; manual navigation disables following until resumed.
-The inspector uses the existing safe Markdown/Mermaid renderer. Card dimensions
+The inspector uses the existing safe Markdown/Mermaid renderer.
+Its selected content/reasoning follows live output to the bottom, including
+asynchronous content sizing. Scrolling back pauses this until the reader returns
+to the bottom; selecting another step/tab resets its reading position. Observers
+and animation frames belong to the pane's actual document, including native windows.
+Card dimensions
 depend on step/port structure, so text deltas do not move layout or camera. A live
 utterance is allocated before its first text token; a tool-only end folds it back.
 `useFlowCamera` fits projected bounds directly, so offscreen nodes do not need

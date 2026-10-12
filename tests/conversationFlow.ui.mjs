@@ -6,6 +6,8 @@ import react from '@vitejs/plugin-react'
 import { chromium } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
+import { assertPassiveLanes } from './helpers/flowLaneChecks.mjs'
+import { assertFoldedAppearance, assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
 
 // No Electron, provider requests or user database: this drives the production renderer with explicit IPC fixtures.
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
@@ -41,6 +43,9 @@ try {
   // Viewport clipping mounts only visible elements; wait until fitting has exposed the whole fixture.
   const allEdges = await page.locator('.react-flow__edge').count()
   assert.equal(allEdges, 12, 'four main links, four child links, two forks and two result returns')
+  await waitViewportSettled(page)
+  await assertPassiveLanes(page)
+  await assertFoldedAppearance(page)
   await page.locator('.flow-inner-step.tool').filter({ hasText: /^read$/ }).click()
   await page.locator('.flow-inspector').waitFor()
   assert.equal(await page.locator('.flow-step-list button').count(), 2, 'the spoken message exposes its LLM and tool actions')
@@ -73,6 +78,9 @@ try {
   await waitViewportSettled(page)
 
   // Mouse wheel changes scale; dragging moves the canvas without changing scale.
+  await assertPassiveLanes(page)
+  await assertFoldedAppearance(page)
+  await page.screenshot({ path: resolve(output, 'folded-history-dark.png') })
   await page.getByRole('button', { name: '跟随运行', exact: true }).click()
   await waitViewportSettled(page)
   const canvas = await page.locator('.flow-canvas').boundingBox()
@@ -113,6 +121,15 @@ try {
   })
   assert.equal(await page.locator('.react-flow__viewport').getAttribute('style'), before)
   assert.ok(!(await page.locator('.flow-canvas').innerText()).includes('不应进入主流程'))
+  await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
+  await waitViewportSettled(page)
+  await page.locator('.flow-turn').click()
+  await page.waitForFunction(() => document.querySelectorAll('.flow-turn').length === 0)
+  assert.equal(await page.locator('.flow-inspector').count(), 0, 'expanding a folded round does not leave a stale detail selection')
+  assert.equal(await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/index.ts')
+    return useAppStore.getState().messages.parent.filter(message => message.id === 'old-a').length
+  }), 1, 'individual expansion preserves the authoritative history')
   await page.getByRole('button', { name: '展开历史', exact: true }).click()
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-turn').length === 0)
@@ -217,8 +234,18 @@ try {
   assert.equal(await page.locator('.react-flow__edge').count(), 11, 'same-container returns are real edges to the wait port')
   await waitViewportSettled(page)
   await page.screenshot({ path: resolve(output, 'speech-fork-return-dark.png') })
+  await page.getByRole('button', { name: '最新输出', exact: true }).click()
+  await page.evaluate(() => {
+    flowUiFixture.emit('agent.onRunningChange', { sessionId: 'parent', running: true })
+    flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'detail-live', phase: 'start', content: '', toolCalls: [] })
+    flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'detail-live', token: '实时详情。\n\n' })
+  })
+  await page.waitForFunction(() => document.querySelector('.flow-count')?.textContent === '11 个节点')
+  await page.getByRole('button', { name: '最新输出', exact: true }).click()
+  await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('实时详情。'))
+  await assertStreamingDetail(page, page, 'detail-live', true)
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
-  console.log(`Flow UI passed: light/dark, node details, folding, streaming ID routing, camera stability and compact window. Screenshots: ${output}`)
+  console.log(`Flow UI passed: light/dark folding, passive lanes, live content/reasoning scroll with pause/resume, streaming ID routing, camera stability and compact window. Screenshots: ${output}`)
 } catch (error) {
   if (page) { console.error(await page.locator('body').innerText()); await page.screenshot({ path: resolve(output, 'failure.png') }) }
   throw error
