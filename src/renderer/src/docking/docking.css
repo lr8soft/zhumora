@@ -29,14 +29,22 @@
 .dock-panel-menu { position: relative; }
 .dock-panel-menu summary { list-style: none; }
 .dock-panel-menu summary::-webkit-details-marker { display: none; }
-.dock-panel-menu > div { position: absolute; top: 25px; right: 0; z-index: 30; width: 150px; padding: 4px;
+.dock-layout-options { width: 150px; padding: 4px; max-height: inherit; overflow-y: auto;
   border: 1px solid var(--app-color-border-strong); border-radius: 6px; background: var(--app-color-surface); box-shadow: var(--app-shadow-panel); }
-.dock-panel-menu > div button { display: block; width: 100%; text-align: left; padding: 6px 10px; height: auto; font-size: .733rem; }
+.dock-layout-options button { display: block; width: 100%; text-align: left; padding: 6px 10px; border: 0; border-radius: 4px;
+  color: var(--app-color-text-soft); background: transparent; cursor: pointer; font-size: .733rem; }
+.dock-layout-options button:hover { background: var(--app-muted-bg); color: var(--app-color-text); }
 .dock-panel-content { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
 .dock-panel-content > .flow-canvas { width: 100%; height: 100%; }
 .flow-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
 .dock-panel-content > .flow-inspector { position: static; width: 100%; height: 100%; flex: 1; border: 0; box-shadow: none; }
 .dock-panel-content .flow-inspector-header { display: none; }
+.dock-composer .dock-panel-content > .chat-input-area { flex: 1; width: 100%; height: 100%; padding: 9px 12px; }
+.dock-composer .dock-panel-content { overflow: auto; }
+.dock-composer .chat-textarea { max-height: none; min-height: 40px; field-sizing: fixed; }
+.dock-composer .composer-toolbar { flex-wrap: wrap; gap: 5px; padding: 5px 8px 7px; }
+.dock-composer .composer-toolbar-spacer { min-width: 10px; }
+.dock-composer .subagent-notice { flex: 1; align-items: center; }
 .dock-panel.is-floating { position: absolute; z-index: 15; flex: initial; border-color: var(--app-color-border-strong); border-radius: 7px; box-shadow: var(--app-shadow-panel); }
 .dock-panel-resize { position: absolute; z-index: 18; bottom: 0; right: 0; width: 16px; height: 16px; cursor: nwse-resize;
   background: linear-gradient(135deg, transparent 55%, var(--app-color-border-strong) 56%, transparent 63%, var(--app-color-border-strong) 64%, transparent 71%); }
@@ -59,6 +67,14 @@
 .panel-window-root { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
 .panel-window-root > .dock-panel { width: 100%; height: 100%; border: 0; }
 .panel-window-root .native-drag { -webkit-app-region: drag; cursor: default; }
+.popover-anchor { position: absolute; width: 0; height: 0; }
+.dock-popover { position: fixed; z-index: 210; max-width: calc(100vw - 16px); -webkit-app-region: no-drag; }
+.dock-popover .mode-menu { position: static; max-width: 100%; max-height: inherit; overflow-y: auto; }
+.mode-menu-backdrop { -webkit-app-region: no-drag; }
+@container (max-width: 480px) {
+  .dock-composer .composer-toolbar-spacer { display: none; }
+  .dock-composer .composer-model-select { max-width: 160px; }
+}
 @container (max-width: 800px) {
   .dock-panel-header .flow-toolbar-actions button > span { display: none; }
   .flow-pane .flow-legend { display: none; }

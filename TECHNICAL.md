@@ -65,7 +65,7 @@ renderer projection, not a second Agent runtime or a persisted workflow engine.
 Full historical timing and permission/retry traces are not inferred from messages.
 Window controls are integrated into existing app chrome rather than taking a
 separate titlebar row; the original main-owned close/background policy is unchanged.
-The conversation canvas and node inspector are movable panels with five dock
+The conversation canvas, node inspector and message input are movable panels with five dock
 positions, resizable dock splits, in-app floating cards and real auxiliary Electron
 windows. Native windows host React portals from the same renderer tree, sharing
 its store, streaming projection, theme and font size without another App/event or
@@ -79,6 +79,13 @@ blocked, typed controls target only owned auxiliary handles, and inherited
 context isolation/Node restrictions remain intact. No Agent lifecycle moves with
 a panel. `npm run test:ui:panels` exercises actual hidden Electron windows against
 the fixture renderer, without opening the user's database or making LLM requests.
+Input docks at the bottom by default within the same workspace bounds, so floating
+panels can overlap it. A per-session composer draft provider outside portal mounts
+preserves unsent text and image attachments when input is relocated, without
+subscribing the graph to keystrokes. Input menus use their own document's body
+portal and remain accessible in short docks or native windows. Sending and stopping
+retain the existing SessionService adapter; switching sessions clears the old
+workspace/draft and closes its auxiliary windows.
 
 The authoritative architecture, ownership rules, and UI/Bot message sequence diagrams live in [ARCHITECTURE.md](./ARCHITECTURE.md). Any change to session execution must update that document and the corresponding tests.
 

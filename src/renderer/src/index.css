@@ -464,7 +464,7 @@ h1, h2, h3, p { margin: 0; }
 .tool-result-body { margin: 0; padding: 10px 12px; max-height: 400px; overflow: auto; color: var(--app-color-text-soft); font-family: Consolas, Monaco, monospace; font-size: 0.733rem; line-height: 1.55; white-space: pre-wrap; word-break: break-word; }
 
 /* ---------- 输入区（Codex desktop 风格 composer 卡片） ----------
- * 结构：chat-input-area（外层，承载拖拽手柄与高度约束）
+ * 结构：chat-input-area（外层，填充停靠/浮动面板）
  *   └─ .composer（卡片，flex 纵向）
  *        ├─ 图片预览 / 错误提示
  *        ├─ .chat-textarea（唯一吸收拖拽高度变化的元素）
@@ -473,13 +473,6 @@ h1, h2, h3, p { margin: 0; }
   position: relative; flex: 0 0 auto; display: flex; flex-direction: column; min-height: 0;
   background: var(--app-chrome-bg); padding: 12px 18px 16px;
 }
-.chat-input-resizer {
-  position: absolute; top: -3px; left: 0; right: 0; height: 6px;
-  cursor: row-resize; z-index: 5;
-}
-.chat-input-resizer::after { content: ''; position: absolute; inset: 2px 0; background: transparent; transition: background .15s; }
-.chat-input-resizer:hover::after { background: var(--app-color-primary); }
-.chat-input-resizer:active::after { background: var(--app-color-primary-strong); }
 /* 卡片不设 min-height：1 行文本 + 工具栏就是它的最小高度，
    避免留白把卡片撑成"尴尬大小"；多行文本由 textarea 自身撑高 */
 .composer {

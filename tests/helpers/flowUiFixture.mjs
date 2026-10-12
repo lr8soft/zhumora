@@ -60,12 +60,19 @@ export function installFlowUiFixture() {
     } }),
     window: nativeWindow ?? section('window', { isMaximized: async () => false }),
     panels: nativePanels ?? section('panels', { prepare: async () => ({ key: `zhumora-panel-${crypto.randomUUID()}` }), control: async () => true }),
-    agent: section('agent', { running: async () => [], abort: async id => { calls.push(['abort', id]); return true } }),
+    agent: section('agent', { running: async () => [], abort: async id => { calls.push(['abort', id]); return true },
+      run: async (id, input, options) => {
+        calls.push(['agent', 'run', [id, input, options]])
+        const userMessage = m(`fixture-user-${clock}`, id, 'user', input.text, { images: input.images })
+        histories[id]?.push(userMessage)
+        return { ok: true, userMessage }
+      } }),
     provider: section('provider', { listModels: async () => ['默认模型'] }),
     tts: section('tts', {}), avatar: section('avatar', {}), memory: section('memory', {}), mcp: section('mcp', {})
   })
   window.flowUiFixture = {
     emit: (event, payload) => callbacks.get(event)?.forEach(callback => callback(payload)), histories, calls,
-    nodes: () => document.querySelectorAll('.react-flow__node').length
+    nodes: () => document.querySelectorAll('.react-flow__node').length,
+    listeners: () => Object.fromEntries([...callbacks].map(([name, listeners]) => [name, listeners.size]))
   }
 }

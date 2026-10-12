@@ -1,43 +1,41 @@
-import React, { useEffect, useRef, useState } from 'react'
+import React from 'react'
 import { useTranslation } from 'react-i18next'
 import { X } from 'lucide-react'
 
-import { processImageFile, ImageAttachmentError, MAX_IMAGES } from '../utils/image'
 import { useAppStore } from '../store'
 import { ttsPlayback } from '../tts/playback'
 import ComposerToolbar from './ComposerToolbar'
+import { useComposerDraft } from './ComposerDraftProvider'
+import { useComposerImages } from './useComposerImages'
 
 interface Props {
   sessionId: string
 }
 
 /**
- * 高频输入边界。草稿和附件只在此组件内更新，避免每次按键都让长消息列表
- * 参与 React reconciliation。持久化消息仍由 store action/main 负责。
+ * 高频输入边界。草稿 owner 在停靠/portal 外，输入只更新该 context 的消费者。
+ * 移动面板不丢附件/草稿；持久化消息仍由 store action/main 负责。
  */
 function ChatComposer({ sessionId }: Props) {
   const { t } = useTranslation()
-  const isRunning = useAppStore(s => s.runningIds.has(sessionId))
   const activeSession = useAppStore(s => s.sessions.find(session => session.id === sessionId))
   const ttsError = useAppStore(s => s.ttsErrors[sessionId])
-  const inputAreaHeight = useAppStore(s => s.inputAreaHeight)
-  const setInputAreaHeight = useAppStore(s => s.setInputAreaHeight)
   const sendMessage = useAppStore(s => s.sendMessage)
 
-  const [input, setInput] = useState('')
-  const [pendingImages, setPendingImages] = useState<string[]>([])
-  const [imageError, setImageError] = useState<string | null>(null)
-  const inputAreaRef = useRef<HTMLDivElement>(null)
-
-  // 未发送附件属于其创建时的会话；切换会话时不能带到另一会话。
-  useEffect(() => {
-    setPendingImages([])
-    setImageError(null)
-  }, [sessionId])
+  const { draft, setDraft } = useComposerDraft()
+  const { addImages, handlePaste, handleDrop } = useComposerImages(sessionId)
+  const { input, images: pendingImages, error: imageError } = draft
+  const setInput = (value: string) => setDraft(previous => ({ ...previous, input: value }))
+  const setImageError = (value: string | null) => setDraft(previous => ({ ...previous, error: value }))
+  const setPendingImages = (update: string[] | ((images: string[]) => string[])) => setDraft(previous => ({ ...previous,
+    images: typeof update === 'function' ? update(previous.images) : update }))
 
   const handleSubmit = () => {
     const text = input.trim()
-    if ((!text && pendingImages.length === 0) || isRunning) return
+    const current = useAppStore.getState()
+    const parent = current.sessions.find(session => session.id === sessionId)?.subagent?.parentSessionId
+    if ((!text && pendingImages.length === 0) || current.activeSessionId !== sessionId || current.runningIds.has(sessionId)
+      || (parent && current.runningIds.has(parent))) return
     if (activeSession?.ttsEnabled) {
       void ttsPlayback.unlock().catch(error => setImageError(String(error)))
     }
@@ -47,87 +45,10 @@ function ChatComposer({ sessionId }: Props) {
     setImageError(null)
   }
 
-  /** 粘贴、拖放和文件选择的统一图片入口。 */
-  const addImages = async (files: File[]) => {
-    if (isRunning) return
-    const room = MAX_IMAGES - pendingImages.length
-    if (room <= 0) {
-      setImageError(t('chat.imageLimit', { max: MAX_IMAGES }))
-      return
-    }
-    setImageError(null)
-    const processed: string[] = []
-    for (const file of files.slice(0, room)) {
-      try {
-        processed.push(await processImageFile(file))
-      } catch (err) {
-        const code = err instanceof ImageAttachmentError ? err.code : 'decode-failed'
-        const errorKey = {
-          'unsupported-type': 'chat.imageErrorUnsupported',
-          'too-large': 'chat.imageErrorTooLarge',
-          'decode-failed': 'chat.imageErrorDecode'
-        }[code]
-        setImageError(t(errorKey))
-        break
-      }
-    }
-    if (processed.length > 0) setPendingImages(prev => [...prev, ...processed])
-  }
-
-  /** 拖拽输入区上缘调整高度；单击手柄恢复内容自适应。 */
-  const onInputResizeStart = (event: React.MouseEvent) => {
-    event.preventDefault()
-    const startY = event.clientY
-    const startArea = inputAreaRef.current?.getBoundingClientRect().height ?? 0
-    let moved = false
-    const onMove = (moveEvent: MouseEvent) => {
-      const delta = startY - moveEvent.clientY
-      if (Math.abs(delta) >= 4) moved = true
-      if (moved) setInputAreaHeight(startArea + delta)
-    }
-    const onUp = () => {
-      document.removeEventListener('mousemove', onMove)
-      document.removeEventListener('mouseup', onUp)
-      document.body.style.cursor = ''
-      document.body.style.userSelect = ''
-      if (!moved) setInputAreaHeight(0)
-    }
-    document.body.style.cursor = 'row-resize'
-    document.body.style.userSelect = 'none'
-    document.addEventListener('mousemove', onMove)
-    document.addEventListener('mouseup', onUp)
-  }
-
-  const handlePaste = (event: React.ClipboardEvent) => {
-    if (isRunning) return
-    const files = Array.from(event.clipboardData.items)
-      .filter(item => item.type.startsWith('image/'))
-      .map(item => item.getAsFile())
-      .filter((file): file is File => file !== null)
-    if (files.length > 0) {
-      event.preventDefault()
-      void addImages(files)
-    }
-  }
-
-  const handleDrop = (event: React.DragEvent) => {
-    event.preventDefault()
-    if (!isRunning && event.dataTransfer.files.length > 0) {
-      void addImages(Array.from(event.dataTransfer.files))
-    }
-  }
-
   return (
-    <div
-      ref={inputAreaRef}
-      className={inputAreaHeight > 0 ? 'chat-input-area fixed-height' : 'chat-input-area'}
-      style={inputAreaHeight > 0 ? { height: `${inputAreaHeight}px` } : undefined}
-    >
-      <div
-        className="chat-input-resizer"
-        onMouseDown={onInputResizeStart}
-        title={t('chat.inputResizeHint')}
-      />
+    <div className="chat-input-area docked-composer" onClickCapture={event => {
+      if (useAppStore.getState().activeSessionId !== sessionId) { event.preventDefault(); event.stopPropagation() }
+    }}>
       <div className="composer" onDrop={handleDrop} onDragOver={event => event.preventDefault()}>
         {pendingImages.length > 0 && (
           <div className="chat-image-previews">
@@ -152,7 +73,7 @@ function ChatComposer({ sessionId }: Props) {
           value={input}
           onChange={event => setInput(event.target.value)}
           onKeyDown={event => {
-            if (event.key === 'Enter' && !event.shiftKey) {
+            if (event.key === 'Enter' && !event.shiftKey && !event.nativeEvent.isComposing) {
               event.preventDefault()
               handleSubmit()
             }

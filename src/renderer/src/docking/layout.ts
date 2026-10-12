@@ -10,7 +10,8 @@ export const DOCK_SIDES: readonly DockSide[] = ['left', 'right', 'top', 'bottom'
 export function initialPanelLayout(): PanelLayout {
   return {
     conversation: { mode: 'center', home: 'center', bounds: { x: 24, y: 24, width: 900, height: 540 } },
-    details: { mode: 'right', home: 'right', bounds: { x: 70, y: 50, width: 420, height: 540 } }
+    details: { mode: 'right', home: 'right', bounds: { x: 70, y: 50, width: 420, height: 540 } },
+    composer: { mode: 'bottom', home: 'bottom', bounds: { x: 100, y: 240, width: 680, height: 260 } }
   }
 }
 

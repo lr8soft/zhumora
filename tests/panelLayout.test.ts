@@ -3,6 +3,9 @@ import { constrainPanel, dockTargetAt, initialPanelLayout, placePanel } from '..
 import { isPanelId, isPanelTicketKey, isPanelWindowAction } from '../src/shared/panels.ts'
 
 const initial = initialPanelLayout()
+assert.equal(initial.composer.mode, 'bottom')
+const movedComposer = placePanel(placePanel(initial, 'composer', 'floating'), 'composer', 'window')
+assert.equal(movedComposer.composer.home, 'bottom', 'input returns to its last dock')
 const floated = placePanel(initial, 'details', 'floating')
 assert.equal(floated.details.home, 'right')
 assert.equal(initial.details.mode, 'right', 'layout transitions do not mutate the prior layout')
@@ -23,6 +26,7 @@ assert.equal(dockTargetAt(500, 350, size), 'center')
 assert.equal(dockTargetAt(434, 350, size), 'left')
 assert.equal(dockTargetAt(300, 300, size), null, 'dropping elsewhere leaves a floating panel')
 assert.equal(isPanelId('details'), true)
+assert.equal(isPanelId('composer'), true)
 assert.equal(isPanelId('settings'), false)
 assert.equal(isPanelWindowAction('execute'), false)
 assert.equal(isPanelWindowAction('close'), true)

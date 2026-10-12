@@ -281,7 +281,7 @@ stateDiagram-v2
 - **隐藏期 TTS 音频丢弃**：TTS 输出是 renderer 投影（§3），窗口不可见时合成继续、音频事件无人消费；无持久化损失，不为此新增 main 侧 playback。
 - **主窗口导航守卫**：`will-navigate` 与 `setWindowOpenHandler` 两个入口共用 `navigationPolicy.decideNavigation` 纯函数判定（同源放行 / http(s) 交 `shell.openExternal` / 其余拒绝）。消息里的 markdown 超链接若走 Chromium 默认行为会把整个应用窗口导航走，renderer 的 `MarkdownView` 已把链接统一改为 `openExternal`（`mailto:` 交系统邮件客户端），main 守卫是兜底；生产 `file://` 文档 origin 为 `"null"`（opaque），与目标 `file:` URL 的 origin 相等即同源。
 - `BackgroundManager`（`src/main/background.ts`）只拥有托盘与通知两个展示投影：订阅 `SessionEventHub`、`PermissionBroker` 观察器，**不拥有**会话、运行或权限状态；策略判断（何时提醒、hide vs close）是 `src/main/backgroundPolicy.ts` 纯函数。新增"后台提醒"类功能只能扩展这两个投影，不得让展示层反向持有 Agent 状态。
-- 流程/详情独立窗口仅作为当前 renderer React 树的同源 portal 容器：`panels:prepare` 只接受主窗口 owner 与固定 panelId，生成 30 秒、一次性的具名票据；`setWindowOpenHandler` 只额外放行匹配 owner/票据的 `about:blank`，任意 URL、重复票据及子窗口新开窗一律拒绝。辅助窗口保持 contextIsolation=true、nodeIntegration=false；about:blank 按 Electron 契约继承主窗口 webPreferences，sandbox 与既有主窗口一致，不接受 renderer 指定 preload 或特权参数。
+- 流程/详情/输入区独立窗口仅作为当前 renderer React 树的同源 portal 容器：`panels:prepare` 只接受主窗口 owner 与固定 panelId（conversation/details/composer），生成 30 秒、一次性的具名票据；`setWindowOpenHandler` 只额外放行匹配 owner/票据的 `about:blank`，任意 URL、重复票据及子窗口新开窗一律拒绝。辅助窗口保持 contextIsolation=true、nodeIntegration=false；about:blank 按 Electron 契约继承主窗口 webPreferences，sandbox 与既有主窗口一致，不接受 renderer 指定 preload 或特权参数。
 - 辅助窗口不加载第二个 App、不增加 Agent/权限/TTS 事件订阅，React portal 共享既有 Zustand 投影与上下文，实时消息、选中详情、主题和字号一致。其导航一律拦截，http(s) 仍走系统浏览器。窗口控制仅接受原 owner + 有效窗口 key + 固定 minimize/maximize/close action；不能指向任意 BrowserWindow。关辅助窗口只恢复面板停靠，不中止会话、不 hide 主窗口、不调用 app.quit。owner 销毁或整页重载/renderer 卸载/真退出时清理辅助窗口与票据；关主窗口 hide 的原策略保持。
 - 辅助窗口存活时，`PanelWindowManager` 暂时关闭 owner webContents 的后台节流，保证主窗隐藏后的既有 token 批量刷新仍服务可见辅助界面；最后一个辅助窗关闭时恢复先前节流值。画布镜头更新的 animation frame 使用当前 canvas 的 ownerDocument/defaultView，不依赖已隐藏主文档的帧回调。这些是展示窗口调度，不改变会话、权限或后台通知策略。
 
@@ -359,9 +359,10 @@ stateDiagram-v2
 
 聊天主页是对话执行画布，高频输入与流程图分成两个独立更新边界：
 
-- `ChatComposer` 持有未发送文字、待发送附件和输入区菜单等短生命周期 UI 状态。键盘输入只允许重渲染 composer，不得把草稿状态提升到消息列表 owner，也不得写入 main/数据库。
+- `ComposerDraftProvider` 按 sessionId 随工作区实例创建，位于停靠/portal 挂载点之外，持有未发送文字、待发送附件与图片错误。只有 `ChatComposer` 消费该 context：移动、停靠、弹窗/回收引起 composer 重挂载时草稿与附件保留，按键不触发流程图或工作区重渲染；切换会话卸载 owner，草稿/附件不跨会话。菜单仍是 composer 本地状态，草稿不写 main/数据库。
 - `ConversationFlow` 按显式 `sessionId` 挂载独立 React Flow 画布。`useFlowGraph` 只订阅主会话与当前展开委托的消息、运行/权限/重试投影；未展开旧轮次的子历史不预加载，无关会话 token 不触发当前画布。输入草稿不进入图组件。
-- `docking/DockWorkspace` 将整个对话流程区（含画布工具/状态栏）与节点详情作为可移动面板；支持左/右/上/下/中央停靠、窗口内浮动与缩放、停靠分隔条调尺寸及真实辅助窗口。标题拖动显示停靠目标，菜单提供等价操作；布局/浮动边界属于该工作区实例的 UI 状态，独立窗关闭回到最近停靠位，组件卸载清理该工作区窗口，不写数据库或会话历史。浮动/独立详情仍按精确步骤 ID 更新。
+- `docking/DockWorkspace` 将对话流程区（含画布工具/状态栏）、节点详情和输入区置于同一可移动工作区，浮动边界包括底部输入面板，面板可相互覆盖，点击浮动面板提升其层级。输入默认底部停靠，可移动至五个停靠位置、浮动或独立窗口。输入高度由停靠分隔条/浮动或原生窗口尺寸负责，旧 inputAreaHeight 仅用于初始底部尺寸并在底部调整时保存，不再有第二个内部高度拖拽器。布局/浮动边界属于工作区 UI 状态，独立窗关闭回最近停靠位，卸载清理该工作区窗口，不写数据库/会话历史。浮动/独立详情仍按精确步骤 ID 更新。
+- 独立输入区仍调用原 store action → typed preload → SessionService，不增设 Agent 入口或事件监听；发送前核对当前 session、实时运行状态及子会话父运行占用，迟到旧窗口不得把输入送往新会话。父任务活动时输入面板继续展示原只读说明/停止行为。布局与输入工具菜单使用 `AnchoredPopover` 按锚点 DOM 的 ownerDocument portal 展示，设置提示也进入该文档的 body，避开小面板裁切与跨文档焦点问题；模型、批准模式、附件、停止、IME/换行继续使用既有边界。
 - `flow/history.ts` 在唯一解码边界识别内置 `spawn_subagent / continue_subagent / wait_subagents` 的结构化 JSON 文本结果，核对 task/session 与 `Session.subagent.parentSessionId`；普通工具输出不能创建分支。每次继续使用该子会话下一条 user input 对应的轮次，不把后续独立 UI 对话串进旧委托。
 - `flow/buildGraph.ts` 与 `projection.ts` 是纯投影，底层步骤保留每条用户输入、LLM 轮次及工具调用的权威关联：消息 ID 从 sessionId + messageId 派生，工具 ID 另带 assistant messageId + toolCallId，防止 provider 在后续轮次复用调用 ID 时覆盖旧记录。`indexToolResults` 仅在声明的 assistant/tool 原子组内按调用 ID 精确合入结果，孤儿结果单独保留。尚未返回的后续工具仍是待执行，非活动会话的残留调用仍是未完成，不能伪装成并行运行。
 - 默认画布由 `compactNodes.ts` 按 LLM 的实际非空正文分成发言主节点，每次发言保留独立节点；后续无正文的 LLM 轮次与工具收进该发言。首句前的无正文步骤作为前缀归入首句，摘要、压缩边界、用户输入和孤儿结果不吞并。主节点以首个权威步骤 ID 为稳定锚点，保存有序 steps、LLM/工具次数和每次参数/结果引用；准备发言的流式占位提前分配，首个正文 token 不改变拓扑，终态若只有工具则归回前一发言。`detailLevel='steps'` 仅作为纯投影的细节模式用于回归检查。

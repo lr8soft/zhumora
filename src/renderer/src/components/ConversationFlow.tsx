@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState } from 'react'
+import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider, useReactFlow,
   type Edge, type OnNodesChange } from '@xyflow/react'
@@ -22,11 +22,11 @@ const MINIMAP_COLORS = { user: 'var(--app-color-primary)', llm: 'var(--app-color
   delegate: 'var(--app-color-info)', join: 'var(--app-color-success)', summary: 'var(--app-color-text-mute)',
   turn: 'var(--app-color-text-mute)', compaction: 'var(--app-color-text-mute)', lane: 'transparent' }
 
-export default memo(function ConversationFlow({ sessionId }: { sessionId: string }) {
-  return <ReactFlowProvider><FlowWorkspace sessionId={sessionId} /></ReactFlowProvider>
+export default memo(function ConversationFlow({ sessionId, composer }: { sessionId: string; composer: ReactNode }) {
+  return <ReactFlowProvider><FlowWorkspace sessionId={sessionId} composer={composer} /></ReactFlowProvider>
 })
 
-function FlowWorkspace({ sessionId }: { sessionId: string }) {
+function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: ReactNode }) {
   const { t } = useTranslation()
   const [foldHistory, setFoldHistory] = useState(true)
   const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set())
@@ -106,7 +106,7 @@ function FlowWorkspace({ sessionId }: { sessionId: string }) {
           <button className="flow-icon-button" onClick={fitAll} aria-label={t('flow.fit')} title={t('flow.fit')}><Focus size={14} /></button>
         </div>}
       </div><FlowStatusbar graph={graph} latest={latest} running={running} permissions={permissions} openLatest={openLatest} />
-      </div> }, ...(selected ? [{ id: 'details' as const, title: t('flow.details'),
+      </div> }, { id: 'composer', title: t('dock.composer'), content: composer }, ...(selected ? [{ id: 'details' as const, title: t('flow.details'),
         content: <FlowInspector key={selected.id} node={selected} focus={detailFocus} onClose={() => setSelectedId(null)} />,
         onClose: () => setSelectedId(null) }] : [])]} />
   </section>

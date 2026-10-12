@@ -35,7 +35,7 @@ export function usePanelWindows(onReturn: (id: PanelId) => void) {
     if (existing && !existing.window.closed) { existing.window.focus(); return }
     const { key } = await window.api.panels.prepare(id)
     if (!mounted.current) return
-    const child = window.open('about:blank', key, `width=${id === 'conversation' ? 1100 : 520},height=760`)
+    const child = window.open('about:blank', key, `width=${id === 'conversation' ? 1100 : id === 'composer' ? 760 : 520},height=${id === 'composer' ? 360 : 760}`)
     if (!child) throw new Error('Panel window could not open')
     const container = child.document.createElement('div')
     container.className = 'panel-window-root'

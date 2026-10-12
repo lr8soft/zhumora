@@ -4,7 +4,7 @@ import { mkdirSync } from 'node:fs'
 import { PanelWindowManager } from '../../src/main/panels/windowManager'
 import { registerPanelIpc } from '../../src/main/ipc/registerPanelIpc'
 
-const testData = resolve(`.temp/panel-ui/user-data-${process.pid}`)
+const testData = resolve(__dirname, `user-data-${process.pid}`)
 mkdirSync(testData, { recursive: true })
 app.setPath('userData', testData)
 app.setPath('sessionData', testData)
@@ -13,7 +13,7 @@ app.whenReady().then(() => {
   const panels = new PanelWindowManager(false)
   Object.defineProperty(app, 'panelTestManager', { value: panels })
   const owner = new BrowserWindow({ show: false, frame: false, width: 1600, height: 1000, webPreferences: {
-    preload: resolve('.temp/panel-ui/preload.cjs'), sandbox: false, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false
+    preload: resolve(__dirname, 'preload.cjs'), sandbox: false, contextIsolation: true, nodeIntegration: false, backgroundThrottling: false
   } })
   const lifetime = { quitting: false }
   owner.on('close', event => { if (!lifetime.quitting) { event.preventDefault(); owner.hide() } })

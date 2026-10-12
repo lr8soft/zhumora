@@ -17,6 +17,7 @@
     "test:ui:flow": "node tests/conversationFlow.ui.mjs",
     "test:ui:camera": "node tests/flowCamera.ui.mjs",
     "test:ui:panels": "node tests/panelDocking.ui.mjs",
+    "test:ui:composer": "node tests/composerDocking.ui.mjs",
     "preview": "electron-vite preview",
     "build:win": "electron-vite build && electron-builder --win --x64",
     "build:linux": "electron-vite build && electron-builder --linux --x64",

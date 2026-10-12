@@ -1,13 +1,15 @@
 import { UserRound, Volume2 } from 'lucide-react'
 import { useTranslation } from 'react-i18next'
 import { useAppStore } from '../store'
+import { createPortal } from 'react-dom'
 
 interface Props {
   target: 'avatar' | 'tts'
   onClose: () => void
+  ownerDocument?: Document
 }
 
-export default function SetupRequiredDialog({ target, onClose }: Props) {
+export default function SetupRequiredDialog({ target, onClose, ownerDocument = document }: Props) {
   const { t } = useTranslation()
   const openSettings = () => {
     const store = useAppStore.getState()
@@ -16,8 +18,8 @@ export default function SetupRequiredDialog({ target, onClose }: Props) {
     onClose()
   }
 
-  return (
-    <div className="dialog-overlay" onMouseDown={(event) => {
+  return createPortal(
+    <div className="dialog-overlay" style={{ inset: `${ownerDocument === document ? 56 : 31}px 0 0` }} onMouseDown={(event) => {
       if (event.target === event.currentTarget) onClose()
     }}>
       <div className="dialog" role="dialog" aria-modal="true" aria-labelledby="setup-required-title">
@@ -37,6 +39,6 @@ export default function SetupRequiredDialog({ target, onClose }: Props) {
           <button className="btn-primary" onClick={openSettings}>{t('sidebar.settings')}</button>
         </div>
       </div>
-    </div>
+    </div>, ownerDocument.body
   )
 }

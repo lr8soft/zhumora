@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import type { PanelId } from '../../../shared/panels'
+import { PANEL_IDS, type PanelId } from '../../../shared/panels'
+import { useAppStore } from '../store'
 import { DOCK_SIDES, initialPanelLayout, placePanel, type PanelBounds, type PanelMode, type DockSide } from './layout'
 import { usePanelWindows } from './usePanelWindows'
 import { usePanelDrag } from './usePanelDrag'
@@ -13,6 +14,9 @@ export default function DockWorkspace({ panels }: { panels: DockPanelDefinition[
   const { t } = useTranslation()
   const host = useRef<HTMLDivElement>(null)
   const [layout, setLayout] = useState(initialPanelLayout)
+  const [activePanel, setActivePanel] = useState<PanelId>('conversation')
+  const inputHeight = useAppStore(state => state.inputAreaHeight)
+  const saveInputHeight = useAppStore(state => state.setInputAreaHeight)
   const [error, setError] = useState('')
   const restore = useCallback((id: PanelId) => setLayout(previous => placePanel(previous, id, previous[id].home)), [])
   const windows = usePanelWindows(restore)
@@ -31,12 +35,15 @@ export default function DockWorkspace({ panels }: { panels: DockPanelDefinition[
     setLayout(previous => placePanel(previous, id, target ?? 'floating', bounds))
   }, [])
   const { drag, start } = usePanelDrag(host, finish)
-  const dockSize = useDockSizes(host)
+  const resizeDock = useCallback((side: DockSide, height: number) => {
+    if (side === 'bottom' && layout.composer.mode === 'bottom') saveInputHeight(height - 31)
+  }, [layout.composer.mode, saveInputHeight])
+  const dockSize = useDockSizes(host, (inputHeight || 200) + 31, resizeDock)
   useEffect(() => {
-    for (const id of ['conversation', 'details'] as const) if (!panels.some(panel => panel.id === id)) windows.close(id)
+    for (const id of PANEL_IDS) if (!panels.some(panel => panel.id === id)) windows.close(id)
   }, [panels, windows.close])
   const render = (panel: DockPanelDefinition) => <DockPanel key={panel.id} panel={panel} placement={layout[panel.id]}
-    portal={windows.portals[panel.id]} onPlace={place} onDrag={start} />
+    portal={windows.portals[panel.id]} active={activePanel === panel.id} onActivate={setActivePanel} onPlace={place} onDrag={start} />
   const inRegion = (side: DockSide) => panels.filter(panel => layout[panel.id].mode === side)
   return <div className={`dock-workspace${drag ? ' is-dragging' : ''}`} ref={host}>
     <div className="dock-regions" style={{

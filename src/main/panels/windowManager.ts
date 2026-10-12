@@ -39,7 +39,8 @@ export class PanelWindowManager {
     if (details.url !== 'about:blank' || !ticket || ticket.accepted || ticket.expires < Date.now() || ticket.owner !== sender) return null
     ticket.accepted = true
     return { action: 'allow', overrideBrowserWindowOptions: {
-      width: ticket.panelId === 'conversation' ? 1100 : 520, height: 760, minWidth: 360, minHeight: 300,
+      width: ticket.panelId === 'conversation' ? 1100 : ticket.panelId === 'composer' ? 760 : 520,
+      height: ticket.panelId === 'composer' ? 360 : 760, minWidth: 360, minHeight: ticket.panelId === 'composer' ? 220 : 300,
       show: this.showWindows, frame: false, autoHideMenuBar: true, title: 'Zhumora', backgroundColor: '#202124',
       // about:blank inherits its opener's preferences. Matching sandbox preserves scriptable same-origin portals;
       // it grants no Node access and never permits arbitrary URLs or renderer-selected preloads.

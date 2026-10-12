@@ -21,6 +21,7 @@ import { sessionModelSelection } from '../store/sessionModelSlice'
 import type { SessionModelSelection } from '@shared/sessionModel'
 import { ttsPlayback } from '../tts/playback'
 import SetupRequiredDialog from './SetupRequiredDialog'
+import AnchoredPopover from '../docking/AnchoredPopover'
 
 interface Props {
   sessionId: string
@@ -114,8 +115,7 @@ export default function ComposerToolbar({
           {modeLabel(approveMode)}
         </button>
         {modeMenuOpen && (
-          <>
-            <div className="mode-menu-backdrop" onClick={() => setModeMenuOpen(false)} />
+          <AnchoredPopover onClose={() => setModeMenuOpen(false)}>
             <div className="mode-menu">
               {(['manual', 'auto', 'full'] as AutoApproveMode[]).map(mode => (
                 <button
@@ -132,7 +132,7 @@ export default function ComposerToolbar({
                 </button>
               ))}
             </div>
-          </>
+          </AnchoredPopover>
         )}
       </div>
 
@@ -148,8 +148,7 @@ export default function ComposerToolbar({
           <ChevronDown size={11} className={avatarMenuOpen ? 'chevron-up' : ''} />
         </button>
         {avatarMenuOpen && (
-          <>
-            <div className="mode-menu-backdrop" onClick={() => setAvatarMenuOpen(false)} />
+          <AnchoredPopover onClose={() => setAvatarMenuOpen(false)}>
             <div className="mode-menu avatar-menu">
               <button
                 className={!activeAvatarModel ? 'mode-menu-item active' : 'mode-menu-item'}
@@ -169,7 +168,7 @@ export default function ComposerToolbar({
                 </button>
               ))}
             </div>
-          </>
+          </AnchoredPopover>
         )}
       </div>
 
@@ -203,8 +202,7 @@ export default function ComposerToolbar({
             {t(`chat.reasoningEffort.${reasoningEffort}`)}
           </button>
           {effortMenuOpen && (
-            <>
-              <div className="mode-menu-backdrop" onClick={() => setEffortMenuOpen(false)} />
+            <AnchoredPopover onClose={() => setEffortMenuOpen(false)}>
               <div className="mode-menu effort-menu">
                 {(['off', 'low', 'medium', 'high'] as const).map(effort => (
                   <button
@@ -217,7 +215,7 @@ export default function ComposerToolbar({
                   </button>
                 ))}
               </div>
-            </>
+            </AnchoredPopover>
           )}
         </div>
       )}
@@ -236,8 +234,7 @@ export default function ComposerToolbar({
           <ChevronDown size={12} className={modelMenuOpen ? 'chevron-up' : ''} />
         </button>
         {modelMenuOpen && (
-          <>
-            <div className="mode-menu-backdrop" onClick={() => setModelMenuOpen(false)} />
+          <AnchoredPopover onClose={() => setModelMenuOpen(false)}>
             <div className="mode-menu model-menu">
               <button
                 className={selection === null ? 'mode-menu-item active' : 'mode-menu-item'}
@@ -255,7 +252,7 @@ export default function ComposerToolbar({
                 </button>
               ))}
             </div>
-          </>
+          </AnchoredPopover>
         )}
       </div>
 
@@ -268,7 +265,7 @@ export default function ComposerToolbar({
         {isRunning ? <Square size={13} fill="currentColor" /> : <ArrowUp size={16} />}
       </button>
 
-      {setupPrompt && <SetupRequiredDialog target={setupPrompt} onClose={() => setSetupPrompt(null)} />}
+      {setupPrompt && <SetupRequiredDialog target={setupPrompt} ownerDocument={fileInputRef.current?.ownerDocument} onClose={() => setSetupPrompt(null)} />}
     </div>
   )
 }

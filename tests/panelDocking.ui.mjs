@@ -217,5 +217,5 @@ try {
 async function setPanelMode(page, id, name) {
   const panel = page.locator(`[data-panel="${id}"]`)
   await panel.locator('.dock-panel-menu summary').click()
-  await panel.getByRole('menuitem', { name, exact: true }).click()
+  await page.locator(`[data-menu-panel="${id}"]`).getByRole('menuitem', { name, exact: true }).click()
 }

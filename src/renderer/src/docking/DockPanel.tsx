@@ -1,22 +1,26 @@
 import type { MouseEvent, ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
-import { ArrowUpRight, GripHorizontal, Maximize2, Minus, MoreHorizontal, PanelRightClose, X } from 'lucide-react'
+import { ArrowUpRight, GripHorizontal, Maximize2, Minus, PanelRightClose, X } from 'lucide-react'
 import type { PanelId } from '../../../shared/panels'
-import { DOCK_SIDES, type PanelMode, type PanelPlacement } from './layout'
+import type { PanelMode, PanelPlacement } from './layout'
+import DockPanelMenu from './DockPanelMenu'
 import type { PanelPortal } from './usePanelWindows'
 
 export interface DockPanelDefinition { id: PanelId; title: string; content: ReactNode; toolbar?: ReactNode; onClose?: () => void }
 
-export default function DockPanel({ panel, placement, portal, onPlace, onDrag }: {
+export default function DockPanel({ panel, placement, portal, active, onActivate, onPlace, onDrag }: {
   panel: DockPanelDefinition; placement: PanelPlacement; portal?: PanelPortal
   onPlace: (id: PanelId, mode: PanelMode) => void
   onDrag: (id: PanelId, event: MouseEvent<HTMLElement>, resize?: boolean) => void
+  active: boolean; onActivate: (id: PanelId) => void
 }) {
   const { t } = useTranslation()
   const native = !!portal
   const mode = native ? 'window' : placement.mode
   return <section className={`dock-panel dock-${panel.id} is-${mode}`} data-panel={panel.id} data-mode={mode}
-    style={mode === 'floating' ? { left: placement.bounds.x, top: placement.bounds.y, width: placement.bounds.width, height: placement.bounds.height } : undefined}>
+    onMouseDownCapture={() => onActivate(panel.id)}
+    style={mode === 'floating' ? { left: placement.bounds.x, top: placement.bounds.y, width: placement.bounds.width, height: placement.bounds.height,
+      zIndex: active ? 18 : 15 } : undefined}>
     <header className={`dock-panel-header${native ? ' native-drag' : ''}`} onMouseDown={native ? undefined : event => onDrag(panel.id, event)}>
       <GripHorizontal size={13} /><strong>{panel.title}</strong>
       {panel.toolbar}
@@ -26,12 +30,8 @@ export default function DockPanel({ panel, placement, portal, onPlace, onDrag }:
           <button title={t('window.minimize')} aria-label={t('window.minimize')} onClick={() => void window.api.panels.control(portal.key, 'minimize')}><Minus size={13} /></button>
           <button title={t('window.maximize')} aria-label={t('window.maximize')} onClick={() => void window.api.panels.control(portal.key, 'maximize')}><Maximize2 size={12} /></button>
         </> : <button title={t('dock.detach')} aria-label={t('dock.detach')} onClick={() => onPlace(panel.id, 'window')}><ArrowUpRight size={13} /></button>}
-        <details className="dock-panel-menu"><summary aria-label={t('dock.layout')} title={t('dock.layout')}><MoreHorizontal size={14} /></summary>
-          <div role="menu">{[...DOCK_SIDES, 'floating', 'window'].map(side => <button key={side} role="menuitem" onClick={event => {
-            event.currentTarget.closest('details')?.removeAttribute('open'); onPlace(panel.id, side as PanelMode)
-          }}>{t(`dock.${side}`)}</button>)}</div>
-        </details>
-        {(panel.onClose || native) && <button title={t('flow.close')} aria-label={t('flow.close')} onClick={() => {
+        <DockPanelMenu id={panel.id} onPlace={onPlace} />
+        {(panel.onClose || native) && <button title={t(panel.id === 'details' ? 'flow.close' : 'window.close')} aria-label={t(panel.id === 'details' ? 'flow.close' : 'window.close')} onClick={() => {
           if (native) onPlace(panel.id, placement.home)
           else panel.onClose?.()
         }}><X size={13} /></button>}

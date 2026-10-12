@@ -6,6 +6,7 @@ import { useAppStore } from '../store'
 import ChatComposer from './ChatComposer'
 import ConversationFlow from './ConversationFlow'
 import EmptyConversationHero from './EmptyConversationHero'
+import { ComposerDraftProvider } from './ComposerDraftProvider'
 
 export default function ChatView() {
   const { t } = useTranslation()
@@ -137,13 +138,14 @@ export default function ChatView() {
         </div>
       )}
 
-      <ConversationFlow key={activeSessionId} sessionId={activeSessionId} />
-      {parentRunning ? (
-        <div className="subagent-notice">
-          <span>{t('chat.subagentOwned')}</span>
-          {isRunning && <button className="chat-workspace-change" onClick={() => void window.api.agent.abort(activeSessionId)}>{t('chat.stop')}</button>}
-        </div>
-      ) : <ChatComposer sessionId={activeSessionId} />}
+      <ComposerDraftProvider key={activeSessionId}>
+        <ConversationFlow sessionId={activeSessionId} composer={parentRunning ? (
+          <div className="subagent-notice">
+            <span>{t('chat.subagentOwned')}</span>
+            {isRunning && <button className="chat-workspace-change" onClick={() => void window.api.agent.abort(activeSessionId)}>{t('chat.stop')}</button>}
+          </div>
+        ) : <ChatComposer sessionId={activeSessionId} />} />
+      </ComposerDraftProvider>
     </div>
   )
 }
