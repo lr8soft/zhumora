@@ -1,0 +1,76 @@
+.dock-workspace { position: relative; flex: 1; min-width: 0; min-height: 0; overflow: hidden; background: var(--app-card-bg); }
+.dock-regions { display: grid; width: 100%; height: 100%; }
+.dock-region { display: flex; flex-direction: column; min-width: 0; min-height: 0; overflow: hidden; position: relative; }
+.dock-splitter { position: absolute; z-index: 16; }
+.dock-splitter:hover { background: var(--app-color-primary-soft); }
+.splitter-left, .splitter-right { top: 0; bottom: 0; width: 5px; cursor: col-resize; }
+.splitter-left { right: 0; }
+.splitter-right { left: 0; }
+.splitter-top, .splitter-bottom { left: 0; right: 0; height: 5px; cursor: row-resize; }
+.splitter-top { bottom: 0; }
+.splitter-bottom { top: 0; }
+.dock-region-left { grid-area: 2 / 1; }
+.dock-region-center { grid-area: 2 / 2; }
+.dock-region-right { grid-area: 2 / 3; }
+.dock-region-top { grid-area: 1 / 1 / 2 / 4; }
+.dock-region-bottom { grid-area: 3 / 1 / 4 / 4; }
+.dock-panel { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; overflow: hidden;
+  background: var(--app-color-bg); border: 1px solid var(--app-color-border); container-type: size; }
+.dock-panel-header { display: flex; align-items: center; gap: 7px; flex: 0 0 31px; padding: 0 8px; user-select: none;
+  border-bottom: 1px solid var(--app-color-border); background: var(--app-color-surface); color: var(--app-color-text-soft); cursor: grab; }
+.dock-panel-header > svg { color: var(--app-color-text-mute); }
+.dock-panel-header strong { flex: 1; min-width: 0; font-size: .733rem; font-weight: 600; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+.dock-panel-actions { display: flex; align-items: center; gap: 2px; -webkit-app-region: no-drag; }
+.dock-panel-header .flow-toolbar-actions { -webkit-app-region: no-drag; }
+.dock-panel-actions button, .dock-panel-actions summary { display: grid; place-items: center; width: 24px; height: 23px; border: 0; padding: 0;
+  background: transparent; color: var(--app-color-text-mute); border-radius: 4px; cursor: pointer; }
+.dock-panel-actions button:hover, .dock-panel-actions summary:hover { color: var(--app-color-text); background: var(--app-muted-bg); }
+.dock-panel-actions button:focus-visible, .dock-panel-actions summary:focus-visible { outline: 2px solid var(--app-color-primary); outline-offset: -2px; }
+.dock-panel-menu { position: relative; }
+.dock-panel-menu summary { list-style: none; }
+.dock-panel-menu summary::-webkit-details-marker { display: none; }
+.dock-panel-menu > div { position: absolute; top: 25px; right: 0; z-index: 30; width: 150px; padding: 4px;
+  border: 1px solid var(--app-color-border-strong); border-radius: 6px; background: var(--app-color-surface); box-shadow: var(--app-shadow-panel); }
+.dock-panel-menu > div button { display: block; width: 100%; text-align: left; padding: 6px 10px; height: auto; font-size: .733rem; }
+.dock-panel-content { display: flex; flex: 1; min-width: 0; min-height: 0; overflow: hidden; }
+.dock-panel-content > .flow-canvas { width: 100%; height: 100%; }
+.flow-pane { display: flex; flex-direction: column; flex: 1; min-width: 0; min-height: 0; }
+.dock-panel-content > .flow-inspector { position: static; width: 100%; height: 100%; flex: 1; border: 0; box-shadow: none; }
+.dock-panel-content .flow-inspector-header { display: none; }
+.dock-panel.is-floating { position: absolute; z-index: 15; flex: initial; border-color: var(--app-color-border-strong); border-radius: 7px; box-shadow: var(--app-shadow-panel); }
+.dock-panel-resize { position: absolute; z-index: 18; bottom: 0; right: 0; width: 16px; height: 16px; cursor: nwse-resize;
+  background: linear-gradient(135deg, transparent 55%, var(--app-color-border-strong) 56%, transparent 63%, var(--app-color-border-strong) 64%, transparent 71%); }
+.dock-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 10px; padding: 25px;
+  color: var(--app-color-text-mute); font-size: .8rem; text-align: center; }
+.dock-empty button { padding: 7px 12px; border: 1px solid var(--app-color-border); border-radius: 5px; background: var(--app-color-surface);
+  color: var(--app-color-text-soft); cursor: pointer; font-size: .733rem; }
+.dock-drag-preview { position: absolute; z-index: 19; border: 2px dashed var(--app-color-primary); border-radius: 7px;
+  background: color-mix(in srgb, var(--app-color-primary) 8%, transparent); pointer-events: none; }
+.dock-targets { position: absolute; inset: 0; z-index: 20; pointer-events: none; }
+.dock-target { position: absolute; width: 52px; height: 52px; display: grid; place-items: center; left: calc(50% - 26px); top: calc(50% - 26px);
+  border: 1px solid var(--app-color-border-strong); border-radius: 5px; background: var(--app-color-surface); font-size: .667rem; color: var(--app-color-text-soft); box-shadow: var(--app-shadow-panel); }
+.dock-target.target-left { transform: translateX(-66px); }
+.dock-target.target-right { transform: translateX(66px); }
+.dock-target.target-top { transform: translateY(-66px); }
+.dock-target.target-bottom { transform: translateY(66px); }
+.dock-target.active { border-color: var(--app-color-primary); color: var(--app-color-primary-strong); background: var(--app-color-primary-soft); }
+.dock-workspace.is-dragging { user-select: none; cursor: grabbing; }
+.dock-error { position: absolute; bottom: 10px; left: 10px; z-index: 21; padding: 8px 12px; background: var(--app-color-surface); color: var(--app-color-danger); font-size: .8rem; border-radius: 5px; }
+.panel-window-root { display: flex; width: 100vw; height: 100vh; overflow: hidden; }
+.panel-window-root > .dock-panel { width: 100%; height: 100%; border: 0; }
+.panel-window-root .native-drag { -webkit-app-region: drag; cursor: default; }
+@container (max-width: 800px) {
+  .dock-panel-header .flow-toolbar-actions button > span { display: none; }
+  .flow-pane .flow-legend { display: none; }
+  .flow-pane .flow-count { display: none; }
+}
+@container (max-height: 400px) {
+  .flow-inspector-summary { display: flex; align-items: center; gap: 8px; padding: 7px 12px; flex-shrink: 0; }
+  .flow-inspector-summary h2 { flex: 1; margin: 0; font-size: .8rem; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+  .flow-inspector-summary p { display: none; }
+  .flow-stage-navigation { padding-bottom: 4px; flex-shrink: 0; }
+  .flow-stage-heading { display: none; }
+  .flow-step-list { max-height: 42px; }
+  .flow-detail-tabs button { padding: 5px 0; }
+  .flow-inspector-footer { padding: 5px 12px; }
+}

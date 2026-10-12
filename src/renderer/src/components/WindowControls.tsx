@@ -2,11 +2,8 @@ import { useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Copy, Minus, Square, X } from 'lucide-react'
 
-/**
- * 自定义窗口标题栏（无边框窗口）
- * 左侧品牌标识 + 拖拽区 + 右侧最小化/最大化/关闭
- */
-export default function TitleBar() {
+/** Controls overlay the existing app header; there is no extra titlebar row. Main still owns close/hide semantics. */
+export default function WindowControls() {
   const { t } = useTranslation()
   const [maximized, setMaximized] = useState(false)
 
@@ -16,13 +13,7 @@ export default function TitleBar() {
   }, [])
 
   return (
-    <header className="window-titlebar">
-      <div className="window-identity">
-        <img className="titlebar-icon" src="./logo.png" alt="" />
-        <span>{t('app.name')}</span>
-      </div>
-      <div className="window-drag-space" />
-      <div className="window-controls">
+    <div className="window-controls">
         <button
           title={t('window.minimize')}
           aria-label={t('window.minimize')}
@@ -45,7 +36,6 @@ export default function TitleBar() {
         >
           <X size={16} />
         </button>
-      </div>
-    </header>
+    </div>
   )
 }

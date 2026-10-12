@@ -1,5 +1,5 @@
 import { COMPACT_SUMMARY_PREFIX, type UIMessage } from '../../../shared/types.ts'
-import { indexToolResults, messageNodeId, toolNodeId, type ConversationTurn } from './history.ts'
+import { graphNodeId, indexToolResults, messageNodeId, toolNodeId, type ConversationTurn } from './history.ts'
 import { FLOW_SIZE, type FlowData, type FlowNode, type FlowStatus } from './types.ts'
 
 export function nodeStatus(message: UIMessage, running: boolean): FlowStatus {
@@ -45,7 +45,7 @@ export function buildTurnNodes(turn: ConversationTurn, sessionId: string, runnin
 }
 
 export function foldedTurn(turn: ConversationTurn, sessionId: string): FlowNode {
-  return flowNode(JSON.stringify(['turn', sessionId, turn.id]), {
+  return flowNode(graphNodeId('turn', sessionId, turn.id), {
     kind: 'turn', sessionId, turnId: turn.id, title: '', preview: turn.messages[0]?.content ?? '',
     message: turn.messages[0], messageCount: turn.messages.length,
     status: turn.messages.some(message => message.status === 'error') ? 'error' : 'done'

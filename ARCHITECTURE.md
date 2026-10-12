@@ -121,6 +121,7 @@ flowchart TB
 | renderer 消息缓存 | Zustand | 是数据库历史的投影，不是事实来源 |
 | 主窗口关闭→后台 / 真退出判定点 | `main/index.ts` 的 `quitting` 标志 + `backgroundPolicy.shouldCloseInsteadOfHide` | 关窗 hide；退出只走托盘/系统关机→`app.quit()`→`before-quit` |
 | 主窗口外部导航判定 | `navigationPolicy.decideNavigation`（`will-navigate` + `setWindowOpenHandler` 唯一判定点） | 同源放行；http(s) 转系统浏览器；file:/javascript:/自定义协议一律拒绝 |
+| 流程面板独立窗口 | `PanelWindowManager`（`src/main/panels/windowManager.ts`） | 只持有一次性开窗票据与辅助 BrowserWindow 生命周期；不拥有会话、Agent 或权限状态 |
 | 后台可见性（托盘菜单 + 系统通知） | `BackgroundManager`（`src/main/background.ts`） | 只读投影，订阅 SessionEventHub/PermissionBroker，不拥有会话与运行状态 |
 | 进程服务构造和实现注入 | `composition.ts` | `runAgent`、provider、context、store、tools 在这里注入 |
 
@@ -280,6 +281,9 @@ stateDiagram-v2
 - **隐藏期 TTS 音频丢弃**：TTS 输出是 renderer 投影（§3），窗口不可见时合成继续、音频事件无人消费；无持久化损失，不为此新增 main 侧 playback。
 - **主窗口导航守卫**：`will-navigate` 与 `setWindowOpenHandler` 两个入口共用 `navigationPolicy.decideNavigation` 纯函数判定（同源放行 / http(s) 交 `shell.openExternal` / 其余拒绝）。消息里的 markdown 超链接若走 Chromium 默认行为会把整个应用窗口导航走，renderer 的 `MarkdownView` 已把链接统一改为 `openExternal`（`mailto:` 交系统邮件客户端），main 守卫是兜底；生产 `file://` 文档 origin 为 `"null"`（opaque），与目标 `file:` URL 的 origin 相等即同源。
 - `BackgroundManager`（`src/main/background.ts`）只拥有托盘与通知两个展示投影：订阅 `SessionEventHub`、`PermissionBroker` 观察器，**不拥有**会话、运行或权限状态；策略判断（何时提醒、hide vs close）是 `src/main/backgroundPolicy.ts` 纯函数。新增"后台提醒"类功能只能扩展这两个投影，不得让展示层反向持有 Agent 状态。
+- 流程/详情独立窗口仅作为当前 renderer React 树的同源 portal 容器：`panels:prepare` 只接受主窗口 owner 与固定 panelId，生成 30 秒、一次性的具名票据；`setWindowOpenHandler` 只额外放行匹配 owner/票据的 `about:blank`，任意 URL、重复票据及子窗口新开窗一律拒绝。辅助窗口保持 contextIsolation=true、nodeIntegration=false；about:blank 按 Electron 契约继承主窗口 webPreferences，sandbox 与既有主窗口一致，不接受 renderer 指定 preload 或特权参数。
+- 辅助窗口不加载第二个 App、不增加 Agent/权限/TTS 事件订阅，React portal 共享既有 Zustand 投影与上下文，实时消息、选中详情、主题和字号一致。其导航一律拦截，http(s) 仍走系统浏览器。窗口控制仅接受原 owner + 有效窗口 key + 固定 minimize/maximize/close action；不能指向任意 BrowserWindow。关辅助窗口只恢复面板停靠，不中止会话、不 hide 主窗口、不调用 app.quit。owner 销毁或整页重载/renderer 卸载/真退出时清理辅助窗口与票据；关主窗口 hide 的原策略保持。
+- 辅助窗口存活时，`PanelWindowManager` 暂时关闭 owner webContents 的后台节流，保证主窗隐藏后的既有 token 批量刷新仍服务可见辅助界面；最后一个辅助窗关闭时恢复先前节流值。画布镜头更新的 animation frame 使用当前 canvas 的 ownerDocument/defaultView，不依赖已隐藏主文档的帧回调。这些是展示窗口调度，不改变会话、权限或后台通知策略。
 
 ## 7. 事件与消息协议
 
@@ -357,15 +361,19 @@ stateDiagram-v2
 
 - `ChatComposer` 持有未发送文字、待发送附件和输入区菜单等短生命周期 UI 状态。键盘输入只允许重渲染 composer，不得把草稿状态提升到消息列表 owner，也不得写入 main/数据库。
 - `ConversationFlow` 按显式 `sessionId` 挂载独立 React Flow 画布。`useFlowGraph` 只订阅主会话与当前展开委托的消息、运行/权限/重试投影；未展开旧轮次的子历史不预加载，无关会话 token 不触发当前画布。输入草稿不进入图组件。
+- `docking/DockWorkspace` 将整个对话流程区（含画布工具/状态栏）与节点详情作为可移动面板；支持左/右/上/下/中央停靠、窗口内浮动与缩放、停靠分隔条调尺寸及真实辅助窗口。标题拖动显示停靠目标，菜单提供等价操作；布局/浮动边界属于该工作区实例的 UI 状态，独立窗关闭回到最近停靠位，组件卸载清理该工作区窗口，不写数据库或会话历史。浮动/独立详情仍按精确步骤 ID 更新。
 - `flow/history.ts` 在唯一解码边界识别内置 `spawn_subagent / continue_subagent / wait_subagents` 的结构化 JSON 文本结果，核对 task/session 与 `Session.subagent.parentSessionId`；普通工具输出不能创建分支。每次继续使用该子会话下一条 user input 对应的轮次，不把后续独立 UI 对话串进旧委托。
-- `flow/buildGraph.ts` 与 `projection.ts` 是纯投影：用户输入、每轮 LLM、每个工具调用、摘要/压缩边界和折叠轮次分别生成节点；消息节点从 sessionId + 权威 messageId 派生，工具节点另带该 assistant messageId + toolCallId，防止 provider 在后续轮次复用调用 ID 时覆盖旧节点。`indexToolResults` 仅在声明的 assistant/tool 原子组内按调用 ID 精确合入结果，孤儿结果单独保留，不按工具名或最后 streaming 消息猜测。普通工具按 runner 的串行顺序连线，尚未返回的后续工具为待执行，非活动会话的残留调用为未完成，不能伪装成运行中。
-- 子任务从具体创建/继续调用节点分叉，在独立泳道展开。子完成本身不产生回流；只有 `wait_subagents` 实际取回匹配 task/session 的终态结果才连到该 wait 节点。布局在汇合时把主流程推进到子结果之后，执行边保持从左向右。失败、取消结果也可被父任务取回，但 running/awaiting_permission 快照不得伪装为完成汇合。
+- `flow/buildGraph.ts` 与 `projection.ts` 是纯投影，底层步骤保留每条用户输入、LLM 轮次及工具调用的权威关联：消息 ID 从 sessionId + messageId 派生，工具 ID 另带 assistant messageId + toolCallId，防止 provider 在后续轮次复用调用 ID 时覆盖旧记录。`indexToolResults` 仅在声明的 assistant/tool 原子组内按调用 ID 精确合入结果，孤儿结果单独保留。尚未返回的后续工具仍是待执行，非活动会话的残留调用仍是未完成，不能伪装成并行运行。
+- 默认画布由 `compactNodes.ts` 按 LLM 的实际非空正文分成发言主节点，每次发言保留独立节点；后续无正文的 LLM 轮次与工具收进该发言。首句前的无正文步骤作为前缀归入首句，摘要、压缩边界、用户输入和孤儿结果不吞并。主节点以首个权威步骤 ID 为稳定锚点，保存有序 steps、LLM/工具次数和每次参数/结果引用；准备发言的流式占位提前分配，首个正文 token 不改变拓扑，终态若只有工具则归回前一发言。`detailLevel='steps'` 仅作为纯投影的细节模式用于回归检查。
+- `SpeechFlowNode` 在主卡片中显示正文与 `nestedSteps.ts` 派生的思考/工具小节点；思考只来自 provider 实际传回的 reasoning，不伪造、不用作发言正文。普通小节点预览最多六个，其余进入完整详情；所有连接分支/回流的工具始终可见，单独占一行，侧边端口伸出主卡片表面避免连线被遮挡。`graphLayout.ts` 按结构计算卡片/泳道尺寸，主/小节点 key 仅将权威关联的 JSON 元组编码成安全图 key，数据库和 IPC 的原始 ID 不变。
+- 子任务从创建/继续工具小节点的具名 source handle 分叉，泳道同样按发言展开，delegate edge 的 `sourceStepId` 保留具体调用来源。子完成本身不产生回流；只有 `wait_subagents` 实际取回匹配 task/session 的终态结果才连到具体 wait 小节点的 target handle，return edge 的 `targetStepId` 保留具体 wait 调用。创建与等待可属于同一发言容器，此时回流回该容器内的后续 wait，而非 Agent 执行循环；下一主节点布局仍推进到已返回子结果之后。失败/取消结果可被父任务取回，但 running/awaiting_permission 快照不得伪装成完成汇合。
 - 图是历史与事件的可丢弃投影，DB 和 renderer session cache 始终保存完整消息。历史默认按用户轮次折叠，最新轮次始终展开；展开、选中、详情 tab、缩放、平移、跟随开关均属于组件短生命周期状态，不新增 Agent runtime 或持久化图状态。
-- 正文/reasoning、参数、工具结果与用户图片在 `FlowInspector` 显示；Markdown 与 Mermaid 继续走原安全渲染边界。权限保持原全局 FIFO 确认弹窗，画布仅显示按会话等待确认的只读投影，不猜测缺失的 toolCallId、不产生新裁决入口。
-- 图卡片固定尺寸，流式 token 不重排图或移动镜头；结构变化才推进自动跟随。用户平移/缩放后停用跟随，可显式恢复。节点 memo + 视口裁剪限制重渲染；主题沿用既有浅色冷白、深色中性灰令牌。
+- `FlowInspector` 用 `FlowStepList` 导航发言内的精确步骤，点击主卡片默认展示该句正文，点击思考/工具小节点直接定位对应步骤与 tab，用户选择后按步骤 ID 固定；正文/reasoning、参数、结果与用户图片继续使用原安全渲染边界。步骤行 memo 避免 token 让整段导航重渲染。权限保持原全局 FIFO 确认弹窗，画布仅显示按会话等待确认的只读投影，不猜测缺失的 toolCallId、不产生新裁决入口。
+- 图卡片尺寸只随内部步骤/端口结构变化，流式文本增量不重排图或移动镜头；结构变化才推进自动跟随。画布鼠标滚轮用于缩放，拖拽用于平移；用户平移/缩放后停用跟随，可显式恢复。节点 memo + 视口裁剪限制重渲染；主题沿用既有浅色冷白、深色中性灰令牌。
 - 初次加载子历史时，`applyHistorySnapshot` 按权威 ID 保留在读取期间收到、尚未包含在快照中的活动消息与流式内容；匹配的 DB 行是已落库终态，始终优先，非活动会话完全采用 DB 快照。迟到的 renderer invoke 用 `applyAuthoritativeUserMessage` 替换 pending：已在快照中出现的权威 user 只更新一次并移除占位，不能重复追加或移到回答之后。complete/error/abort 后的原重拉校准语义保持不变。
 - 当前恢复的是消息中可验证的执行拓扑，未新增持久化 run/task 日志。历史工具耗时、完整重试/审批轨迹仍不能凭空还原；活动 task_id 的 owner 与生命周期仍是父 run 的 SubagentScope。
 - `ChatView` 只组合 header、通知、canvas 和 composer；流式 token 内容变化不应导致整个聊天页外壳重渲染。旧 MessageViewport/MessageBubble/ToolCallChain 展示路径已移除。
+- 无独立窗口标题栏行：`WindowControls` 叠放在现有顶部区域，chat header/侧栏品牌/设置标题与空态上缘声明拖拽区，交互按钮显式 no-drag；最小化、最大化/还原、关闭仍使用原 typed preload API。renderer 不复制 hide/quit 策略，关闭语义仍由 main 生命周期边界决定。
 
 完整历史仍由数据库和 renderer session cache 保存。展示层的组件拆分、memo 和虚拟化只能减少渲染工作，不得改变消息 ID、持久化内容、压缩边界或 `SessionService` 所有权。
 

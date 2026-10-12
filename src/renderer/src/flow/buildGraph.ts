@@ -1,7 +1,9 @@
 import type { Session, UIMessage } from '../../../shared/types.ts'
-import { collectDelegations, decodeTaskReferences, messageNodeId, splitConversationTurns, type Delegation } from './history.ts'
+import { collectDelegations, decodeTaskReferences, graphNodeId, splitConversationTurns, type Delegation } from './history.ts'
 import { buildTurnNodes, flowNode, foldedTurn } from './projection.ts'
-import { FLOW_SIZE, type ConversationGraph, type FlowEdge, type FlowNode } from './types.ts'
+import { FLOW_GAP, FLOW_SIZE, type ConversationGraph, type FlowEdge, type FlowNode } from './types.ts'
+import { compactTurnNodes, flowSteps, includesBoundary } from './compactNodes.ts'
+import { finishGraphLayout } from './graphLayout.ts'
 
 export interface GraphInput {
   sessionId: string
@@ -10,10 +12,12 @@ export interface GraphInput {
   runningIds: ReadonlySet<string>
   collapsedTurns?: ReadonlySet<string>
   showChildren?: boolean
+  detailLevel?: 'compact' | 'steps'
   compaction?: { upToMessageId: string; summary?: string } | null
 }
 
 interface Branch { taskId: string; sessionId: string; first: FlowNode; last: FlowNode }
+interface ReturnedBranch { branch: Branch; stepId: string }
 
 /** Pure, disposable projection: IDs and tool/result associations are scoped to authoritative sessions. */
 export function buildConversationGraph(input: GraphInput): ConversationGraph {
@@ -28,35 +32,34 @@ export function buildConversationGraph(input: GraphInput): ConversationGraph {
   let previous: FlowNode | undefined
   for (const turn of turns) {
     const collapsed = input.collapsedTurns?.has(turn.id) && turn !== turns.at(-1)
-    const nodes = collapsed ? [foldedTurn(turn, input.sessionId)]
+    const raw = collapsed ? [foldedTurn(turn, input.sessionId)]
       : buildTurnNodes(turn, input.sessionId, input.runningIds.has(input.sessionId) && turn === turns.at(-1))
+    const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw, input.compaction?.upToMessageId)
     for (const node of nodes) {
-      const returnedBranches = branchesReturnedTo(node, branches)
-      if (node.data.kind === 'join' && node.data.result) {
-        const tasks = decodeTaskReferences(node.data.result.content)
-        if (tasks.length) {
-          node.data.totalTaskCount = tasks.length
-          node.data.returnedTaskCount = tasks.filter(task => ['completed', 'failed', 'aborted'].includes(task.status)).length
-        }
-      }
-      cursor = Math.max(cursor, ...returnedBranches.map(branch => branch.last.position.x + FLOW_SIZE.column))
+      annotateJoin(node, input.runningIds.has(input.sessionId) && turn === turns.at(-1))
+      const priorReturns = branchesReturnedTo(node, branches)
+      cursor = Math.max(cursor, ...priorReturns.map(item => item.branch.last.position.x + item.branch.last.width + FLOW_GAP))
       node.position = { x: cursor, y: FLOW_SIZE.top }
       graph.nodes.push(node)
       if (previous) connect(graph, previous, node, 'sequence')
-      for (const branch of returnedBranches) connect(graph, branch.last, node, 'return')
-      const delegation = node.data.call && delegations.get(node.id)
-      if (delegation) {
-        node.data.childSessionId = delegation.session.id
-        node.data.taskId = delegation.task.task_id
-        node.data.preview = `${delegation.session.title}\n${delegation.session.subagent?.model ?? ''}`
-        const branch = addBranch(graph, node, delegation, input, laneEnds)
-        branches.set(branch.taskId, branch)
-        childIds.add(branch.sessionId)
+      const returned = new Map<string, ReturnedBranch>()
+      for (const step of flowSteps(node)) {
+        const delegation = delegations.get(step.id)
+        if (delegation) {
+          step.data.childSessionId = delegation.session.id
+          step.data.taskId = delegation.task.task_id
+          const branch = addBranch(graph, node, delegation, input, laneEnds)
+          branches.set(branch.taskId, branch)
+          childIds.add(branch.sessionId)
+        }
+        for (const item of branchesReturnedTo({ ...node, id: step.id, data: step.data }, branches)) returned.set(item.branch.taskId, item)
       }
-      cursor = node.position.x + FLOW_SIZE.column
+      for (const item of returned.values()) connect(graph, item.branch.last, node, 'return', { targetStepId: item.stepId })
+      cursor = Math.max(node.position.x + node.width + FLOW_GAP,
+        ...[...returned.values()].map(item => item.branch.last.position.x + item.branch.last.width + FLOW_GAP))
       previous = node
-      if (isCompactionBoundary(node, input.compaction?.upToMessageId)) {
-        const marker = flowNode(JSON.stringify(['compaction', input.sessionId, input.compaction!.upToMessageId]), {
+      if (flowSteps(node).some(step => includesBoundary(step, input.compaction?.upToMessageId))) {
+        const marker = flowNode(graphNodeId('compaction', input.sessionId, input.compaction!.upToMessageId), {
           kind: 'compaction', sessionId: input.sessionId, title: '', preview: input.compaction?.summary ?? '',
           status: 'done', turnId: turn.id
         })
@@ -70,21 +73,35 @@ export function buildConversationGraph(input: GraphInput): ConversationGraph {
   }
   graph.latestNodeId = previous?.id
   graph.childCount = childIds.size
+  finishGraphLayout(graph)
   return graph
 }
 
-function connect(graph: ConversationGraph, source: FlowNode, target: FlowNode, kind: FlowEdge['kind']): void {
-  graph.edges.push({ id: JSON.stringify([kind, source.id, target.id]), source: source.id, target: target.id, kind })
+function connect(graph: ConversationGraph, source: FlowNode, target: FlowNode, kind: FlowEdge['kind'], trace: Pick<FlowEdge, 'sourceStepId' | 'targetStepId'> = {}): void {
+  graph.edges.push({ id: graphNodeId(kind, source.id, target.id), source: source.id, target: target.id, kind, ...trace })
 }
 
-function branchesReturnedTo(node: FlowNode, branches: ReadonlyMap<string, Branch>): Branch[] {
-  if (node.data.kind !== 'join' || !node.data.result || node.data.result.status === 'error') return []
-  return decodeTaskReferences(node.data.result.content).flatMap(task => {
-    const branch = branches.get(task.task_id)
-    // Completion alone does not join a child: only an actual terminal result fetched by this wait call does.
-    return branch && branch.sessionId === task.session_id && ['completed', 'failed', 'aborted'].includes(task.status)
-      && (!task.parentSessionId || task.parentSessionId === node.data.sessionId) ? [branch] : []
-  })
+function branchesReturnedTo(node: FlowNode, branches: ReadonlyMap<string, Branch>): ReturnedBranch[] {
+  const returned = new Map<string, ReturnedBranch>()
+  for (const step of flowSteps(node)) {
+    if (step.data.kind !== 'join' || !step.data.result || step.data.result.status === 'error') continue
+    for (const task of decodeTaskReferences(step.data.result.content)) {
+      const branch = branches.get(task.task_id)
+      // Completion alone does not join a child: only an actual terminal result fetched by this wait call does.
+      if (branch && branch.sessionId === task.session_id && ['completed', 'failed', 'aborted'].includes(task.status)
+        && (!task.parentSessionId || task.parentSessionId === node.data.sessionId)) returned.set(task.task_id, { branch, stepId: step.id })
+    }
+  }
+  return [...returned.values()]
+}
+
+function annotateJoin(node: FlowNode, running: boolean): void {
+  const tasks = new Map(flowSteps(node).filter(step => step.data.kind === 'join' && step.data.result?.status !== 'error')
+    .flatMap(step => step.data.result ? decodeTaskReferences(step.data.result.content) : []).map(task => [task.task_id, task]))
+  if (!tasks.size) return
+  node.data.totalTaskCount = tasks.size
+  node.data.returnedTaskCount = [...tasks.values()].filter(task => ['completed', 'failed', 'aborted'].includes(task.status)).length
+  if (node.data.kind !== 'speech' && node.data.steps && node.data.returnedTaskCount < tasks.size) node.data.status = running ? 'running' : 'unresolved'
 }
 
 function addBranch(
@@ -94,8 +111,9 @@ function addBranch(
   const lastTurn = splitConversationTurns(input.messages[session.id] ?? []).at(-1)
   const running = input.runningIds.has(session.id) && (!turn || turn.id === lastTurn?.id)
   const expanded = input.showChildren !== false && turn
-  const nodes = expanded ? buildTurnNodes(turn, session.id, running) : []
-  if (!nodes.length) nodes.push(flowNode(JSON.stringify(['task', session.id, task.task_id]), {
+  const raw = expanded ? buildTurnNodes(turn, session.id, running) : []
+  const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw)
+  if (!nodes.length) nodes.push(flowNode(graphNodeId('task', session.id, task.task_id), {
     kind: 'delegate', sessionId: session.id, title: session.title, preview: session.subagent?.model ?? '',
     status: running ? 'running' : turn?.messages.some(message => message.status === 'error') ? 'error' : turn ? 'done' : 'unresolved', childSessionId: session.id,
     taskId: task.task_id, messageCount: turn?.messages.length
@@ -103,32 +121,28 @@ function addBranch(
   let lane = laneEnds.findIndex(end => end + FLOW_SIZE.column < source.position.x)
   if (lane < 0) lane = laneEnds.length
   const y = FLOW_SIZE.top + FLOW_SIZE.row * (lane + 1)
-  const x = source.position.x + FLOW_SIZE.column
+  const x = source.data.kind === 'speech' ? source.position.x : source.position.x + FLOW_SIZE.column
+  let childCursor = x
   nodes.forEach((node, index) => {
-    node.position = { x: x + index * FLOW_SIZE.column, y }
+    node.position = { x: childCursor, y }
+    childCursor += node.width + FLOW_GAP
     node.data.taskId = task.task_id
+    for (const step of node.data.steps ?? []) step.data.taskId = task.task_id
     // Child turns have their own IDs; the root turn anchor is kept on the lane for collapsed-history navigation.
     graph.nodes.push(node)
     if (index > 0) connect(graph, nodes[index - 1], node, 'sequence')
   })
-  laneEnds[lane] = nodes.at(-1)!.position.x + FLOW_SIZE.width
-  const group = flowNode(JSON.stringify(['lane', session.id, task.task_id]), {
+  laneEnds[lane] = nodes.at(-1)!.position.x + nodes.at(-1)!.width
+  const group = flowNode(graphNodeId('lane', session.id, task.task_id), {
     kind: 'lane', sessionId: session.id, childSessionId: session.id, taskId: task.task_id,
-    turnId: source.data.turnId, title: session.title, preview: session.subagent?.model ?? '',
+    turnId: source.data.turnId, title: session.title, preview: session.subagent?.model ?? '', laneIndex: lane,
     status: running ? 'running' : nodes.some(node => node.data.status === 'error') ? 'error'
       : nodes.some(node => node.data.status === 'unresolved') ? 'unresolved' : 'done'
   })
   group.position = { x: x - 16, y: y - 40 }
-  group.width = nodes.at(-1)!.position.x - x + FLOW_SIZE.width + 32
+  group.width = nodes.at(-1)!.position.x - x + nodes.at(-1)!.width + 32
   group.height = FLOW_SIZE.height + 60
   graph.nodes.push(group)
-  connect(graph, source, nodes[0], 'delegate')
+  connect(graph, source, nodes[0], 'delegate', { sourceStepId: delegation.nodeId })
   return { taskId: task.task_id, sessionId: session.id, first: nodes[0], last: nodes.at(-1)! }
-}
-
-function isCompactionBoundary(node: FlowNode, boundary?: string): boolean {
-  if (!boundary) return false
-  if (node.data.result?.id === boundary) return true
-  return node.data.message?.id === boundary && !node.data.call
-    && node.id === messageNodeId(node.data.sessionId, boundary)
 }

@@ -1,7 +1,7 @@
 import { useEffect } from 'react'
 import { useAppStore, THEME_STORAGE_KEY, FONT_SIZE_STORAGE_KEY } from './store'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from './i18n'
-import TitleBar from './components/TitleBar'
+import WindowControls from './components/WindowControls'
 import Sidebar from './components/Sidebar'
 import ChatView from './components/ChatView'
 import SettingsView from './components/SettingsView'
@@ -389,8 +389,7 @@ export default function App() {
 
   return (
     <div className="app-frame">
-      {/* 自定义窗口标题栏 */}
-      <TitleBar />
+      <WindowControls />
 
       <div
         className={sidebarCollapsed ? 'app-shell sidebar-is-collapsed' : 'app-shell'}

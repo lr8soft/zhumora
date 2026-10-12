@@ -3,18 +3,20 @@ import { useTranslation } from 'react-i18next'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { Archive, Brain, Check, ChevronRight, GitBranch, GitMerge, LoaderCircle, MessageSquare, UserRound, Wrench, XCircle } from 'lucide-react'
 import type { FlowData } from '../flow/types'
+import SpeechFlowNode, { type SpeechNodeData } from './SpeechFlowNode'
 
-export type ConversationNode = Node<FlowData, 'conversation'>
+export type ConversationNode = Node<SpeechNodeData, 'conversation'>
 const icons = { user: UserRound, llm: Brain, tool: Wrench, delegate: GitBranch, join: GitMerge,
-  summary: Archive, turn: MessageSquare, compaction: Archive, lane: GitBranch }
+  speech: MessageSquare, summary: Archive, turn: MessageSquare, compaction: Archive, lane: GitBranch }
 
 export function flowTitle(data: FlowData, t: (key: string) => string): string {
   return data.call ? data.title : data.kind === 'lane' ? data.title : data.title || t(`flow.kind.${data.kind}`)
 }
 
-function ConversationFlowNode({ data, selected }: NodeProps<ConversationNode>) {
+function ConversationFlowNode({ id, data, selected }: NodeProps<ConversationNode>) {
   const { t } = useTranslation()
   const Icon = icons[data.kind]
+  if (data.kind === 'speech') return <SpeechFlowNode id={id} data={data} selected={selected} />
   if (data.kind === 'lane') {
     return <div className="flow-lane">
       <div className="flow-lane-label"><GitBranch size={12} /><strong>{data.title}</strong><span>{data.preview}</span>
@@ -33,6 +35,7 @@ function ConversationFlowNode({ data, selected }: NodeProps<ConversationNode>) {
     <header><span className="flow-card-icon"><Icon size={15} /></span><strong>{flowTitle(data, t)}</strong>
       {StatusIcon && <StatusIcon size={13} className={`flow-node-status ${data.status}${data.status === 'running' ? ' spin' : ''}`} />}
     </header>
+    {data.steps && <div className="flow-card-meta">{t('flow.executionCounts', { llm: data.llmCount, tools: data.toolCount })}</div>}
     <div className="flow-card-preview">{cardPreview(preview, data.kind) || t(data.kind === 'llm' ? 'flow.waitingOutput' : 'flow.noContent')}</div>
     <footer><span className={`flow-status ${data.status}`}>{t(`flow.status.${data.status}`)}</span>
       {data.kind === 'turn' ? <span>{t('flow.messageCount', { count: data.messageCount })}<ChevronRight size={12} /></span>
@@ -46,7 +49,7 @@ function ConversationFlowNode({ data, selected }: NodeProps<ConversationNode>) {
 
 function cardPreview(text: string, kind: FlowData['kind']): string {
   const excerpt = text.slice(0, 220)
-  return ['llm', 'user', 'turn', 'summary'].includes(kind)
+  return ['llm', 'user', 'turn', 'summary', 'speech'].includes(kind)
     ? excerpt.replace(/^\s{0,3}#{1,6}\s+/gm, '').replace(/\*\*|__|`/g, '').replace(/\s+/g, ' ').trim() : excerpt
 }
 
@@ -57,4 +60,16 @@ export default memo(ConversationFlowNode, (previous, next) => {
     && a.messageCount === b.messageCount && a.awaitingPermission === b.awaitingPermission
     && a.returnedTaskCount === b.returnedTaskCount && a.totalTaskCount === b.totalTaskCount
     && a.retry === b.retry
+    && a.toolCount === b.toolCount && a.llmCount === b.llmCount
+    && a.onStepSelect === b.onStepSelect && sameInnerStructure(a, b)
 })
+
+function sameInnerStructure(a: FlowData, b: FlowData): boolean {
+  if (a.steps?.length !== b.steps?.length || a.ports?.length !== b.ports?.length) return false
+  return (a.steps ?? []).every((step, index) => {
+    const next = b.steps![index]
+    return step.id === next.id && step.data.message === next.data.message && step.data.call === next.data.call
+      && step.data.result === next.data.result && step.data.status === next.data.status
+      && step.data.childSessionId === next.data.childSessionId && step.data.taskId === next.data.taskId
+  }) && (a.ports ?? []).every((port, index) => port.role === b.ports![index].role && port.stepId === b.ports![index].stepId)
+}

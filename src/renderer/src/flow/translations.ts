@@ -5,9 +5,10 @@ const en = {
   branch: 'Delegation', receive: 'Receive results', inspect: 'Details', waitingOutput: 'Waiting for model output…', noContent: 'No text content',
   noResult: 'No result returned yet', openSession: 'Open session', awaitingPermission: 'Session awaiting approval',
   loadError: 'Could not load session history.', retry: 'Retry', zoomIn: 'Zoom in', zoomOut: 'Zoom out', finalReply: 'Reply',
-  running: 'Running', ready: 'Ready', latest: 'Latest output',
+  running: 'Running', ready: 'Ready', latest: 'Latest output', stageSteps: 'Internal steps', stageStepCount: '{{count}} steps', executionCounts: '{{llm}} LLM turns · {{tools}} tool calls',
+  processing: 'Working…', thinking: 'Reasoning', moreSteps: '{{count}} more steps',
   kind: { user: 'User input', llm: 'LLM turn', tool: 'Tool', delegate: 'Subagent task', join: 'Collect results', summary: 'Context summary',
-    turn: 'Conversation turn', compaction: 'Context boundary', lane: 'Subagent' },
+    turn: 'Conversation turn', compaction: 'Context boundary', lane: 'Subagent', speech: 'LLM message' },
   status: { done: 'Completed', running: 'Running', queued: 'Queued', error: 'Error', unresolved: 'Unfinished' },
   tab: { content: 'Content', reasoning: 'Reasoning', args: 'Arguments', result: 'Result' }
 }
@@ -18,9 +19,10 @@ const zh = {
   branch: '委托分支', receive: '接收结果', inspect: '查看详情', waitingOutput: '等待模型输出…', noContent: '暂无文本内容',
   noResult: '尚未返回执行结果', openSession: '打开所属会话', awaitingPermission: '会话等待权限确认',
   loadError: '会话历史加载失败。', retry: '重试', zoomIn: '放大', zoomOut: '缩小', finalReply: '最终回复',
-  running: '正在运行', ready: '就绪', latest: '最新输出',
+  running: '正在运行', ready: '就绪', latest: '最新输出', stageSteps: '内部步骤', stageStepCount: '{{count}} 个步骤', executionCounts: 'LLM {{llm}} 轮 · 工具 {{tools}} 次',
+  processing: '正在处理…', thinking: '思考', moreSteps: '还有 {{count}} 个步骤',
   kind: { user: '用户输入', llm: 'LLM 轮次', tool: '工具', delegate: '子 Agent 任务', join: '接收子任务结果', summary: '上下文摘要',
-    turn: '对话轮次', compaction: '上下文压缩边界', lane: '子 Agent' },
+    turn: '对话轮次', compaction: '上下文压缩边界', lane: '子 Agent', speech: 'LLM 发言' },
   status: { done: '已完成', running: '运行中', queued: '待执行', error: '出错', unresolved: '未完成' },
   tab: { content: '内容', reasoning: '思考', args: '参数', result: '结果' }
 }
@@ -31,7 +33,9 @@ const ja = {
   branch: '委任', receive: '結果を受信', inspect: '詳細', waitingOutput: 'モデルの出力を待機中…', noContent: 'テキストなし',
   noResult: '結果はまだ返されていません', openSession: 'セッションを開く', awaitingPermission: 'セッションの承認待ち',
   loadError: '履歴を読み込めませんでした。', retry: '再試行', zoomIn: '拡大', zoomOut: '縮小', finalReply: '回答', running: '実行中', ready: '準備完了', latest: '最新の出力',
-  kind: { user: 'ユーザー入力', llm: 'LLM ターン', tool: 'ツール', delegate: 'サブタスク', join: '結果の収集', summary: 'コンテキスト要約', turn: '会話ターン', compaction: 'コンテキスト境界', lane: 'サブエージェント' },
+  stageSteps: '内部の手順', stageStepCount: '{{count}} ステップ', executionCounts: 'LLM {{llm}} 回 · ツール {{tools}} 回',
+  processing: '処理中…', thinking: '推論', moreSteps: 'ほか {{count}} ステップ',
+  kind: { user: 'ユーザー入力', llm: 'LLM ターン', tool: 'ツール', delegate: 'サブタスク', join: '結果の収集', summary: 'コンテキスト要約', turn: '会話ターン', compaction: 'コンテキスト境界', lane: 'サブエージェント', speech: 'LLM メッセージ' },
   status: { done: '完了', running: '実行中', queued: '待機中', error: 'エラー', unresolved: '未完了' },
   tab: { content: '内容', reasoning: '推論', args: '引数', result: '結果' }
 }
@@ -42,7 +46,9 @@ const es = {
   branch: 'Delegación', receive: 'Recibir resultados', inspect: 'Detalles', waitingOutput: 'Esperando al modelo…', noContent: 'Sin texto',
   noResult: 'Aún no hay resultado', openSession: 'Abrir sesión', awaitingPermission: 'Sesión pendiente de aprobación',
   loadError: 'No se pudo cargar el historial.', retry: 'Reintentar', zoomIn: 'Acercar', zoomOut: 'Alejar', finalReply: 'Respuesta', running: 'En ejecución', ready: 'Listo', latest: 'Última salida',
-  kind: { user: 'Entrada del usuario', llm: 'Turno LLM', tool: 'Herramienta', delegate: 'Subtarea', join: 'Recoger resultados', summary: 'Resumen del contexto', turn: 'Turno de conversación', compaction: 'Límite del contexto', lane: 'Subagente' },
+  stageSteps: 'Pasos internos', stageStepCount: '{{count}} pasos', executionCounts: '{{llm}} turnos LLM · {{tools}} llamadas',
+  processing: 'Procesando…', thinking: 'Razonamiento', moreSteps: '{{count}} pasos más',
+  kind: { user: 'Entrada del usuario', llm: 'Turno LLM', tool: 'Herramienta', delegate: 'Subtarea', join: 'Recoger resultados', summary: 'Resumen del contexto', turn: 'Turno de conversación', compaction: 'Límite del contexto', lane: 'Subagente', speech: 'Mensaje LLM' },
   status: { done: 'Completado', running: 'En ejecución', queued: 'En cola', error: 'Error', unresolved: 'Sin terminar' },
   tab: { content: 'Contenido', reasoning: 'Razonamiento', args: 'Argumentos', result: 'Resultado' }
 }
@@ -53,7 +59,9 @@ const fr = {
   branch: 'Délégation', receive: 'Recevoir les résultats', inspect: 'Détails', waitingOutput: 'En attente du modèle…', noContent: 'Aucun texte',
   noResult: 'Aucun résultat pour le moment', openSession: 'Ouvrir la session', awaitingPermission: 'Session en attente d’autorisation',
   loadError: 'Impossible de charger l’historique.', retry: 'Réessayer', zoomIn: 'Agrandir', zoomOut: 'Réduire', finalReply: 'Réponse', running: 'En cours', ready: 'Prêt', latest: 'Dernière sortie',
-  kind: { user: 'Entrée utilisateur', llm: 'Tour LLM', tool: 'Outil', delegate: 'Sous-tâche', join: 'Collecte des résultats', summary: 'Résumé du contexte', turn: 'Tour de conversation', compaction: 'Limite du contexte', lane: 'Sous-agent' },
+  stageSteps: 'Étapes internes', stageStepCount: '{{count}} étapes', executionCounts: '{{llm}} tours LLM · {{tools}} appels',
+  processing: 'Traitement…', thinking: 'Raisonnement', moreSteps: '{{count}} étapes supplémentaires',
+  kind: { user: 'Entrée utilisateur', llm: 'Tour LLM', tool: 'Outil', delegate: 'Sous-tâche', join: 'Collecte des résultats', summary: 'Résumé du contexte', turn: 'Tour de conversation', compaction: 'Limite du contexte', lane: 'Sous-agent', speech: 'Message LLM' },
   status: { done: 'Terminé', running: 'En cours', queued: 'En attente', error: 'Erreur', unresolved: 'Inachevé' },
   tab: { content: 'Contenu', reasoning: 'Raisonnement', args: 'Arguments', result: 'Résultat' }
 }
@@ -64,7 +72,9 @@ const de = {
   branch: 'Delegation', receive: 'Ergebnisse empfangen', inspect: 'Details', waitingOutput: 'Warten auf Modellausgabe…', noContent: 'Kein Text',
   noResult: 'Noch kein Ergebnis', openSession: 'Sitzung öffnen', awaitingPermission: 'Sitzung wartet auf Genehmigung',
   loadError: 'Verlauf konnte nicht geladen werden.', retry: 'Erneut versuchen', zoomIn: 'Vergrößern', zoomOut: 'Verkleinern', finalReply: 'Antwort', running: 'Wird ausgeführt', ready: 'Bereit', latest: 'Neueste Ausgabe',
-  kind: { user: 'Benutzereingabe', llm: 'LLM-Runde', tool: 'Werkzeug', delegate: 'Unteraufgabe', join: 'Ergebnisse sammeln', summary: 'Kontextzusammenfassung', turn: 'Gesprächsrunde', compaction: 'Kontextgrenze', lane: 'Unteragent' },
+  stageSteps: 'Interne Schritte', stageStepCount: '{{count}} Schritte', executionCounts: '{{llm}} LLM-Runden · {{tools}} Aufrufe',
+  processing: 'In Bearbeitung…', thinking: 'Überlegung', moreSteps: '{{count}} weitere Schritte',
+  kind: { user: 'Benutzereingabe', llm: 'LLM-Runde', tool: 'Werkzeug', delegate: 'Unteraufgabe', join: 'Ergebnisse sammeln', summary: 'Kontextzusammenfassung', turn: 'Gesprächsrunde', compaction: 'Kontextgrenze', lane: 'Unteragent', speech: 'LLM-Nachricht' },
   status: { done: 'Abgeschlossen', running: 'Läuft', queued: 'In Warteschlange', error: 'Fehler', unresolved: 'Unvollständig' },
   tab: { content: 'Inhalt', reasoning: 'Überlegung', args: 'Argumente', result: 'Ergebnis' }
 }

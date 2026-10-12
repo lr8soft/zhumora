@@ -21,20 +21,40 @@ try {
   page = await browser.newPage({ viewport: { width: 1920, height: 1080 }, reducedMotion: 'reduce' })
   const errors = []
   page.on('pageerror', error => { errors.push(error.message); console.error('Renderer error:', error.message) })
+  page.on('console', message => { if (message.type() === 'warn' && message.text().includes('[React Flow]')) errors.push(message.text()) })
   await page.addInitScript(installFlowUiFixture)
   await page.goto(`http://127.0.0.1:${address.port}`)
   await page.locator('.conversation-flow').waitFor()
-  await page.waitForFunction(() => document.querySelectorAll('.flow-lane').length === 2)
+  assert.equal(await page.locator('.window-titlebar').count(), 0, 'the separate titlebar is removed')
+  assert.equal(Math.round((await page.locator('.app-shell').boundingBox()).y), 0, 'the content starts at the top edge')
+  assert.equal(Math.round((await page.locator('.chat-topbar').boundingBox()).y), 0)
+  assert.equal(await page.locator('.window-controls button').count(), 3)
+  for (let index = 0; index < 3; index++) await page.locator('.window-controls button').nth(index).click()
+  assert.deepEqual(await page.evaluate(() => flowUiFixture.calls.filter(call => call[0] === 'window').map(call => call[1])),
+    ['minimize', 'toggleMaximize', 'close'], 'window controls keep the original main IPC boundary')
+  await page.waitForFunction(() => document.querySelector('.flow-count')?.textContent === '11 个节点')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
-  await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 16)
+  await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 11)
+  assert.equal(await page.locator('.flow-lane').count(), 2)
   // Viewport clipping mounts only visible elements; wait until fitting has exposed the whole fixture.
   const allEdges = await page.locator('.react-flow__edge').count()
-  assert.equal(allEdges, 17, 'seven main steps, six child steps, two forks and two result returns')
-  await page.locator('.flow-card header strong').filter({ hasText: /^read$/ }).click()
+  assert.equal(allEdges, 12, 'four main links, four child links, two forks and two result returns')
+  await page.locator('.flow-inner-step.tool').filter({ hasText: /^read$/ }).click()
   await page.locator('.flow-inspector').waitFor()
+  assert.equal(await page.locator('.flow-step-list button').count(), 2, 'the spoken message exposes its LLM and tool actions')
   assert.match(await page.locator('.flow-detail-body').innerText(), /SessionService/)
+  await page.locator('.flow-step-list button').first().click()
+  assert.match(await page.locator('.flow-detail-body').innerText(), /读取架构说明/)
+  await page.locator('.flow-step-list button').last().click()
   await page.getByRole('tab', { name: '参数', exact: true }).click()
   assert.match(await page.locator('.flow-detail-body').innerText(), /file_path/)
+  await page.getByRole('button', { name: '关闭详情', exact: true }).click()
+  await page.locator('.flow-inner-step.thinking').click()
+  await page.waitForFunction(() => document.querySelector('.flow-detail-tabs button.active')?.textContent === '思考')
+  assert.match(await page.locator('.flow-detail-body').innerText(), /两项审查可以独立进行/)
+  await page.locator('.flow-inner-step.tool').filter({ hasText: /^spawn_subagent$/ }).first().click()
+  await page.waitForFunction(() => document.querySelector('.flow-detail-tabs button.active')?.textContent === '结果')
+  assert.match(await page.locator('.flow-detail-body').innerText(), /task-a/)
   await page.getByRole('button', { name: '关闭详情', exact: true }).click()
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await waitViewportSettled(page)
@@ -49,6 +69,29 @@ try {
   await page.getByRole('button', { name: '关闭详情', exact: true }).click()
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await waitViewportSettled(page)
+
+  // Mouse wheel changes scale; dragging moves the canvas without changing scale.
+  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await waitViewportSettled(page)
+  const canvas = await page.locator('.flow-canvas').boundingBox()
+  await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + 24)
+  const wheelStart = await readViewport(page)
+  await page.mouse.wheel(0, -240)
+  await page.waitForFunction(zoom => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a > zoom, wheelStart.zoom)
+  await waitViewportSettled(page)
+  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false')
+  const enlarged = await readViewport(page)
+  await page.mouse.wheel(0, 240)
+  await page.waitForFunction(zoom => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a < zoom, enlarged.zoom)
+  await waitViewportSettled(page)
+  const dragStart = await readViewport(page)
+  await page.mouse.down()
+  await page.mouse.move(canvas.x + canvas.width / 2 + 60, canvas.y + 64, { steps: 5 })
+  await page.mouse.up()
+  await waitViewportSettled(page)
+  const dragged = await readViewport(page)
+  assert.equal(dragged.zoom, dragStart.zoom, 'dragging preserves zoom')
+  assert.ok(dragged.x > dragStart.x && dragged.y > dragStart.y, 'dragging still pans the canvas')
 
   // A live token updates its ID and neither relayouts the graph nor steals the user's camera.
   const before = await page.locator('.react-flow__viewport').getAttribute('style')
@@ -76,7 +119,7 @@ try {
   await page.waitForFunction(() => document.querySelectorAll('.flow-turn').length === 1)
   await page.getByRole('button', { name: '子 Agent', exact: true }).click()
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
-  await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 11)
+  await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 8)
   await page.setViewportSize({ width: 1000, height: 760 })
   await page.getByRole('button', { name: '最新输出', exact: true }).click()
   assert.ok(await page.locator('.flow-inspector').isVisible())
@@ -107,6 +150,70 @@ try {
   })
   await page.locator('.flow-empty-path').waitFor()
   assert.equal(await page.locator('.flow-card').count(), 0, 'a new conversation starts with an empty canvas')
+  await page.setViewportSize({ width: 1920, height: 1080 })
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/index.ts')
+    const { default: i18n } = await import('/src/i18n/index.ts')
+    await i18n.changeLanguage('zh')
+    useAppStore.getState().setFontSize(15)
+    useAppStore.getState().setTheme('light')
+    const make = (id, role, content, extra = {}) => ({ id, sessionId: 'dense', role, content, timestamp: 1, status: 'done', ...extra })
+    const history = [make('dense-u', 'user', '检查 Cloudflare 部署方案，核对持久化与域名配置。')]
+    for (let index = 0; index < 20; index++) {
+      const name = ['read', 'query-docs', 'grep'][index % 3]
+      history.push(make(`dense-a${index}`, 'assistant', index === 0 ? '先查部署文档，核对持久化配置。' : index === 10 ? '持久化方案已确认，继续检查域名和网络。' : '', {
+        reasoning: `正在核对第 ${index + 1} 项配置。`,
+        toolCalls: [{ id: 'reused-call', type: 'function', function: { name, arguments: JSON.stringify({ query: '部署配置', step: index + 1 }) } }]
+      }), make(`dense-t${index}`, 'tool', `步骤 ${index + 1} 的配置与文档已核对。`, { toolName: name, toolCallId: 'reused-call' }))
+    }
+    history.push(make('dense-reply', 'assistant', '## 部署分析结果\n\n配置与文档核对已完成。详细过程保留在每段发言内部。'))
+    useAppStore.setState(state => ({ sessions: [...state.sessions, { ...state.sessions[0], id: 'dense', title: 'Cloudflare 部署分析' }],
+      activeSessionId: 'dense', messages: { ...state.messages, dense: history } }))
+  })
+  await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 4)
+  await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
+  await waitViewportSettled(page)
+  assert.equal(await page.locator('.react-flow__edge').count(), 3, 'twenty calls live inside two spoken messages followed by the reply')
+  assert.match(await page.locator('.flow-speech footer').first().innerText(), /LLM 10 轮 · 工具 10 次/)
+  assert.equal(await page.locator('.flow-inner-step').count(), 12, 'only six inner items per speech are previewed')
+  assert.equal(await page.locator('.flow-inner-more').count(), 2)
+  assert.equal(await page.locator('.flow-speech-text').first().innerText(), '先查部署文档，核对持久化配置。')
+  await page.screenshot({ path: resolve(output, 'speech-nodes-light.png') })
+  await page.evaluate(async () => { const { useAppStore } = await import('/src/store/index.ts'); useAppStore.getState().setTheme('dark') })
+  await page.waitForFunction(() => document.documentElement.dataset.theme === 'dark')
+  await page.locator('.flow-card.flow-speech').first().click()
+  assert.equal(await page.locator('.flow-step-list button').count(), 20)
+  assert.match(await page.locator('.flow-detail-body').innerText(), /先查部署文档/)
+  await page.locator('.flow-inner-step.thinking').first().click()
+  await page.waitForFunction(() => document.querySelector('.flow-detail-tabs button.active')?.textContent === '思考')
+  assert.match(await page.locator('.flow-detail-body').innerText(), /正在核对第 1 项配置/)
+  await waitViewportSettled(page)
+  await page.screenshot({ path: resolve(output, 'speech-nodes-dark.png') })
+  await page.locator('.flow-inner-more').first().click()
+  assert.equal(await page.locator('.flow-step-list button').count(), 20, 'more opens the full ordered trace')
+  await page.locator('.flow-step-list button').last().click()
+  await page.waitForFunction(() => document.querySelector('.flow-detail-tabs button.active')?.textContent === '结果')
+  assert.match(await page.locator('.flow-detail-body').innerText(), /步骤 10 的配置与文档已核对/, 'reused call IDs still select their exact result')
+  // Dispatch and silent wait in one utterance retain distinct, drawable inner ports.
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/index.ts')
+    const parent = flowUiFixture.histories.parent.map(message => message.id === 'w' ? { ...message, content: '' } : message)
+    useAppStore.setState(state => ({ activeSessionId: 'parent', runningIds: new Set(), retryStatus: {},
+      messages: { ...state.messages, parent } }))
+  })
+  await page.waitForFunction(() => document.querySelector('.flow-count')?.textContent === '10 个节点')
+  await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
+  await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 10)
+  const dispatch = page.locator('.flow-speech').filter({ hasText: '分别委托架构梳理和权限审查' })
+  assert.equal(await dispatch.locator('.react-flow__handle.source[data-handleid]').count(), 2)
+  assert.equal(await dispatch.locator('.react-flow__handle.target[data-handleid]').count(), 1)
+  assert.ok(await dispatch.evaluate(card => [...card.querySelectorAll('.flow-inner-step .react-flow__handle')].every(handle => {
+    const port = handle.getBoundingClientRect()
+    return port.x + port.width / 2 >= card.getBoundingClientRect().right
+  })), 'inner ports sit outside the opaque parent surface, so their edges stay visible')
+  assert.equal(await page.locator('.react-flow__edge').count(), 11, 'same-container returns are real edges to the wait port')
+  await waitViewportSettled(page)
+  await page.screenshot({ path: resolve(output, 'speech-fork-return-dark.png') })
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
   console.log(`Flow UI passed: light/dark, node details, folding, streaming ID routing, camera stability and compact window. Screenshots: ${output}`)
 } catch (error) {
@@ -130,4 +237,11 @@ async function waitViewportSettled(page) {
     }
     requestAnimationFrame(check)
   }))
+}
+
+async function readViewport(page) {
+  return page.evaluate(() => {
+    const matrix = new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform)
+    return { x: matrix.e, y: matrix.f, zoom: matrix.a }
+  })
 }

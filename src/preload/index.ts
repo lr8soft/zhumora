@@ -8,6 +8,7 @@ import type { BbsConfig } from '../shared/bbs'
 import type { SessionModelSelection } from '../shared/sessionModel'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
+import type { PanelId, PanelWindowAction, PanelWindowTicket } from '../shared/panels'
 
 const api = {
   /**
@@ -15,6 +16,15 @@ const api = {
    * 需要平台判断（如 Linux 无 msedge 渠道）时必须用这个值。
    */
   platform: process.platform,
+  panels: {
+    prepare: (id: PanelId): Promise<PanelWindowTicket> => ipcRenderer.invoke('panels:prepare', id),
+    control: (key: string, action: PanelWindowAction): Promise<boolean> => ipcRenderer.invoke('panels:control', key, action),
+    onClosed: (cb: (event: { key: string }) => void) => {
+      const handler = (_event: Electron.IpcRendererEvent, payload: { key: string }) => cb(payload)
+      ipcRenderer.on('panels:closed', handler)
+      return () => ipcRenderer.removeListener('panels:closed', handler)
+    }
+  },
 
   // ============================================================
   // Session 管理

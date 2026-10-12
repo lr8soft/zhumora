@@ -70,11 +70,16 @@ export function collectDelegations(
 }
 
 export function messageNodeId(sessionId: string, messageId: string): string {
-  return JSON.stringify(['message', sessionId, messageId])
+  return graphNodeId('message', sessionId, messageId)
 }
 
 export function toolNodeId(sessionId: string, callId: string, assistantMessageId: string): string {
-  return JSON.stringify(['tool', sessionId, assistantMessageId, callId])
+  return graphNodeId('tool', sessionId, assistantMessageId, callId)
+}
+
+/** React Flow's dynamic port lookup interpolates node IDs into CSS selectors. Encode only the disposable graph key. */
+export function graphNodeId(...parts: string[]): string {
+  return encodeURIComponent(JSON.stringify(parts))
 }
 
 /** Tool IDs can repeat in later rounds. Associate exact IDs only inside their declared assistant/tool group. */

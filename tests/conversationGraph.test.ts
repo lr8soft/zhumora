@@ -3,6 +3,7 @@ import type { Session, ToolCall, UIMessage } from '../src/shared/types.ts'
 import { COMPACT_SUMMARY_PREFIX } from '../src/shared/types.ts'
 import { buildConversationGraph, type GraphInput } from '../src/renderer/src/flow/buildGraph.ts'
 import { decodeTaskReferences, messageNodeId, toolNodeId } from '../src/renderer/src/flow/history.ts'
+import { nestedSteps, previewRowCount, previewSteps, primaryStep } from '../src/renderer/src/flow/nestedSteps.ts'
 
 const message = (id: string, overrides: Partial<UIMessage> = {}): UIMessage => ({
   id, sessionId: 'parent', role: 'user', content: id, timestamp: 1, status: 'done', ...overrides
@@ -14,7 +15,7 @@ const child: Session = { id: 'child', title: 'Research', createdAt: 1, updatedAt
   origin: 'renderer', avatarEnabled: false, ttsEnabled: false, subagent: { parentSessionId: 'parent', providerId: 'p', model: 'm' } }
 const task = { task_id: 'task-1', session_id: 'child', parentSessionId: 'parent', status: 'running' }
 const input = (messages: UIMessage[], overrides: Partial<GraphInput> = {}): GraphInput => ({
-  sessionId: 'parent', sessions: [], messages: { parent: messages }, runningIds: new Set(), ...overrides
+  sessionId: 'parent', sessions: [], messages: { parent: messages }, runningIds: new Set(), detailLevel: 'steps', ...overrides
 })
 
 {
@@ -94,6 +95,8 @@ const input = (messages: UIMessage[], overrides: Partial<GraphInput> = {}): Grap
   const a = buildConversationGraph(input([assistant('a', [call('same')])]))
   const b = buildConversationGraph(input([assistant('a', [call('same')])], { sessionId: 'other', messages: { other: [assistant('a', [call('same')])] } }))
   assert.notEqual(a.nodes.at(-1)?.id, b.nodes.at(-1)?.id, 'IDs cannot collide between sessions')
+  assert.ok(!messageNodeId('session"\\', 'message\n"').match(/["\\\n]/), 'graph keys are safe for dynamic port DOM lookup')
+  assert.notEqual(messageNodeId('a', 'b:c'), messageNodeId('a:b', 'c'), 'encoding retains unambiguous session/message boundaries')
 }
 {
   const history = [message('u'), assistant('a1', [call('repeat')]), result('t1', 'repeat', 'first result'),
@@ -110,3 +113,102 @@ const input = (messages: UIMessage[], overrides: Partial<GraphInput> = {}): Grap
     'reusing a provider call ID cannot attach both dispatches to the later child')
 }
 console.log('Conversation graph sequencing, delegation, joins, continuation, isolation, folding and repeated provider ID tests passed')
+
+// Actual spoken messages own their internal execution trace; silent rounds do not lengthen the main chain.
+{
+  const history: UIMessage[] = [message('u')]
+  for (let index = 0; index < 20; index++) history.push({ ...assistant(`a${index}`, [call(`c${index}`)]),
+    content: index === 0 ? 'I will check the configuration.' : '', reasoning: `thinking ${index}` }, result(`t${index}`, `c${index}`))
+  history.push(assistant('reply'))
+  const before = JSON.stringify(history)
+  const graph = buildConversationGraph(input(history, { detailLevel: undefined }))
+  assert.deepEqual(graph.nodes.map(node => node.data.kind), ['user', 'speech', 'speech'])
+  assert.equal(graph.nodes[1].data.steps?.length, 40, 'all LLM and tool steps remain inspectable in order')
+  assert.equal(graph.nodes[1].data.toolCount, 20)
+  assert.equal(graph.nodes[1].data.llmCount, 20)
+  assert.deepEqual(graph.nodes[1].data.steps?.filter(step => step.data.result).map(step => step.data.result?.id),
+    Array.from({ length: 20 }, (_, index) => `t${index}`))
+  assert.equal(JSON.stringify(history), before)
+  assert.equal(graph.nodes[2].position.x - graph.nodes[0].position.x, 738, 'inner steps reclaim horizontal layout space')
+  assert.equal(graph.nodes[1].data.preview, 'I will check the configuration.', 'reasoning is never substituted for spoken text')
+  assert.equal(primaryStep(graph.nodes[1]).data.message?.id, 'a0')
+  assert.equal(nestedSteps(graph.nodes[1].data).length, 40, 'reasoning and tools are distinct inner actions')
+  assert.equal(previewSteps(graph.nodes[1].data).visible.length, 6)
+  assert.equal(previewSteps(graph.nodes[1].data).hidden, 34)
+  const growing = buildConversationGraph(input(history.slice(0, -3), { detailLevel: undefined }))
+  assert.equal(growing.nodes[1].id, graph.nodes[1].id, 'appending steps does not replace the stage anchor')
+  const compacted = buildConversationGraph(input(history, { detailLevel: undefined, compaction: { upToMessageId: 't9' } }))
+  assert.deepEqual(compacted.nodes.map(node => node.data.kind), ['user', 'speech', 'compaction', 'speech'])
+  assert.equal(compacted.nodes[1].data.steps?.length, 20)
+  assert.equal(compacted.nodes[3].data.steps?.length, 21, 'the silent prefix after compression belongs to the next actual utterance')
+  assert.equal(compacted.nodes[3].data.message?.id, 'reply')
+}
+{
+  const secondChild = { ...child, id: 'child-2' }
+  const secondTask = { ...task, task_id: 'task-2', session_id: 'child-2' }
+  const parent = [message('u'), assistant('dispatch', [call('s1', 'spawn_subagent'), call('s2', 'spawn_subagent')]),
+    result('r1', 's1', JSON.stringify(task)), result('r2', 's2', JSON.stringify(secondTask)),
+    assistant('waiting', [call('wait', 'wait_subagents')]), result('wr', 'wait', JSON.stringify([
+      { ...task, status: 'completed' }, { ...secondTask, status: 'completed' }])), assistant('reply')]
+  const histories = { parent, child: [message('cu', { sessionId: 'child' }), message('ca', { sessionId: 'child', role: 'assistant' })],
+    'child-2': [message('cu2', { sessionId: 'child-2' }), message('ca2', { sessionId: 'child-2', role: 'assistant' })] }
+  const graph = buildConversationGraph(input(parent, { detailLevel: undefined, sessions: [child, secondChild], messages: histories }))
+  const root = graph.nodes.filter(node => node.data.sessionId === 'parent')
+  assert.deepEqual(root.map(node => node.data.kind), ['user', 'speech', 'speech', 'speech'])
+  assert.equal(graph.edges.filter(edge => edge.kind === 'delegate').length, 2)
+  assert.equal(graph.edges.filter(edge => edge.kind === 'return').length, 2)
+  assert.deepEqual(graph.edges.filter(edge => edge.kind === 'delegate').map(edge => edge.sourceStepId),
+    [toolNodeId('parent', 's1', 'dispatch'), toolNodeId('parent', 's2', 'dispatch')])
+  assert.ok(graph.edges.filter(edge => edge.kind === 'return').every(edge => edge.targetStepId === toolNodeId('parent', 'wait', 'waiting')))
+  assert.equal(root[2].data.returnedTaskCount, 2)
+  assert.equal(root[1].data.preview, 'dispatch', 'task metadata does not overwrite spoken words')
+  assert.deepEqual(root[1].data.ports, [
+    { role: 'source', stepId: toolNodeId('parent', 's1', 'dispatch') },
+    { role: 'source', stepId: toolNodeId('parent', 's2', 'dispatch') }])
+  assert.ok(graph.edges.filter(edge => edge.kind !== 'delegate').every(edge => graph.nodes.find(node => node.id === edge.source)!.position.x
+    < graph.nodes.find(node => node.id === edge.target)!.position.x), 'sequences and returns to a later utterance advance horizontally')
+  assert.ok(graph.edges.filter(edge => edge.kind === 'delegate').every(edge => graph.nodes.find(node => node.id === edge.source)!.position.y
+    < graph.nodes.find(node => node.id === edge.target)!.position.y), 'inner dispatch ports branch downward into child lanes')
+}
+{
+  const spoken = Array.from({ length: 20 }, (_, index) => assistant(`said-${index}`, [call(`call-${index}`)]))
+  const graph = buildConversationGraph(input(spoken, { detailLevel: undefined }))
+  assert.equal(graph.nodes.length, 20, 'twenty actual utterances remain twenty speech nodes')
+  assert.deepEqual(graph.nodes.map(node => node.data.message?.content), spoken.map(item => item.content))
+  const prefix = { ...assistant('silent', [call('read')]), content: '', reasoning: 'Inspecting the file.' }
+  const live = { ...assistant('live'), content: '', status: 'streaming' as const }
+  const history = [assistant('first'), prefix, result('r', 'read'), live]
+  const pending = buildConversationGraph(input(history, { detailLevel: undefined, runningIds: new Set(['parent']) }))
+  const delta = buildConversationGraph(input([...history.slice(0, -1), { ...live, content: 'Hello' }], {
+    detailLevel: undefined, runningIds: new Set(['parent']) }))
+  assert.deepEqual(pending.nodes.map(node => [node.id, node.position, node.width, node.height]),
+    delta.nodes.map(node => [node.id, node.position, node.width, node.height]), 'first live text delta does not change topology')
+  const toolEnd = buildConversationGraph(input([...history.slice(0, -1), { ...live, status: 'done', toolCalls: [call('late')] }], { detailLevel: undefined }))
+  assert.equal(toolEnd.nodes.length, 1, 'a transient live round which ends tool-only folds back into its owner')
+  const beforeWords = buildConversationGraph(input([prefix, result('r', 'read'), assistant('spoken')], { detailLevel: undefined }))
+  assert.equal(beforeWords.nodes.length, 1)
+  assert.equal(beforeWords.nodes[0].id, messageNodeId('parent', 'silent'), 'a silent prefix retains its authoritative stable anchor')
+  assert.equal(primaryStep(beforeWords.nodes[0]).data.message?.id, 'spoken')
+}
+{
+  const parent = [message('u'), assistant('speech', [call('spawn', 'spawn_subagent')]), result('s', 'spawn', JSON.stringify(task))]
+  for (let index = 0; index < 10; index++) parent.push({ ...assistant(`silent-${index}`, [call(`c-${index}`)]), content: '' }, result(`r-${index}`, `c-${index}`))
+  parent.push({ ...assistant('wait', [call('w', 'wait_subagents')]), content: '' },
+    result('wr', 'w', JSON.stringify([{ ...task, status: 'completed' }])), assistant('final'))
+  const childHistory = [message('cu', { sessionId: 'child' }), message('ca', { sessionId: 'child', role: 'assistant' })]
+  const graph = buildConversationGraph(input(parent, { detailLevel: undefined, sessions: [child], messages: { parent, child: childHistory } }))
+  const owner = graph.nodes.find(node => node.id === messageNodeId('parent', 'speech'))!
+  const returned = graph.edges.find(edge => edge.kind === 'return')!
+  assert.equal(returned.target, owner.id, 'spawn and later silent wait can belong to the same utterance')
+  assert.equal(returned.targetStepId, toolNodeId('parent', 'w', 'wait'))
+  const visible = previewSteps(owner.data).visible.map(item => item.step.id)
+  assert.ok(visible.includes(toolNodeId('parent', 'spawn', 'speech')))
+  assert.ok(visible.includes(toolNodeId('parent', 'w', 'wait')), 'connected ports stay visible beyond the regular six-item preview')
+  assert.equal(previewRowCount(owner.data), 5, 'each connected tool owns a full row beside its clear side port')
+  assert.equal(owner.height, 342, 'the card grows vertically for connected rows without lengthening the main chain')
+  assert.ok(graph.nodes.find(node => node.id === messageNodeId('parent', 'final'))!.position.x
+    > graph.nodes.find(node => node.id === returned.source)!.position.x, 'the next spoken message follows the returned child')
+  const noJoin = buildConversationGraph(input(parent.slice(0, -2), { detailLevel: undefined, sessions: [child], messages: { parent: parent.slice(0, -2), child: childHistory } }))
+  assert.equal(noJoin.edges.filter(edge => edge.kind === 'return').length, 0, 'child completion cannot synthesize a wait result')
+}
+console.log('Speech containers retain actual utterances, inner reasoning/tools, streaming anchors, exact fork/return ports and compression boundaries')

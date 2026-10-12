@@ -37,15 +37,42 @@ Supported UI languages currently include Chinese, English, Japanese, Spanish, Fr
 
 ## 3. Runtime architecture
 
-The home page displays the conversation as an execution graph. User inputs, LLM
-turns and serial tool calls become selectable nodes; subagents branch into
-separate lanes, and terminal results join only at the `wait_subagents` call that
-retrieved them. Earlier user turns can be folded without changing stored history.
-The canvas supports pan/zoom, a minimap and opt-in following; its inspector uses
-the existing safe Markdown/Mermaid renderer. Node positions have fixed dimensions,
-so streaming text does not move the layout or camera. Graph state is a disposable
+The home page displays a conversation graph with one parent node per actual LLM
+utterance. Silent LLM rounds and tools live inside the preceding utterance; a silent
+prefix belongs to the first utterance. Reasoning and tools appear as clickable small
+nodes inside the parent, with six ordinary items previewed and a complete ordered
+trace in the inspector. Reasoning is shown only when returned by the provider.
+Subagents branch from named ports on the exact dispatch tool; terminal results
+return only to the wait tool that actually retrieved them. Dispatch and wait may
+share an utterance container, so a return can enter a later inner step of the same
+parent. The next main node still follows returned child results. Connected tools
+remain visible beyond the six-item preview, each on a full row with side ports
+outside the opaque parent surface. Graph keys encode authoritative ID
+tuples for safe dynamic port lookup, without changing stored message IDs.
+Earlier turns can be folded without changing stored history. The mouse wheel
+zooms and dragging pans; manual navigation disables following until resumed.
+The inspector uses the existing safe Markdown/Mermaid renderer. Card dimensions
+depend on step/port structure, so text deltas do not move layout or camera. A live
+utterance is allocated before its first text token; a tool-only end folds it back.
+Graph state is a disposable
 renderer projection, not a second Agent runtime or a persisted workflow engine.
 Full historical timing and permission/retry traces are not inferred from messages.
+Window controls are integrated into existing app chrome rather than taking a
+separate titlebar row; the original main-owned close/background policy is unchanged.
+The conversation canvas and node inspector are movable panels with five dock
+positions, resizable dock splits, in-app floating cards and real auxiliary Electron
+windows. Native windows host React portals from the same renderer tree, sharing
+its store, streaming projection, theme and font size without another App/event or
+TTS subscription. While auxiliary windows exist, owner renderer throttling is
+temporarily disabled and later restored; canvas animation frames use their own
+document so a hidden main window does not delay visible panels.
+Closing them restores the last dock; unmounting the workspace
+cleans them up. A main-owned, expiring one-use window ticket authorizes only an
+about:blank child owned by the main renderer. Child navigation/new windows are
+blocked, typed controls target only owned auxiliary handles, and inherited
+context isolation/Node restrictions remain intact. No Agent lifecycle moves with
+a panel. `npm run test:ui:panels` exercises actual hidden Electron windows against
+the fixture renderer, without opening the user's database or making LLM requests.
 
 The authoritative architecture, ownership rules, and UI/Bot message sequence diagrams live in [ARCHITECTURE.md](./ARCHITECTURE.md). Any change to session execution must update that document and the corresponding tests.
 

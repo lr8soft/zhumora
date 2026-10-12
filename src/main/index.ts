@@ -18,10 +18,14 @@ import { AvatarWindowManager } from './avatar/windowManager'
 import { reconcileAvatarSessions } from './ipc/registerAvatarIpc'
 import { BackgroundManager } from './background'
 import { shouldCloseInsteadOfHide } from './backgroundPolicy'
+import { decideNavigation } from './navigationPolicy'
+import { PanelWindowManager } from './panels/windowManager'
+import { registerPanelIpc } from './ipc/registerPanelIpc'
 
 export let mainWindow: BrowserWindow | null = null
 let applicationServices: ApplicationServices | null = null
 let background: BackgroundManager | null = null
+const panelWindows = new PanelWindowManager()
 // 区分"关窗收进后台"与"真退出"的唯一标志：只有 app.quit()（托盘退出/系统关机）
 // 才会触发 before-quit 置位。窗口自身永远不知道进程要去哪。
 let quitting = false
@@ -115,9 +119,12 @@ function createWindow(): BrowserWindow {
     }
   })
   mainWindow.webContents.setWindowOpenHandler((details) => {
+    const panel = panelWindows.allow(mainWindow!.webContents, details)
+    if (panel) return panel
     if (decideNavigation(details.url, currentAppOrigin()) === 'external') void shell.openExternal(details.url)
     return { action: 'deny' }
   })
+  panelWindows.attach(mainWindow)
 
   // 开发环境加载 dev server，生产环境加载打包文件
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
@@ -155,6 +162,7 @@ app.whenReady().then(async () => {
 
   // 设置 IPC
   setupIpc(win, services)
+  registerPanelIpc(panelWindows)
 
   // 注册日志转发：主进程 → 渲染进程
   onLog(({ level, msg, ts }) => {
@@ -219,6 +227,7 @@ app.on('window-all-closed', () => {
 app.on('before-quit', () => {
   quitting = true
   background?.dispose()
+  panelWindows.dispose()
   void applicationServices?.bots.stopAll()
   void applicationServices?.mcpServer.stop()
   void applicationServices?.sessions.stopAll()
