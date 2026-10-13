@@ -3,7 +3,7 @@
 // 通过 contextBridge 暴露最小化 API surface
 // ============================================================
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, ReasoningEffort } from '../shared/types'
+import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, AgentRequestOptions } from '../shared/types'
 import type { BbsConfig } from '../shared/bbs'
 import type { SessionModelSelection } from '../shared/sessionModel'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
@@ -75,7 +75,7 @@ const api = {
   // ============================================================
   agent: {
     /** 发送消息并启动 agent 运行（立即返回；agent 在后台独立运行，多个会话可并行） */
-    run: (sessionId: string, message: UserMessageInput, options?: { providerId?: string; modelOverride?: string; approveMode?: AutoApproveMode; reasoningEffort?: ReasoningEffort }): Promise<{ ok?: boolean; error?: string; userMessage?: UIMessage }> =>
+    run: (sessionId: string, message: UserMessageInput, options?: AgentRequestOptions): Promise<{ ok?: boolean; error?: string; userMessage?: UIMessage }> =>
       ipcRenderer.invoke('agent:run', sessionId, message, options),
     /** 查询正在运行的会话 ID 列表（用于启动时恢复侧边栏运行指示） */
     running: (): Promise<string[]> =>

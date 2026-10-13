@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict'
-import { groupSessionsByOrigin } from '../src/renderer/src/sessionGroups.ts'
+import { groupSessionsByOrigin, isListedSession } from '../src/renderer/src/sessionGroups.ts'
 import type { Session } from '../src/shared/types.ts'
 
 function session(id: string, origin: Session['origin'], updatedAt: number): Session {
@@ -36,5 +36,11 @@ console.log('session groups projection tests passed')
 
 const child = { ...session('child', 'renderer', 4), subagent: { parentSessionId: 'parent', providerId: 'p', model: 'm' } }
 const withChild = groupSessionsByOrigin([child, session('parent', 'renderer', 3)])
-assert.deepEqual(withChild.map(group => group.origin), ['renderer', 'subagent'])
-assert.deepEqual(withChild[1].sessions, [child], 'delegated sessions remain visible as a separate projection')
+assert.deepEqual(withChild.map(group => group.origin), ['renderer'])
+assert.deepEqual(withChild[0].sessions.map(s => s.id), ['parent'])
+assert.deepEqual(groupSessionsByOrigin([child]), [], 'only hidden children produces an empty sidebar')
+assert.deepEqual(groupSessionsByOrigin([{ ...child, origin: 'telegram' }]), [], 'child identity is independent of origin')
+assert.equal(isListedSession(child), false)
+assert.equal([child, session('parent', 'renderer', 3)].find(isListedSession)?.id, 'parent', 'default selection skips a newer child')
+assert.equal([child].find(isListedSession), undefined)
+assert.ok(child.subagent, 'projection preserves stored child provenance')

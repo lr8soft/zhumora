@@ -9,6 +9,7 @@ import type {
 import { AgentAbortedError } from '../../shared/types.ts'
 import { sessionNeedsTitle } from '../../shared/sessionTitle.ts'
 import type { SessionModelSelection } from '../../shared/sessionModel.ts'
+import { normalizeParallelPreference } from '../../shared/subagents.ts'
 import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
 import { assertSubagentProvider, canUseSubagentProvider } from '../../shared/providerSubagents.ts'
 import { sessionPromptOptions } from './sessionPrompt.ts'
@@ -24,7 +25,10 @@ import { collectUserTexts, ensureSessionTitle } from './titleService.ts'
 import { SessionEventHub } from './sessionEventHub.ts'
 import { generateId } from '../id.ts'
 import { SubagentScope } from './subagentScope.ts'
-import { assertSubagentsEnabled, resolveSubagentModel } from './subagentPolicy.ts'
+import { assertSubagentsEnabled } from './subagentPolicy.ts'
+import { RunInbox } from './runInbox.ts'
+import { takeRunCoordinationMessages } from './sessionCoordination.ts'
+import { createSessionSubagentHost } from './sessionSubagentHost.ts'
 import { createSessionPermissionCheck } from './sessionPermissionCheck.ts'
 import type { ActiveSessionRun, SessionStore, SessionRunRequest, SessionRunHandle, SessionCompactInfo, SessionServiceDependencies } from './sessionContracts.ts'
 
@@ -64,6 +68,7 @@ export class SessionService {
   }
 
   async sendMessage(request: SessionRunRequest): Promise<SessionRunHandle> {
+    const preferParallel = normalizeParallelPreference(request.preferParallel)
     const { sessionId } = request
     if (this.active.has(sessionId)) throw new SessionBusyError('This session already has a running agent.')
     if (request.signal?.aborted) throw new AgentAbortedError()
@@ -81,7 +86,7 @@ export class SessionService {
 
     const settleDefer = deferred<void>()
     const run: ActiveSessionRun = {
-      controller: new AbortController(),
+      inbox: new RunInbox(), controller: new AbortController(),
       events: this.events.forRun(request.localEvents),
       abortNotified: false,
       aborted: false,
@@ -127,7 +132,9 @@ export class SessionService {
         permissionCheck,
         modelOverride,
         reasoningEffort: request.reasoningEffort,
-        ...sessionPromptOptions(session, settings, this.deps.tools, this.deps.getMcpStatus(), request.sourcePrompt, commonPrompt),
+        ...sessionPromptOptions(session, settings, this.deps.tools, this.deps.getMcpStatus(), request.sourcePrompt, commonPrompt, request.subagentAssignment?.role, preferParallel),
+        takeCoordinationMessages: finalizing => takeRunCoordinationMessages(run, this.active.get(sessionId) === run,
+          (text, coordination) => this.persistUserMessage(sessionId, { text }, coordination), finalizing),
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
         skillsPrompt: this.deps.getSkillsPrompt(),
@@ -277,30 +284,10 @@ export class SessionService {
   private createSubagentScope(
     session: Session, run: ActiveSessionRun, request: SessionRunRequest, provider: ProviderConfig, modelOverride?: string
   ): SubagentScope {
-    const parent = { providerId: provider.id, model: modelOverride || provider.defaultModel }
-    return new SubagentScope({
-      workspacePath: session.workspacePath || this.deps.store.getSettings().workspacePath,
-      assertEnabled: () => assertSubagentsEnabled(this.deps.store.getSettings().subagentsEnabled),
-      resolveModel: input => {
-        const settings = this.deps.store.getSettings()
-        return resolveSubagentModel(settings.providers, parent, input, settings.subagentModel)
-      },
-      createSession: (description, model) => {
-        if (run.controller.signal.aborted) throw new AgentAbortedError()
-        return this.deps.store.createSession(description, session.workspacePath || this.deps.store.getSettings().workspacePath,
-          { parentSessionId: session.id, ...model })
-      },
-      start: (childId, prompt, localEvents, presenter) => this.sendMessage({
-        sessionId: childId, message: { text: prompt }, inputSource: 'external',
-        providerId: this.deps.store.getSession(childId)?.subagent?.providerId,
-        modelOverride: this.deps.store.getSession(childId)?.subagent?.model,
-        signal: run.controller.signal, localEvents,
-        sourcePrompt: request.sourcePrompt,
-        permissionPresenters: [...(request.permissionPresenters || []), presenter],
-        permissionTimeoutMs: request.permissionTimeoutMs,
-        reasoningEffort: parent.providerId === this.deps.store.getSession(childId)?.subagent?.providerId
-          && parent.model === this.deps.store.getSession(childId)?.subagent?.model ? request.reasoningEffort : undefined
-      }),
+    return new SubagentScope(createSessionSubagentHost({ store: this.deps.store, session, request,
+      parentModel: { providerId: provider.id, model: modelOverride || provider.defaultModel }, signal: run.controller.signal,
+      send: input => this.sendMessage(input),
+      sendMessage: (childId, content, taskId) => this.sendChildMessage(childId, content, taskId, run.controller.signal),
       isRunning: id => this.isRunning(id),
       stop: async id => {
         const child = this.active.get(id)
@@ -309,15 +296,26 @@ export class SessionService {
       waitIdle: async id => {
         await this.active.get(id)?.settled
       }
-    }, run.controller.signal)
+    }), run.controller.signal)
   }
 
-  private persistUserMessage(sessionId: string, input: UserMessageInput): UIMessage {
+  private sendChildMessage(childId: string, content: string, taskId: string, parentSignal: AbortSignal): string {
+    const child = this.active.get(childId)
+    const parentId = child?.approvalParentId
+    if (!child || child.aborted || !parentId || this.active.get(parentId)?.controller.signal !== parentSignal || parentSignal.aborted) {
+      throw new AgentAbortedError()
+    }
+    if (child.outcome) throw new Error('Subagent is finishing. Wait for settled=true, then use continue_subagent.')
+    return child.inbox.enqueue(content, parentId, taskId)
+  }
+
+  private persistUserMessage(sessionId: string, input: UserMessageInput, coordination?: UIMessage['coordination']): UIMessage {
     const images = (input.images || []).filter(value => typeof value === 'string' && value.startsWith('data:image/'))
     const message: UIMessage = {
       id: this.nextMessageId(),
       sessionId,
       role: 'user',
+      ...(coordination ? { coordination } : {}),
       content: input.text,
       images: images.length > 0 ? images : undefined,
       timestamp: this.now(),
@@ -378,6 +376,7 @@ export class SessionService {
   private abortRun(sessionId: string, run: ActiveSessionRun): void {
     if (this.active.get(sessionId) !== run) return
     run.aborted = true
+    run.inbox.close()
     run.controller.abort()
     this.deps.permissions.cancelSession(sessionId)
     if (!run.abortNotified) {
@@ -397,6 +396,7 @@ export class SessionService {
     if (run.settleTimer) clearTimeout(run.settleTimer)
     run.settleTimer = undefined
     run.unlinkSignal?.()
+    run.inbox.close()
     this.deps.permissions.cancelSession(sessionId)
     this.active.delete(sessionId)
     run.events.running?.(sessionId, false)

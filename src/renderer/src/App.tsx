@@ -1,4 +1,5 @@
 import { useEffect } from 'react'
+import { isListedSession } from './sessionGroups'
 import { useAppStore, THEME_STORAGE_KEY, FONT_SIZE_STORAGE_KEY } from './store'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from './i18n'
 import WindowControls from './components/WindowControls'
@@ -117,10 +118,8 @@ export default function App() {
   useEffect(() => {
     const st = useAppStore.getState()
     st.loadSessions().then(() => {
-      const { sessions } = useAppStore.getState()
-      if (sessions.length > 0) {
-        useAppStore.getState().setActiveSession(sessions[0].id)
-      }
+      const initial = useAppStore.getState().sessions.find(isListedSession)
+      if (initial) useAppStore.getState().setActiveSession(initial.id)
     })
     // 加载设置后同步语言（DB 为权威来源）
     st.loadSettings().then(() => {

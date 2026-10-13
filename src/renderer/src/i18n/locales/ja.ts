@@ -28,6 +28,9 @@ export default {
     }
   },
   chat: {
+    parallel: "並列協作",
+    parallelHint: "今回の入力では小さな独立タスクへの委任を優先します。送信後にリセットし、モデル・権限・同時実行制限を守ります。",
+    parallelDisabledHint: "サブエージェントを有効にしてください。子会話からの再委任はできません。",
     createSessionToStart: 'チャットを開始するにはセッションを作成してください',
     newSession: '新しいセッション',
     session: 'セッション',

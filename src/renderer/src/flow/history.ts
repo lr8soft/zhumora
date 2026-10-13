@@ -19,7 +19,7 @@ export interface Delegation {
 export function splitConversationTurns(messages: readonly UIMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = []
   for (const message of messages) {
-    const userInput = message.role === 'user' && !message.content.startsWith(COMPACT_SUMMARY_PREFIX)
+    const userInput = message.role === 'user' && !message.coordination && !message.content.startsWith(COMPACT_SUMMARY_PREFIX)
     if (userInput || turns.length === 0) turns.push({ id: message.id, messages: [] })
     turns.at(-1)!.messages.push(message)
   }

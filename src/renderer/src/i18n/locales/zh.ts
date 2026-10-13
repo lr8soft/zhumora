@@ -29,6 +29,9 @@ export default {
     }
   },
   chat: {
+    parallel: "并行协作",
+    parallelHint: "本次输入优先按小任务并行分工；发送后恢复自动。不会改变模型、权限或并发上限。",
+    parallelDisabledHint: "请先启用子 Agent；子会话不能再次派工。",
     subagentModel: '子 Agent · {{provider}} / {{model}}',
     subagentParent: '打开主会话',
     subagentOwned: '由主 Agent 分配任务；主任务运行期间可查看输出或停止此子任务。',

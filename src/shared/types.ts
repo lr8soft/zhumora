@@ -68,6 +68,8 @@ export interface ProviderConfig {
 
 /** 单条渲染消息（UI 专用，含元数据） */
 export interface UIMessage {
+  /** Parent guidance delivered inside an existing child turn; not a new user conversation turn. */
+  coordination?: { parentSessionId: string; taskId: string }
   id: string
   sessionId: string
   role: Role
@@ -94,6 +96,15 @@ export const COMPACT_SUMMARY_PREFIX = '[Auto Compact Summary]'
 export interface UserMessageInput {
   text: string
   images?: string[]
+}
+
+/** Optional renderer run preferences; transport adapters must validate untrusted values. */
+export interface AgentRequestOptions {
+  providerId?: string
+  modelOverride?: string
+  approveMode?: AutoApproveMode
+  reasoningEffort?: ReasoningEffort
+  preferParallel?: boolean
 }
 
 /** 会话来源：桌面 UI 创建为 renderer，外部适配器（Telegram/QQ/MCP）为对应 channel */

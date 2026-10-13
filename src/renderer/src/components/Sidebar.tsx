@@ -10,7 +10,6 @@ import {
   Plus,
   Send,
   Settings2,
-  GitBranch,
   Trash2
 } from 'lucide-react'
 import type { Session } from '@shared/types'
@@ -27,11 +26,11 @@ const ORIGIN_ICON = {
 function SessionRow({ session, active, running }: { session: Session; active: boolean; running: boolean }) {
   const { t } = useTranslation()
   const { setActiveSession, requestDeleteSession } = useAppStore.getState()
-  const Icon = session.subagent ? GitBranch : session.origin === 'renderer' ? MessageSquare : ORIGIN_ICON[session.origin as keyof typeof ORIGIN_ICON] ?? MessageSquare
+  const Icon = session.origin === 'renderer' ? MessageSquare : ORIGIN_ICON[session.origin as keyof typeof ORIGIN_ICON] ?? MessageSquare
   return (
     <button
       className={active ? 'active' : ''}
-      title={session.subagent ? `${session.title} · ${session.subagent.model}` : running ? t('sidebar.running') : undefined}
+      title={running ? t('sidebar.running') : undefined}
       onClick={() => setActiveSession(session.id)}
     >
       {running
@@ -64,6 +63,7 @@ export default function Sidebar() {
 
   // 按来源分组（桌面 / Telegram / QQ / MCP）的纯投影，不改 store 数据
   const groups = useMemo(() => groupSessionsByOrigin(sessions), [sessions])
+  const listedActiveId = sessions.find(session => session.id === activeSessionId)?.subagent?.parentSessionId ?? activeSessionId
 
   /** 拖拽调整侧边栏宽度：document 级监听，松手即清理（宽度 clamp + 持久化在 store 内） */
   const onResizeStart = useCallback((e: React.MouseEvent) => {
@@ -148,7 +148,7 @@ export default function Sidebar() {
 
       {/* 会话列表：按来源分组（外部来源存在时才显示分组标题，避免纯桌面会话也出现"桌面"标题） */}
       <nav className="session-nav" aria-label={t('app.name')}>
-        {sessions.length === 0 && (
+        {groups.length === 0 && (
           <p className="sidebar-empty">{t('sidebar.noSessions')}</p>
         )}
         {groups.map(group => (
@@ -160,7 +160,7 @@ export default function Sidebar() {
               <SessionRow
                 key={session.id}
                 session={session}
-                active={session.id === activeSessionId}
+                active={session.id === listedActiveId}
                 running={runningIds.has(session.id)}
               />
             ))}

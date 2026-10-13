@@ -36,16 +36,36 @@ export function createSubagentTools(services: SubagentServices): { name: string;
     return args.task_id
   }
   const idProperty = { task_id: { type: 'string', description: 'A task_id returned by this parent run.' } }
+  const assignmentProperties = {
+    role: { type: 'string', enum: ['explorer', 'implementer', 'reviewer', 'verifier'],
+      description: 'explorer: one read-only question; implementer: one file change (requires targetFile); reviewer: read-only findings; verifier: focused checks without edits. Profiles guide work; permissions and full tool access remain unchanged.' },
+    context: { type: 'string', description: 'Only context needed to finish this task: agreed interfaces, evidence and constraints. Children do not inherit your conversation.' },
+    acceptanceCriteria: { type: 'array', items: { type: 'string' }, description: 'Concrete conditions the parent will verify.' },
+    validationCommand: { type: 'string', description: 'Focused check for this task; broader integration belongs to the parent. Normal permissions apply.' },
+    outputFormat: { type: 'string', description: 'Expected concise result format: changes/findings, evidence, checks actually run and blockers.' },
+    dependsOn: { type: 'array', items: { type: 'string' }, uniqueItems: true,
+      description: 'Current task IDs owned by this parent run. Every prerequisite must be completed and settled before spawn; otherwise no child is created. Full results remain available through wait_subagents.' }
+  }
   return [
     tool('list_subagent_providers', 'List enabled providers allowed for subagents, default models and their configured maxConcurrency. Disallowed providers are excluded. null means unlimited. Limits are shared by all main/subagent and auxiliary LLM requests for that provider. Credentials are never returned.', {}, [], 'safe',
       async () => serialize(services.listSubagentProviders())),
-    tool('spawn_subagent', `Proactively delegate ready independent work without waiting for the user to mention subagents: normally one small project-file change per child. The parent is the architect/coordinator: define interfaces and acceptance criteria, assign targetFile, review actual diffs and own integration tests/build. Dispatch independent tasks before waiting. Use the selected provider's maxConcurrency from list_subagent_providers to plan parallel batches; null means unlimited. There is no additional fixed child-count or total-task cap. Providers disallowed for subagents are rejected even with an explicit override; no automatic fallback. Returns a task_id immediately; running or provider-capacity queueing is NOT completion. Never assign an entire feature or multi-file refactor to one child. Shared files/browser/desktop are not isolated; do not edit a child's owned file. Human permissions still apply. No nested delegation. Unfinished children are cancelled when the parent ends.`, {
+    tool('spawn_subagent', `Proactively delegate a ready independent question, one-file implementation, review or focused check. Select a role and supply a concrete prompt/objective, necessary context and acceptance criteria. Dispatch ready work before waiting; inspect actual results yourself. dependsOn prerequisites must be completed and settled. Returns a task_id immediately; queueing is not failure or completion. Shared workspace; human permissions apply. Use saved child model and provider-configured concurrency; no fixed child-count cap. No nested delegation; unfinished tasks are cancelled when the parent ends.`, {
+      ...assignmentProperties,
       description: { type: 'string', maxLength: 120, description: 'Short task title.' },
       prompt: { type: 'string', maxLength: 24000, description: 'One small change or bounded question, necessary context, agreed interfaces, acceptance criteria and focused validation. No broad feature or multi-file refactor.' },
       targetFile: { type: 'string', maxLength: 4096, description: 'For code edits, the one assigned project file (relative to the parent workspace or absolute). Active duplicate ownership is rejected. Omit only for bounded read-only/non-file tasks. This is an ownership contract, not a permissions bypass or filesystem sandbox.' },
       providerId: { type: 'string', description: 'Override only when the user explicitly requests a different provider for this task. Omission uses the saved subagent provider, otherwise the parent provider.' },
       model: { type: 'string', description: 'Override only for an explicitly requested model. Omission uses the saved child model when its provider matches; otherwise inherit parent model or selected provider default.' }
     }, ['description', 'prompt'], 'normal', async (args, context) => serializeStartup(await scope(context).spawn(args as unknown as SubagentRequest))),
+    tool('list_subagents', 'Inspect this parent run’s current task inventory: role, file, dependencies, status and settled. No full replies or credentials. Follow next_cursor pages when present; use wait_subagents for deliverables. Do not repeatedly poll.', {
+      after_task_id: { type: 'string', description: 'Optional next_cursor returned by a prior list page. Omit for the first page.' }
+    }, [], 'safe', async (args, context) => {
+      if (args.after_task_id !== undefined && (typeof args.after_task_id !== 'string' || !args.after_task_id)) throw new Error('after_task_id must be a nonempty string.')
+      return serialize(scope(context).list(args.after_task_id as string | undefined))
+    }),
+    tool('send_subagent_message', 'Send a small clarification or new evidence to your currently running child. Delivery is queued until a safe turn boundary; it cannot interrupt the current HTTP request/tool or approve permissions. Do not broaden its file/role scope. For settled tasks use continue_subagent.', {
+      ...idProperty, message: { type: 'string', maxLength: 12000 }
+    }, ['task_id', 'message'], 'normal', async (args, context) => serialize(scope(context).send(taskId(args), args.message as string))),
     tool('wait_subagents', 'Wait for your delegated tasks to finish or require human permission. One deadline covers status and cleanup; wait_ms=0 is an immediate snapshot. Use a positive wait instead of repeated polling. Returns bounded final replies and settled (cleanup complete); an aborted task can have settled=false. Continue only after settled=true. Full history remains in each child session. Cannot approve child permissions. Keep following running tasks before your final answer.', {
       task_ids: { type: 'array', items: { type: 'string' }, minItems: 1, uniqueItems: true },
       wait_ms: { type: 'integer', minimum: 0, maximum: 60000, description: 'Wait duration; default 30000.' }

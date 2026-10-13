@@ -46,7 +46,7 @@ const CONVENTIONS = `## Following Conventions
 
 const EDITING_APPROACH = `## Editing Approach
 - The best change is often the smallest correct change. Prefer the minimal approach when two correct options exist.
-- ALWAYS prefer editing existing files. NEVER create new files unless explicitly required.
+- Prefer existing files; create a new file when the requested change or project architecture needs it. Keep changes focused.
 - NEVER proactively create documentation files (*.md) or README files unless the user asks.
 - Do not add code comments unless the logic is genuinely non-obvious.
 - ALWAYS read a file before editing it. Never use edit with a guessed oldString — if it doesn't match, the edit will fail.
@@ -87,7 +87,7 @@ When to use memory tools:
 const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
   {
     label: 'Agent Collaboration',
-    tools: ['list_subagent_providers', 'spawn_subagent', 'wait_subagents', 'continue_subagent', 'cancel_subagent']
+    tools: ['list_subagent_providers', 'spawn_subagent', 'list_subagents', 'send_subagent_message', 'wait_subagents', 'continue_subagent', 'cancel_subagent']
   },
   {
     label: 'Reading & Exploring',
@@ -241,7 +241,8 @@ export function buildSystemPrompt(
   memoryPrompt: string,
   runtime: PromptRuntimeSnapshot,
   extra?: string,
-  topExtra?: string
+  topExtra?: string,
+  memoryEnabled = true
 ): string {
   const builtinSection = buildBuiltinToolSection(runtime.tools)
   const mcpSection = buildMcpSection(runtime)
@@ -270,7 +271,7 @@ ${TOOL_USAGE_POLICY}
 
 ${builtinSection}
 
-${MEMORY_GUIDE}
+${memoryEnabled ? MEMORY_GUIDE : ''}
 
 ${TASK_GUIDELINES}`
 

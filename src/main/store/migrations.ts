@@ -158,6 +158,13 @@ const migrations: Migration[] = [
     up(database) {
       database.exec('ALTER TABLE sessions ADD COLUMN model_selection TEXT')
     }
+  },
+  {
+    version: 8,
+    up(database) {
+      database.exec(`ALTER TABLE messages ADD COLUMN coordination_parent_id TEXT;
+        ALTER TABLE messages ADD COLUMN coordination_task_id TEXT;`)
+    }
   }
 ]
 

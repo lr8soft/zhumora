@@ -91,6 +91,7 @@ legacy.close()
 
 const previousVersion = new Database(':memory:')
 previousVersion.exec(`
+  CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT, content TEXT);
   CREATE TABLE sessions (
     id TEXT PRIMARY KEY,
     title TEXT NOT NULL DEFAULT 'New Session',
@@ -106,6 +107,21 @@ assert.ok((previousVersion.prepare('PRAGMA table_info(bot_sessions)').all() as {
 assert.ok((previousVersion.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'avatar_enabled'))
 assert.ok((previousVersion.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === 'tts_enabled'))
 previousVersion.close()
+
+// v7→v8 distinguishes in-turn guidance without losing existing conversation/tool history.
+const v7 = new Database(':memory:')
+v7.exec(`CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT, content TEXT, tool_call_id TEXT);
+  INSERT INTO messages VALUES ('user', 'child', 'original assignment', NULL);
+  INSERT INTO messages VALUES ('tool', 'child', 'tool result', 'call-1'); PRAGMA user_version=7;`)
+runDatabaseMigrations(v7); runDatabaseMigrations(v7)
+assert.deepEqual(v7.prepare('SELECT content, coordination_parent_id, coordination_task_id FROM messages WHERE id=?').get('user'),
+  { content: 'original assignment', coordination_parent_id: null, coordination_task_id: null })
+assert.equal((v7.prepare('SELECT tool_call_id FROM messages WHERE id=?').get('tool') as { tool_call_id: string }).tool_call_id, 'call-1')
+v7.prepare('INSERT INTO messages (id, session_id, content, coordination_parent_id, coordination_task_id) VALUES (?, ?, ?, ?, ?)')
+  .run('guidance', 'child', 'agreed API', 'parent', 'task-1')
+assert.deepEqual(v7.prepare('SELECT coordination_parent_id, coordination_task_id FROM messages WHERE id=?').get('guidance'),
+  { coordination_parent_id: 'parent', coordination_task_id: 'task-1' })
+v7.close()
 
 // Closing and reopening the database retains separate choices, even without any messages.
 const directory = mkdtempSync(join(tmpdir(), 'zhumora-session-model-'))

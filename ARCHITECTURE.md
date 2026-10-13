@@ -230,7 +230,7 @@ Bot 层禁止拥有：
 
 每个 provider 可设置 `allowSubagents`（缺失默认 true，settings JSON schema v15）。关闭时该 provider 仍可用于主会话，但从子模型菜单的可选项、子模型目录请求、`list_subagent_providers` 和提示词可用并发列表排除；已有保存选择保留为不可用，不能自动选到其他端点。子模型的显式指定、默认选择和继承都必须通过同一 `assertSubagentProvider` 校验。spawn 在创建会话前检查；SessionService 对所有子会话输入（含 continue 和独立打开后的手动输入）在开始准备前、准备结束且持久化输入前现读设置重查；手动压缩子会话同样校验。迟到的批准和准备不能绕过此设置。已启动的子运行不强制中止，允许完成、等待、取消；再次启动受新设置限制。限制属于模型路由资格，不替代 PermissionBroker，不过滤完整工具注册表，不新增并发数量上限。
 
-Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。
+Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `list_subagents` / `send_subagent_message` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。
 
 设置 → 通用 → Agent 行为提供 `subagentsEnabled` 开关（默认 true，保存后生效）和独立的子模型下拉（`subagentModel: {providerId, model} | null`，null 表示继承主模型）。settings JSON schema v12 在 `store/settingsNormalization.ts` 的唯一 normalizeSettings 边界补齐旧配置；开关缺失保留原开启行为，非布尔非法值关闭，旧配置的子模型缺失则继承主模型。db.ts 仍是 settings cache/保存/刷新 owner，不创建第二份配置缓存。关闭后不新建、不继续子运行，但已启动任务可完成、等待和取消；旧子会话历史保留，用户仍可单独打开。SubagentScope 的容量入口和 SessionService 的权限检查均现读权威设置，批准前后重查；启动准备结束、持久化输入前也重查，关闭不能被缓存 scope、迟到批准或在途准备绕过。完整工具注册表不变，新主运行的提示词明确说明委托关闭。
 
@@ -240,13 +240,26 @@ Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait
 - **独立历史**：每个子 Agent 是持久化 session，主进程分配消息 ID，经标准 `sendMessage(inputSource='external')` 写消息并广播。子上下文默认仅含委托任务、通用系统提示词和父输入适配器的 sourcePrompt，不复制父对话、不注入父工具调用片段。完整历史、权限、压缩和 MCP 工具均复用正常流程。
 - **provider/model**：spawn 显式 provider 优先，否则继承父运行已解析的 provider；显式 model 优先，同 provider 未指定则继承父运行实际 model，切换 provider 未指定则使用所选 provider 默认 model。只允许启用的 settings provider，未知/停用配置明确失败，不静默回退。API key/baseUrl 不出现在模型可见的 provider 清单。只有 provider 和 model 都与父运行相同时继承 reasoning effort。继续任务保留原子会话及其创建配置。手动压缩子会话也使用其创建 provider/model。
 - **持久化边界**：migration v6 为 sessions 增加 `subagent_parent_id / subagent_provider_id / subagent_model`，投影到 `Session.subagent`。父关系是审计来源，不使用级联删除：删除父会话会先停止并等待它的子运行，但子历史保留，可独立查看；删除单个子会话仍按原规则先 abort/settle。活动 task_id 不落库，应用重启不自动恢复任务，子历史和来源配置仍可查询。
-- **真实并行**：spawn 等待子运行启动后立即返回 task_id（不等待最终回答）；父工具仍按顺序执行，多次 spawn 的子运行可以重叠。wait 复用 taskProtocol 的终态/权限等待，无定时轮询；返回完整状态与最多 12000 字符的回复，截断显式标记，原始完整回复仍在子历史。continue 仅允许最近一轮已 settle 的任务，复用 session 但返回新的 task_id，旧 task_id 不能停止或继续新一轮。没有后台自动启动父 run 或 mailbox 唤醒流程。
+- **真实并行**：spawn 等待子运行启动后立即返回 task_id（不等待最终回答）；父工具仍按顺序执行，多次 spawn 的子运行可以重叠。wait 复用 taskProtocol 的终态/权限等待，无定时轮询；返回完整状态与最多 12000 字符的回复，截断显式标记，原始完整回复仍在子历史。continue 仅允许最近一轮已 settle 的任务，复用 session 但返回新的 task_id，旧 task_id 不能停止或继续新一轮。通知只在当前 run 的安全检查点消费，没有后台自动启动或唤醒已结束父 run 的流程。
 - **并发来源**：只由对应 provider 的 `maxConcurrency` 控制实际 LLM 请求，留空不限制；不再另设固定子 Agent 数量或累计子任务次数限制。父提示词和 `list_subagent_providers` 提供已配置并发值，不泄漏凭据，供主 Agent 规划批次；不同 provider 分别计数，名额与其他会话/辅助补全共享。待发 LLM 请求由 provider 队列等待，子会话仍是活动任务，不能当成失败或反复补建。wait 接受非空唯一的当前 run 任务 ID 列表，不暗中限制任务数量；每个返回文本仍受原有长度边界保护。委托输入文本最多 24000 字符，嵌套深度固定为 1。子 Agent 每轮仍拿完整工具注册表快照，委托工具不筛选/禁用其他工具。浏览器/物理桌面共享，DesktopControlCoordinator 原有独占策略不变，父会话持有桌面控制时由当前 owner 操作。
 - **默认分工**：主 Agent 是架构师/项目经理，先明确接口、状态 owner、依赖与验收标准，把独立修改拆成单文件小任务，尽量先并发派发可执行任务，再正向等待并安排下一批；主 Agent 负责实际 diff 审查、跨文件一致性、最终测试/构建及用户汇报。子 Agent 聚焦指定文件或单个只读问题，不自行扩展成整项功能、多文件重构、依赖安装或全库自动修复；遇到额外文件需求/架构依赖时向父任务报告。
 - **文件派工契约**：`spawn_subagent.targetFile` 可选以兼容旧调用，编码任务指导要求默认填写一个明确文件，范围只读/非文件任务可省略。`subagentWorkOrder.ts` 规范化相对/绝对路径并按 Windows 忽略大小写生成比较键，在持久化子输入里写明职责边界；任务结果带回 targetFile，continue 保留同一文件。`SubagentScope` 在创建子会话之前检查该父 run 的活动/正在启动任务，拒绝重复认领，不创建额外会话；文件归属持续到 SessionService 真正 settle，完成回调本身不能提前释放，失败/取消 cleanup 后可重新派发。此约束是协作契约和按父 run 的派工防冲突，不是文件系统沙箱；不解析符号链接身份、不建立跨会话全局锁，不改变工具可见性或 PermissionBroker 的裁决。
 - **权限**：创建/继续/取消为 normal，provider 清单和等待为 safe。子工具始终经过同一个 PermissionBroker；父 run 活动时子运行读取父当前批准模式，子界面或工具不能提高它。父适配器的 permission presenters / timeout 和 sourcePrompt 继承，子任务另加只读权限状态 presenter；内部主 Agent 没有批准子工具的接口。外部 MCP delegate 的既有 normal/非 alwaysConfirm 门禁继续有效，dangerous 与能力边界仍归人。等待返回 awaiting_permission，未裁决请求保持挂起；批准后、执行前再次检查中止信号。
 - **生命周期**：子 signal 连接父 run signal，用户中止父任务会立即中止所属子运行；正常结束、错误、删除和退出也会停止未结束子任务并等待有界 settle。单独取消子任务不影响兄弟/无关会话。父 completion 在子清理完成后才 settle，父 scope 随 run 清理释放。强制 cleanup 后迟到的 callback 不再持久化/广播，过期 run 也不能取消新 run 的权限请求。模型必须等待所需子结果才给最终回答；提前结束时遗留子任务被取消。
-- **展示**：renderer 根据 Session.subagent 把子会话分组展示，可打开独立历史、查看创建 provider/model、跳回主会话和停止子任务。主 run 活动时子会话只供查看/停止，不接受额外 UI 输入；main 同时校验父 signal，不能只靠按钮禁用保护。会话和事件继续用既有 shared Session/preload/IPC 契约，无新增通用 IPC 入口。
+- **展示**：renderer 根据 Session.subagent 在侧栏纯投影中隐藏子会话；启动默认选择及删除后回退只选非子会话。完整会话缓存与数据库历史不筛除，流程图节点详情可打开子会话，查看子历史时侧栏高亮所属主会话。可打开独立历史、查看创建 provider/model、跳回主会话和停止子任务。主 run 活动时子会话只供查看/停止，不接受额外 UI 输入；main 同时校验父 signal，不能只靠按钮禁用保护。会话和事件继续用既有 shared Session/preload/IPC 契约，无新增通用 IPC 入口。
+
+### 通用协作工作单、依赖与运行中消息
+
+- `spawn_subagent.role` 可选 explorer / implementer / reviewer / verifier，分别聚焦一个只读问题、单文件实现、只读审查与指定验证。显式 implementer 必须提供 targetFile；其他角色的 targetFile 只是阅读/验证目标，不持有排他写归属。旧自由文本调用只在 `normalizeSubagentAssignment` 边界兼容，保留原行为；完整工具快照与 PermissionBroker 不变，角色是职责契约，不是文件系统/命令沙箱。
+- 工作单支持 context、acceptanceCriteria、validationCommand、outputFormat、dependsOn，用户字段合计最多 24000 字符；任务和验收要求写入子输入，角色指导同时进入当前子 run 的系统提示词。继续任务保留角色/文件/创建模型及原始上下文，不能扩展成多文件功能。角色不另设 provider，不自动降级模型。
+- dependsOn 仅接受当前父 run 的最新任务 ID，前置任务须 completed 且 settled=true；失败、取消、仍运行、权限等待、过期与跨 run 引用在创建子会话前拒绝。依赖回复作为有界数据证据附入工作单，不授予权限。这里是父 scope 的依赖校验，不是定时 scheduler，也没有待启动任务或自动依赖队列；主 Agent 等待前置结果并审查后显式派发下一项。
+- `list_subagents` 给出父 run 最新任务的角色、文件、依赖和终态/settled 投影，按文本预算分页，无独立任务数量上限，不泄漏凭据或完整回复。Scope 持有 task 历史与 latest 索引并在 close 清空；控制器、执行与会话状态仍只有 SessionService 持有。
+- `send_subagent_message` 为 normal 工具，父 scope 核验当前任务归属，由 SessionService 向该子 ActiveSessionRun 的 RunInbox 排队；每条最多 12000 字符、待交付总文本最多 48000 字符，超额明确拒绝、不静默丢弃。消息仅补充当前职责上下文，不改模型、权限或文件归属；不打断正在执行的 HTTP、工具或权限等待。已产出最终回复进入清理的 run 不再接受消息；settle 后应 continue。
+- runner 在发送下一轮前，或非截断正常完成候选回复已经落库后，消费协调消息；禁止插入 assistant.tool_calls 与全部 tool 结果之间。当前 assistant 必须先落库，再写入协调 user 及其权威 ID；WorkingConversation 消息/ID 同步追加。取消、过期或 forced cleanup 后不交付，inbox 在 abort/cleanup 清空。
+- SQLite migration v8 为 messages 加 coordination_parent_id / coordination_task_id。协调 user 标明父会话和瞬时 task 审计来源，旧行两列为 null；该标记经既有 UIMessage/事件通道保留。`splitConversationTurns` 不把它当新用户轮次，继续任务仍对应下一条真实工作单，DB 重载后也不串错委托分支。task ID 是来源记录，不用于跨 run 恢复。
+- 已 settle 且尚未被 wait 返回的子终态在父检查点产生一次状态通知（工作上下文 user，ID=null，不写第二份历史或私有 tool 结果）；通知要求主 Agent 用真实 wait_subagents 取完整回复，所以流程图只在实际 wait 时汇合。尚有活动任务而模型试图直接结束时，每个父 run 只追加一次有界协作检查提醒；原 maxRounds、恢复预算与 hard stop 优先，不无限强制重试、不伪造工具调用、不保证模型服从。
+- 输入区“并行协作”是本次发送的明确工作流偏好，随 ComposerDraftProvider 跨停靠/独立窗口保留，发送后重置、切会话不继承；通过 shared AgentRequestOptions.preferParallel → typed preload → IPC 校验 → SessionService 注入当前主 run 指导。它不改用户原文、模型、并发或批准模式，不能开启已关闭子 Agent，也不能让子会话嵌套派工。自动委托默认策略继续有效，入口不强制制造无意义任务。
+- 通用提示词明确角色与派工触发条件，减少重复职责；记忆关闭时不注入记忆指南，允许架构必要的新文件。会话命名不再强占首动作，原运行结束后的 titleService 兜底保持。
 
 启动和等待边界：SessionService 的提示词准备及 SubagentScope 的启动/等待 Promise 都通过 `runWait.ts` 响应当前 run 的 signal；底层准备永不返回时，取消也必须及时结束委托工具并生成对应 tool 结果。等待器在完成/中止/到期时清理 listener/timer，并继续观察底层迟到失败；迟到启动 handle 必须停止，不形成孤儿运行。`wait_subagents` 的状态等待和 settle 等待共用一个 deadline，`wait_ms=0` 只取快照。返回的 `settled` 表示该任务运行是否已释放；aborted 可以先于释放，继续任务必须等 settled=true。spawn/continue 的启动失败返回 `isError:true`，wait 成功查询到 failed 任务仍是正常工具查询结果。
 

@@ -1,5 +1,11 @@
 export const DEFAULT_SUBAGENTS_ENABLED = true
 
+export function normalizeParallelPreference(value: unknown): boolean {
+  if (value === undefined) return false
+  if (typeof value !== 'boolean') throw new Error('preferParallel must be a boolean.')
+  return value
+}
+
 export interface SubagentModelSelection { providerId: string; model: string }
 
 export function normalizeSubagentModel(value: unknown): SubagentModelSelection | null {

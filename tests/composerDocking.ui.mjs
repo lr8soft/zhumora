@@ -38,6 +38,7 @@ try {
   await settleViewport(page)
   const camera = await page.locator('.react-flow__viewport').getAttribute('style')
   const draft = '保留的输入草稿\n第二行内容'
+  await page.getByRole('button', { name: '并行协作', exact: true }).click()
   await inputPanel.locator('textarea').fill(draft)
   assert.equal(await page.locator('.react-flow__viewport').getAttribute('style'), camera)
   const image = { name: 'draft.png', mimeType: 'image/png', buffer: Buffer.from('iVBORw0KGgoAAAANSUhEUgAAAAEAAAABCAYAAAAfFcSJAAAADUlEQVQIHWP4z8DwHwAFgAI/ScLbtAAAAABJRU5ErkJggg==', 'base64') }
@@ -47,6 +48,7 @@ try {
     await place(page, 'composer', side)
     assert.equal(await inputPanel.locator('textarea').inputValue(), draft, 'relocation preserves unsent text')
     assert.equal(await inputPanel.locator('.chat-image-preview').count(), 1, 'relocation preserves image attachments')
+    assert.equal(await inputPanel.getByRole('button', { name: '并行协作', exact: true }).getAttribute('aria-pressed'), 'true')
   }
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 11)
@@ -100,11 +102,13 @@ try {
   assert.equal(sent[2][1].text, draft)
   assert.equal(sent[2][1].images.length, 1)
   assert.equal(sent[2][2].approveMode, 'full')
+  assert.equal(sent[2][2].preferParallel, true)
   await page.waitForFunction(async () => {
     const { useAppStore } = await import('/src/store/index.ts')
     return useAppStore.getState().messages.parent.some(message => message.id.startsWith('fixture-user-') && message.content.includes('保留的输入草稿'))
   })
   assert.equal(await popup.locator('textarea').inputValue(), '')
+  assert.equal(await popup.getByRole('button', { name: '并行协作', exact: true }).getAttribute('aria-pressed'), 'false', 'explicit delegation preference applies to one send')
   assert.equal(await popup.locator('.chat-image-preview').count(), 0)
   await page.evaluate(() => flowUiFixture.emit('agent.onRunningChange', { sessionId: 'parent', running: true }))
   await popup.locator('textarea').fill('下一条未发送草稿')
@@ -118,7 +122,11 @@ try {
   await page.locator('.sidebar').getByText('浏览器任务', { exact: true }).click()
   assert.equal(await page.locator('textarea').inputValue(), '', 'drafts do not cross sessions')
   assert.equal(await page.locator('.chat-image-preview').count(), 0)
-  await page.locator('.sidebar').getByText('架构梳理', { exact: true }).click()
+  await page.locator('.sidebar').getByText('项目架构分析', { exact: true }).click()
+  await page.getByRole('button', { name: '展开历史', exact: true }).click()
+  await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
+  await page.locator('.flow-inner-step.tool').filter({ hasText: /^read$/ }).click()
+  await page.getByRole('button', { name: '打开所属会话', exact: true }).click()
   await page.waitForFunction(() => document.querySelector('.dock-composer')?.textContent.includes('由主 Agent 分配任务'))
   assert.equal(await page.locator('textarea').count(), 0, 'a child owned by an active parent retains its read-only input behavior')
   assert.deepEqual(errors, [])

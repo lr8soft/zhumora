@@ -6,16 +6,20 @@ import type { Session, SessionOrigin } from '@shared/types'
  * Telegram / QQ / MCP 的外部会话与桌面会话分开，避免混在同一个列表里。
  */
 export interface SessionGroup {
-  origin: SessionOrigin | 'subagent'
+  origin: SessionOrigin
   sessions: Session[]
 }
 
-const GROUP_ORDER: SessionGroup['origin'][] = ['renderer', 'subagent', 'telegram', 'qq', 'mcp']
+const GROUP_ORDER: SessionOrigin[] = ['renderer', 'telegram', 'qq', 'mcp']
+
+/** Child histories remain in the session cache for graph navigation, but not in the main list. */
+export function isListedSession(session: Session): boolean { return !session.subagent }
 
 export function groupSessionsByOrigin(sessions: Session[]): SessionGroup[] {
   const byOrigin = new Map<SessionGroup['origin'], Session[]>()
   for (const session of sessions) {
-    const origin = session.subagent ? 'subagent' : session.origin
+    if (!isListedSession(session)) continue
+    const origin = session.origin
     const list = byOrigin.get(origin)
     if (list) list.push(session)
     else byOrigin.set(origin, [session])

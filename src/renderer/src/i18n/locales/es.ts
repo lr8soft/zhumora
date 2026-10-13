@@ -28,6 +28,9 @@ export default {
     }
   },
   chat: {
+    parallel: "Trabajo paralelo",
+    parallelHint: "Prioriza tareas acotadas en paralelo para esta entrada. Se restablece al enviar; respeta modelos, permisos y límites.",
+    parallelDisabledHint: "Active subagentes. Las sesiones secundarias no pueden delegar.",
     createSessionToStart: 'Crea una sesión para empezar a chatear',
     newSession: 'Nueva Sesión',
     session: 'Sesión',

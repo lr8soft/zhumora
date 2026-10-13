@@ -13,6 +13,7 @@ import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort 
 
 export type { ReasoningEffort }
 import { initialSettingsProjection } from './settingsDefaults'
+import { isListedSession } from '../sessionGroups'
 import { createSessionModelSlice, sessionModelSelection, type SessionModelSlice } from './sessionModelSlice'
 import { applyHistorySnapshot, applyAuthoritativeUserMessage } from '../agentEvents'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
@@ -247,7 +248,7 @@ interface AppState extends SessionModelSlice {
   cancelSettings: () => void
 
   // Agent 操作
-  sendMessage: (text: string, images?: string[]) => Promise<void>
+  sendMessage: (text: string, images?: string[], preferParallel?: boolean) => Promise<void>
   /** 中止当前活跃会话的运行 */
   abortAgent: () => void
   /** 手动压缩当前会话上下文（运行中不可用） */
@@ -333,9 +334,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     await api.session.delete(id)
     const { sessions, activeSessionId } = get()
     const newSessions = sessions.filter(s => s.id !== id)
-    const newActiveId = activeSessionId === id
-      ? (newSessions[0]?.id || null)
-      : activeSessionId
+    const newActiveId = activeSessionId === id ? newSessions.find(isListedSession)?.id || null : activeSessionId
     set((s) => {
       const messages = { ...s.messages }
       delete messages[id]
@@ -452,7 +451,7 @@ export const useAppStore = create<AppState>((set, get) => ({
     try { localStorage.setItem('zhumora.reasoningEffort', v) } catch { /* ignore */ }
   },
 
-  sendMessage: async (text: string, images?: string[]) => {
+  sendMessage: async (text: string, images?: string[], preferParallel = false) => {
     let { activeSessionId } = get()
     if (!activeSessionId) {
       await get().createSession()
@@ -497,7 +496,7 @@ export const useAppStore = create<AppState>((set, get) => ({
 
       const result = await api.agent.run(sid, { text, images }, {
         approveMode: get().approveMode,
-        reasoningEffort: effort
+        reasoningEffort: effort, preferParallel
       })
       if (result.error) {
         // 启动失败（如未配置 provider）：移除思考占位，追加错误消息

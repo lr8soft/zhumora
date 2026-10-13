@@ -21,8 +21,9 @@ assert.equal(sessionNeedsTitle('修复登录 Bug'), false)
 assert.equal(DEFAULT_SESSION_TITLE, 'New Session')
 assert.match(SESSION_TITLE_REMINDER, /set_title/)
 assert.match(SESSION_TITLE_REMINDER, /default title/)
-assert.match(SESSION_TITLE_REMINDER, /REQUIRED/)
-assert.match(SESSION_TITLE_REMINDER, /SAME batch/)
+assert.match(SESSION_TITLE_REMINDER, /without delaying useful work or delegation/)
+assert.match(SESSION_TITLE_REMINDER, /Runtime fallback naming/)
+assert.doesNotMatch(SESSION_TITLE_REMINDER, /REQUIRED FIRST ACTION|first response MUST/)
 
 // ---- sanitizeSessionTitle ----
 assert.equal(sanitizeSessionTitle('Fix Login Bug'), 'Fix Login Bug')

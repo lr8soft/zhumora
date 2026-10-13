@@ -14,11 +14,11 @@ export const SESSION_TITLE_MAX_WORDS = 6
  * 措辞要求（历史上"建议式"提醒模型经常忽略，10 次里约 8 次不调 set_title）：
  * 祈使句 + 明确的时机（与第一批工作工具同批发出）+ 明确的反例（不要用文字代替）。
  */
-export const SESSION_TITLE_REMINDER = `## Session Title — REQUIRED FIRST ACTION
-This session still has its default title ("New Session"). Your first response MUST include a set_title tool call, emitted in the SAME batch as your first work tool call(s) — not on a later turn, not instead of the work.
+export const SESSION_TITLE_REMINDER = `## Session Title
+This session still has its default title ("New Session"). Use set_title once the task is clear, without delaying useful work or delegation. Runtime fallback naming handles sessions where you do not call it.
 - title: 2-6 words naming the task, in the same language as the user's message (e.g. 修复登录崩溃 / Review project structure).
 - Typing the title as prose in your reply does NOT set it; only the set_title call does.
-- This costs one extra tool call. Never skip it to save tokens.`
+- Naming is presentation metadata, not a prerequisite for executing the task.`
 
 /** 标题仍是默认值（或为空）→ 需要 LLM 命名 / client 提醒 */
 export function sessionNeedsTitle(title: string | null | undefined): boolean {

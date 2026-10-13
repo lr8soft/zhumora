@@ -628,6 +628,9 @@ select.input-field { cursor: pointer; }
 .model-list-item > span { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .model-list-item > small { flex: 0 0 auto; color: var(--app-color-text-mute); font-size: 0.667rem; }
 .checkbox { accent-color: var(--app-color-primary); width: 15px; height: 15px; margin: 0; cursor: pointer; }
+.composer-collaboration-chip[aria-pressed="true"] { color: var(--app-color-primary-strong); background: var(--app-color-primary-soft); }
+.docked-composer { container: composer / inline-size; }
+@container composer (max-width: 900px) { .composer-collaboration-chip > span { display: none; } }
 
 /* ---------- 设置页 ---------- */
 .settings-view { min-width: 0; min-height: 0; overflow-y: auto; background: var(--app-color-bg); }

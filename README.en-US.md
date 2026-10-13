@@ -146,9 +146,13 @@ When enabled, the main agent is instructed to proactively dispatch ready indepen
 
 Each provider has an **Allow subagents to use this provider** switch under **Settings → LLM Providers**, enabled by default. Turn it off to reserve an expensive provider for main sessions, and choose another child model in General settings. New and continued child tasks cannot use a disallowed provider, even through explicit model overrides. Running children may finish, be awaited or cancelled. An unavailable saved or inherited child model produces a clear error; no automatic provider switch occurs.
 
+The composer’s **Parallel work** toggle requests scoped delegation for the next input (including execution of an existing plan), then resets. It changes no model, permission or provider limits.
+
+Work orders support explorer, implementer, reviewer and verifier roles, necessary context, acceptance criteria, focused validation and an expected result format. `dependsOn` rejects dispatch until current prerequisite tasks complete and settle; the parent waits, reviews and dispatches dependent work explicitly. `list_subagents` exposes a paged task inventory. `send_subagent_message` queues a small clarification for a running child’s next safe turn boundary. Completion notices announce status; the parent still retrieves full deliverables with `wait_subagents` and verifies them. Profiles are work contracts, not tool or filesystem sandboxes.
+
 Concurrency comes only from the selected provider's `maxConcurrency`. Blank means unlimited. There is no additional fixed simultaneous-child cap or cumulative child-start budget. Queued children remain active tasks.
 
-Use the graph and the sidebar's subagent group to inspect each child's work. Delegation supports one level, without nested child delegation. A parent ending or stopping cancels unfinished children, preserving their histories. Tasks do not resume automatically after an application restart. File assignments are coordination contracts, not filesystem sandboxes. Files, browser tabs, and the physical desktop remain shared, and all tools retain the normal permission controls.
+The sidebar lists main conversations only. Inspect child work in the graph and use Open session in node details to view its complete history. Delegation supports one level, without nested child delegation. A parent ending or stopping cancels unfinished children, preserving their histories. Tasks do not resume automatically after an application restart. File assignments are coordination contracts, not filesystem sandboxes. Files, browser tabs, and the physical desktop remain shared, and all tools retain the normal permission controls.
 
 ## Our vision
 

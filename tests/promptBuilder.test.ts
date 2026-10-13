@@ -26,6 +26,11 @@ assert.doesNotMatch(coordinated, /\d+ (simultaneous child runs|child turns per p
 assert.doesNotMatch(coordinated, /private-key/)
 assert.match(SUBAGENT_CHILD_GUIDANCE, /do not change adjacent files/)
 assert.match(SUBAGENT_CHILD_GUIDANCE, /focused validation/)
+assert.match(coordinated, /explorer answers one read-only question/)
+assert.match(coordinated, /dependsOn/)
+assert.match(coordinated, /send_subagent_message/)
+assert.match(coordinated, /completed child is not automatically an accepted change/)
+assert.doesNotMatch(buildSystemPrompt('D:/workspace', '', '', { tools: [], builtinTools: [], mcpTools: [], mcpServers: [] }, undefined, undefined, false), /## Long-term Memory/)
 assert.doesNotMatch(subagentDelegationGuidance(false, null), /Launch as many/)
 
 console.log('system prompt visual-output guidance tests passed')

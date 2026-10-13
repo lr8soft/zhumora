@@ -28,6 +28,9 @@ export default {
     }
   },
   chat: {
+    parallel: "Parallel arbeiten",
+    parallelHint: "Bevorzugt parallele Teilaufgaben für diese Eingabe. Nach dem Senden zurückgesetzt; Modell, Berechtigungen und Anbieterlimits bleiben gültig.",
+    parallelDisabledHint: "Aktivieren Sie Unteragenten. Untersitzungen können nicht delegieren.",
     createSessionToStart: 'Erstellen Sie eine Sitzung, um zu chatten',
     newSession: 'Neue Sitzung',
     session: 'Sitzung',

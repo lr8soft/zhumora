@@ -1,10 +1,12 @@
-import type { AppSettings, AutoApproveMode, ChatMessage, ReasoningEffort, Session, UIMessage, UserMessageInput } from '../../shared/types.ts'
+import type { AppSettings, AutoApproveMode, ChatMessage, AgentRequestOptions, Session, UIMessage, UserMessageInput } from '../../shared/types.ts'
 import type { AgentEventSink } from './persistedCallbacks.ts'
 import type { PermissionBroker, PermissionPresenter } from './permissionBroker.ts'
 import type { AgentRunOptions, runAgent } from './runner.ts'
 import type { ToolRegistry } from '../tools/registry.ts'
 import type { SubagentScope } from './subagentScope.ts'
 import type { SessionModelSelection } from '../../shared/sessionModel.ts'
+import type { SubagentAssignment } from './subagentAssignment.ts'
+import type { RunInbox } from './runInbox.ts'
 
 type Provider = AppSettings['providers'][number]
 
@@ -26,13 +28,11 @@ export interface SessionStore {
   addTokenUsage(model: string, inputTokens: number, outputTokens: number, createdAt?: number): void
 }
 
-export interface SessionRunRequest {
+export interface SessionRunRequest extends AgentRequestOptions {
+  /** Internal child startup metadata, never accepted from renderer IPC. */
+  subagentAssignment?: SubagentAssignment
   sessionId: string
   message: UserMessageInput
-  providerId?: string
-  modelOverride?: string
-  reasoningEffort?: ReasoningEffort
-  approveMode?: AutoApproveMode
   sourcePrompt?: string
   inputSource?: 'renderer' | 'external'
   localEvents?: AgentEventSink
@@ -60,6 +60,7 @@ export interface SessionCompactInfo {
 }
 
 export interface ActiveSessionRun {
+  inbox: RunInbox
   controller: AbortController
   events: AgentEventSink
   unlinkSignal?: () => void

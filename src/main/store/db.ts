@@ -8,6 +8,7 @@ import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory, Sess
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
 import { defaultSettings, normalizeSettings } from './settingsNormalization'
+import { messageFromRow, type MessageRow } from './messageRows.ts'
 import { validateSessionModelSelection, type SessionModelSelection } from '../../shared/sessionModel'
 
 let db: Database.Database | null = null
@@ -195,34 +196,22 @@ export function getOrCreateBotSession(
 
 export function addMessage(msg: UIMessage): void {
   db!.prepare(`
-    INSERT INTO messages (id, session_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, images, timestamp, status)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, session_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, images, timestamp, status, coordination_parent_id, coordination_task_id)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     msg.id, msg.sessionId, msg.role, msg.content,
     msg.reasoning || null,
     msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
     msg.toolCallId, msg.toolName,
     msg.images && msg.images.length > 0 ? JSON.stringify(msg.images) : null,
-    msg.timestamp, msg.status || null
+    msg.timestamp, msg.status || null, msg.coordination?.parentSessionId ?? null, msg.coordination?.taskId ?? null
   )
   touchSession(msg.sessionId)
 }
 
 export function getMessages(sessionId: string): UIMessage[] {
-  const rows = db!.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC, rowid ASC').all(sessionId) as any[]
-  return rows.map(r => ({
-    id: r.id,
-    sessionId: r.session_id,
-    role: r.role,
-    content: r.content || '',
-    reasoning: r.reasoning || undefined,
-    toolCalls: r.tool_calls ? JSON.parse(r.tool_calls) : undefined,
-    images: r.images ? (safeJsonParse<string[]>(r.images) ?? undefined) : undefined,
-    toolCallId: r.tool_call_id,
-    toolName: r.tool_name,
-    timestamp: r.timestamp,
-    status: r.status
-  }))
+  const rows = db!.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC, rowid ASC').all(sessionId) as MessageRow[]
+  return rows.map(messageFromRow)
 }
 
 export function updateMessageContent(id: string, content: string, status?: string): void {
@@ -268,16 +257,6 @@ function loadSettings(): AppSettings {
     return normalizeSettings(JSON.parse(row.value), defaultWorkspacePath())
   } catch {
     return defaultSettings(defaultWorkspacePath())
-  }
-}
-
-/** 容错 JSON 解析（DB 中图片列为 JSON 数组；损坏时返回 null 而非抛异常） */
-function safeJsonParse<T>(raw: string): T | null {
-  try {
-    const v = JSON.parse(raw)
-    return (Array.isArray(v) ? v : null) as T
-  } catch {
-    return null
   }
 }
 

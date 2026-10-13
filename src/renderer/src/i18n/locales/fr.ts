@@ -28,6 +28,9 @@ export default {
     }
   },
   chat: {
+    parallel: "Travail parallèle",
+    parallelHint: "Privilégie des tâches ciblées en parallèle pour cette entrée. Réinitialisé à l’envoi ; modèles, permissions et limites restent applicables.",
+    parallelDisabledHint: "Activez les sous-agents. Les sessions déléguées ne peuvent pas déléguer.",
     createSessionToStart: 'Créez une session pour commencer à discuter',
     newSession: 'Nouvelle Session',
     session: 'Session',

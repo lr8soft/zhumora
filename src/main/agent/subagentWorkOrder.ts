@@ -1,4 +1,5 @@
 import { posix, win32 } from 'node:path'
+import { formatSubagentAssignment, type SubagentAssignment } from './subagentAssignment.ts'
 
 const windowsPath = (path: string) => /^[a-z]:[\\/]|^\\\\/i.test(path)
 
@@ -20,7 +21,13 @@ export function subagentFileKey(target: string): string {
   return windowsPath(target) ? target.toLowerCase() : target
 }
 
-export function subagentWorkOrder(prompt: string, target?: string): string {
+export function subagentWorkOrder(prompt: string, target?: string, assignment?: SubagentAssignment): string {
+  if (assignment) {
+    const file = target ? `Assigned file: ${target}\n${assignment.role && assignment.role !== 'implementer'
+      ? 'This file is a read/check target. Do not modify it or other project files.'
+      : 'Modify only this assigned project file; report extra-file dependencies to the parent.'}\n\n` : ''
+    return file + formatSubagentAssignment({ ...assignment, objective: prompt })
+  }
   if (!target) return prompt
   return `Assigned file: ${target}\nModify only this assigned project file. Read surrounding code only as needed for context. Do not edit other files, run repository-wide autofixes, or expand the task. Report dependency changes and blockers to the parent instead.\n\nTask and acceptance criteria:\n${prompt}`
 }

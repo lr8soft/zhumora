@@ -1,6 +1,7 @@
 // IPC is a transport adapter. Session policy and Agent orchestration live in SessionService.
 import { BrowserWindow, ipcMain } from 'electron'
-import type { AutoApproveMode, ReasoningEffort, UserMessageInput } from '../../shared/types'
+import type { AutoApproveMode, AgentRequestOptions, UserMessageInput } from '../../shared/types'
+import { normalizeParallelPreference } from '../../shared/subagents.ts'
 import { AgentAbortedError } from '../../shared/types'
 import type { ApplicationServices } from '../composition'
 import { createAvatarAgentEventSink } from '../avatar/agentEvents'
@@ -34,12 +35,7 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
     _event,
     sessionId: string,
     userMessage: UserMessageInput,
-    options?: {
-      providerId?: string
-      modelOverride?: string
-      approveMode?: AutoApproveMode
-      reasoningEffort?: ReasoningEffort
-    }
+    options?: AgentRequestOptions
   ) => {
     try {
       log('info', `agent:run — sessionId=${sessionId}, providerId=${options?.providerId || '(active)'}, modelOverride=${options?.modelOverride || '(default)'}`)
@@ -49,7 +45,8 @@ export function setupIpc(win: BrowserWindow, services: ApplicationServices): voi
         providerId: options?.providerId,
         modelOverride: options?.modelOverride,
         approveMode: options?.approveMode,
-        reasoningEffort: options?.reasoningEffort
+        reasoningEffort: options?.reasoningEffort,
+        preferParallel: normalizeParallelPreference(options?.preferParallel)
       })
       void run.completion.catch(error => {
         if (!(error instanceof AgentAbortedError)) {

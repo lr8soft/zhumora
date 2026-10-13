@@ -28,9 +28,11 @@ import { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS, RecoveryBudget }
 import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
 import { decideTurnOutcome } from './turnDecision'
-import { applyRecoveryDecision, persistIncompleteToolRound, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
+import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
 import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
+import { completeTurn } from './completeTurn.ts'
+import { appendCoordinationMessages, type CoordinationMessage } from './runInbox.ts'
 
 export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
 // 回调契约定义在 eventCallbacks；runner 是其主要消费者，从这里再导出以兼容既有引用
@@ -53,6 +55,8 @@ export interface AgentRunOptions {
   signal?: AbortSignal
   systemPromptExtra?: string
   systemPromptRole?: string
+  /** SessionService delivers queued guidance and child notices only at valid turn boundaries. */
+  takeCoordinationMessages?: (finalizing?: boolean) => CoordinationMessage[]
   /** 由组合根提供的已加载 Skill 提示词，runner 不读取模块级全局状态。 */
   skillsPrompt?: string
   /** 构建系统提示词所需的运行时快照，避免 prompt builder 反向依赖 MCP/registry。 */
@@ -114,19 +118,10 @@ export async function runAgent(
   let hardStop: string | null = null
   const allAssistantMessages: ChatMessage[] = []
 
-  // 工具阶段的静态依赖只构造一次；hardStop 每轮从
-  // 局部变量同步进 base（phase 内部推进后由返回值带回）
+  // 复用静态依赖；每轮 hardStop 仍由循环持有并同步。
   const toolPhaseBase: Omit<ToolPhaseOptions, 'hardStop'> = {
-    conversation,
-    toolsRegistry,
-    workspacePath,
-    sessionId,
-    signal,
-    permissionCheck: opts.permissionCheck,
-    onSessionTitleUpdate,
-    loopDetector,
-    loopConfig,
-    cb
+    conversation, toolsRegistry, workspacePath, sessionId, signal,
+    permissionCheck: opts.permissionCheck, onSessionTitleUpdate, loopDetector, loopConfig, cb
   }
 
   let round = 0
@@ -136,6 +131,7 @@ export async function runAgent(
 
     // 轮间中止检查优先于压缩：用户已中止时不再发起摘要 LLM 调用
     if (signal?.aborted) throw new AgentAbortedError()
+    appendCoordinationMessages(conversation, opts.takeCoordinationMessages?.() ?? [])
     // 每个工具只负责自身契约与执行。Runner 统一暴露注册表快照，
     // 不允许某个领域工具通过意图识别裁剪其他内置工具或 MCP。
     const tools = toolsRegistry.definitions()
@@ -173,19 +169,8 @@ export async function runAgent(
     }
 
     if (decision.kind === 'complete') {
-      if (decision.truncatedNotice) {
-        const cause = decision.cause || 'length'
-        log('warn', `Round ${round}: incomplete output (${cause === 'stream' ? 'stream interrupted' : cause === 'malformed' ? 'malformed tool arguments' : 'truncated at token limit'}) and ${MAX_TRUNCATION_CONTINUATIONS} continuations already used — finalizing`)
-        if (result.toolCalls.length > 0) {
-          persistIncompleteToolRound(result, cause, allAssistantMessages, cb)
-        } else {
-          cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
-          cb.onTruncated?.('text', cause === 'stream' ? 'stream' : 'length')
-        }
-      } else {
-        cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined)
-      }
-      log('info', `Agent completed after ${round} round(s)`)
+      if (!completeTurn(decision, result, round, { conversation, allAssistantMessages, cb,
+        takeCoordinationMessages: opts.takeCoordinationMessages })) continue
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 
@@ -260,7 +245,7 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
   const systemPrompt = buildSystemPrompt(
     opts.workspacePath, skillsPrompt, memoryPrompt, promptRuntime,
     extraParts.filter(Boolean).join('\n\n'),
-    topParts.filter(Boolean).join('\n\n')
+    topParts.filter(Boolean).join('\n\n'), opts.memoryEnabled !== false
   )
 
   const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)

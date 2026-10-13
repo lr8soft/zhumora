@@ -22,6 +22,7 @@ import type { SessionModelSelection } from '@shared/sessionModel'
 import { ttsPlayback } from '../tts/playback'
 import SetupRequiredDialog from './SetupRequiredDialog'
 import AnchoredPopover from '../docking/AnchoredPopover'
+import ComposerCollaborationToggle from './ComposerCollaborationToggle'
 
 interface Props {
   sessionId: string
@@ -105,6 +106,7 @@ export default function ComposerToolbar({
         }}
       />
 
+      <ComposerCollaborationToggle sessionId={sessionId} />
       <div className="mode-selector">
         <button
           className={approveMode === 'full' ? 'composer-mode-chip mode-full' : approveMode === 'auto' ? 'composer-mode-chip mode-auto' : 'composer-mode-chip'}

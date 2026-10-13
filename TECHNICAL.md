@@ -155,6 +155,23 @@ its own tool category; ordinary tool batching remains sequential, whereas spawne
 child runs can overlap. Delegation-disabled and child roles do not receive the parent
 coordinator instruction. Tool visibility and normal approval rules remain unchanged.
 
+Subagent collaboration now adds optional role profiles and structured work orders
+(`context`, `acceptanceCriteria`, `validationCommand`, `outputFormat`, `dependsOn`).
+Prerequisites must be current, owned, completed and settled before creation; there
+is no dependency scheduler or queued child startup. `list_subagents` pages current
+metadata by text size. Role profiles never filter the full tool registry.
+
+SessionService owns a bounded RunInbox per run. `send_subagent_message` enqueues
+normal-permission guidance and runner checkpoints deliver it after complete tool
+result groups. The assistant is persisted first, then guidance gets a main-owned
+message ID. SQL migration v8 persists coordination provenance; graph turn splitting
+ignores these in-turn inputs. Abort/cleanup discards pending guidance. Child completion
+notices are effective-context-only status, and real wait results remain necessary
+for graph return edges. One early-final reminder per parent run preserves the existing
+round/recovery limits and never starts a background parent run. The composer’s
+`preferParallel` option is typed and validated through shared/preload/IPC/session
+boundaries, applies only to the next input and does not change permission/model limits.
+
 Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
 Each Avatar window owns an `AvatarWindowInteraction` instance for drag capture and mouse passthrough. Renderer hit-testing selects the character or explicit drag handles; typed IPC sends only start/move/end phases, and main calculates positions from Electron's DIP cursor coordinates. Blur/end releases capture. Global dimensions are normalized at the settings boundary (schema version 8), applied on save, and fitted to each monitor's work area; renderer framing retains stable model bounds when resized.
