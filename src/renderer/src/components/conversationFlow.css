@@ -162,3 +162,5 @@
 @media (prefers-reduced-motion: reduce) {
   .conversation-flow .spin, .conversation-flow .pulse-dot { animation: none; }
 }
+.flow-follow-overflow { position: absolute; top: 12px; left: 12px; display: flex; align-items: center; gap: 10px; padding: 7px 10px; max-width: calc(100% - 24px); flex-wrap: wrap; border: 1px solid var(--app-color-border); border-radius: 7px; background: var(--app-color-surface-solid); color: var(--app-color-text-soft); font-size: .733rem; box-shadow: var(--app-shadow-panel); }
+.flow-follow-overflow button { border: 0; background: none; padding: 0; color: var(--app-color-primary-strong); font: inherit; cursor: pointer; }

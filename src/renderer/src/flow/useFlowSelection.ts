@@ -3,7 +3,7 @@ import type { ConversationGraph, FlowDetailFocus } from './types'
 
 interface Selection { id: string | null; focus?: FlowDetailFocus }
 
-/** Follow uses the camera's projected target; a closed inspector stays closed. */
+/** Details follow the main anchor; concurrent camera framing never switches between siblings. Closed details stay closed. */
 export function useFlowSelection(graph: ConversationGraph, follow: boolean, stopFollowing: () => void) {
   const [selection, setSelection] = useState<Selection>({ id: null })
   const id = follow && selection.id !== null ? graph.latestNodeId ?? selection.id : selection.id

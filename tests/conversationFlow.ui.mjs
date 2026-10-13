@@ -103,7 +103,7 @@ try {
   await assertPassiveLanes(page)
   await assertFoldedAppearance(page)
   await page.screenshot({ path: resolve(output, 'folded-history-dark.png') })
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
   await waitViewportSettled(page)
   const canvas = await page.locator('.flow-canvas').boundingBox()
   await page.mouse.move(canvas.x + canvas.width / 2, canvas.y + 24)
@@ -111,7 +111,7 @@ try {
   await page.mouse.wheel(0, -240)
   await page.waitForFunction(zoom => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a > zoom, wheelStart.zoom)
   await waitViewportSettled(page)
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'true', 'wheel zoom keeps follow enabled')
+  assert.equal(await page.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'true', 'wheel zoom keeps follow enabled')
   const enlarged = await readViewport(page)
   await page.mouse.wheel(0, 240)
   await page.waitForFunction(zoom => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a < zoom, enlarged.zoom)
@@ -124,7 +124,7 @@ try {
   const dragged = await readViewport(page)
   assert.equal(dragged.zoom, dragStart.zoom, 'dragging preserves zoom')
   assert.ok(dragged.x > dragStart.x && dragged.y > dragStart.y, 'dragging still pans the canvas')
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false', 'dragging pauses follow')
+  assert.equal(await page.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'false', 'dragging pauses follow')
 
   // A live token updates its ID and neither relayouts the graph nor steals the user's camera.
   const before = await page.locator('.react-flow__viewport').getAttribute('style')
@@ -184,7 +184,7 @@ try {
     await i18n.changeLanguage('en')
     useAppStore.getState().setFontSize(18)
   })
-  await page.getByRole('button', { name: 'Follow run', exact: true }).waitFor()
+  await page.getByRole('button', { name: 'Auto-follow', exact: true }).waitFor()
   assert.equal(await page.evaluate(() => document.documentElement.scrollWidth > innerWidth), false)
   await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/index.ts')

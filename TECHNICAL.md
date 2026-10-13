@@ -824,3 +824,13 @@ desktop control is limited to screenshots; everything else (files, shell,
 ripgrep, office, browser, MCP, bots, storage) is platform-neutral.
 
 The architecture already separates model access, agent execution, browser automation, desktop capture, MCP, memory, storage, and the renderer, so these components can evolve independently without turning the README into an implementation manual.
+
+Auto-follow camera framing uses the pure `cameraFollow` policy and owner-document
+`flowCameraScheduler`: retain the main anchor and one current frontier per active
+session, including children preparing before their first model token. Subsequent
+updates pan only enough to keep the frontier visible. Concurrent work fits its
+active bounds, with no automatic zoom-in when one sibling finishes. Custom zoom
+remains fixed; a stable visible cluster and an offscreen-node counter replace
+sibling-by-sibling recentering. Show active nodes explicitly resets custom scale;
+Latest output remains explicit main-node navigation. Inspector ownership and all
+Agent/message contracts stay unchanged.

@@ -8,7 +8,7 @@ import react from '@vitejs/plugin-react'
 import { _electron } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
-import { assertFocusedNode, settleViewport } from './helpers/flowCameraChecks.mjs'
+import { assertFollowedNode, settleViewport } from './helpers/flowCameraChecks.mjs'
 import { assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
 import { assertNewTurnVisible } from './helpers/newTurnChecks.mjs'
 
@@ -110,7 +110,7 @@ try {
   })
   await detailWindow.waitForFunction(() => document.documentElement.dataset.theme === 'dark' && document.documentElement.style.fontSize === '18px')
   await detailWindow.screenshot({ path: resolve(output, 'details-window-dark.png') })
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
   await detailWindow.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('架构分析结果'))
   assert.equal(await page.locator('.flow-inspector').count(), 0, 'following updates the existing native inspector without docking it back')
   const ticket = await detailWindow.evaluate(() => window.name)
@@ -144,8 +144,8 @@ try {
     flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'native-live', phase: 'start', content: '', toolCalls: [] })
     flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'native-live', token: '独立窗口的实时输出' })
   })
-  await flowWindow.getByRole('button', { name: '跟随运行', exact: true }).click()
-  await assertFocusedNode(flowWindow, '独立窗口的实时输出')
+  await flowWindow.getByRole('button', { name: '自动跟随', exact: true }).click()
+  await assertFollowedNode(flowWindow, '独立窗口的实时输出')
   assert.ok(Math.abs(await flowWindow.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a) - selectedZoom) < .000001,
     'native flow windows follow at the selected wheel zoom')
   await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('独立窗口的实时输出'))
@@ -169,11 +169,11 @@ try {
   await setPanelMode(page, 'details', '窗口内浮动')
   await assertStreamingDetail(page, page, 'native-live')
   await setPanelMode(page, 'details', '停靠右侧')
-  await flowWindow.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await flowWindow.getByRole('button', { name: '自动跟随', exact: true }).click()
   const livePreview = await flowWindow.locator('.flow-speech-text').filter({ hasText: '独立窗口的实时输出' }).textContent()
   await flowWindow.getByRole('button', { name: '停靠回主窗口', exact: true }).click()
   await page.locator('.flow-canvas').waitFor()
-  await assertFocusedNode(page, livePreview)
+  await assertFollowedNode(page, livePreview)
   assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().length), 1, 'return closes only auxiliary windows')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await page.waitForFunction(() => document.querySelectorAll('.flow-card').length === 12)

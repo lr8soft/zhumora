@@ -1,17 +1,18 @@
 import assert from 'node:assert/strict'
 
-export async function assertFocusedNode(page, text) {
+export async function assertFollowedNode(page, text) {
   await page.waitForFunction(words => {
     const card = [...document.querySelectorAll('.flow-speech')].find(node => node.querySelector('.flow-speech-text')?.textContent === words)
     const canvas = document.querySelector('.flow-canvas')
     if (!card || !canvas) return false
     const box = card.getBoundingClientRect(), area = canvas.getBoundingClientRect()
-    return Math.abs(box.x + box.width / 2 - area.x - area.width / 2) < 8
-      && Math.abs(box.y + box.height / 2 - area.y - area.height / 2) < 8
-      && box.x >= area.x && box.right <= area.right && box.y >= area.y && box.bottom <= area.bottom
+    const visible = (start, size, extent) => size <= extent - 32
+      ? start >= 8 && start + size <= extent - 8
+      : start + size / 2 >= 8 && start + size / 2 <= extent - 8
+    return visible(box.x - area.x, box.width, area.width) && visible(box.y - area.y, box.height, area.height)
   }, text)
   await settleViewport(page)
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'true')
+  assert.equal(await page.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'true')
 }
 
 export async function viewportStyle(page) {

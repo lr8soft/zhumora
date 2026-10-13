@@ -11,9 +11,9 @@ export async function assertNewTurnVisible(page, viewer = page) {
   })
   await viewer.getByRole('button', { name: '最新输出', exact: true }).click()
   await settleViewport(viewer)
-  const follow = viewer.getByRole('button', { name: '跟随运行', exact: true })
+  const follow = viewer.getByRole('button', { name: '自动跟随', exact: true })
   if (await follow.getAttribute('aria-pressed') === 'true') await follow.click()
-  await viewer.waitForFunction(() => document.querySelector('.flow-toolbar-actions button[aria-label="跟随运行"]')?.getAttribute('aria-pressed') === 'false')
+  await viewer.waitForFunction(() => document.querySelector('.flow-toolbar-actions button[aria-label="自动跟随"]')?.getAttribute('aria-pressed') === 'false')
   assert.equal(await follow.getAttribute('aria-pressed'), 'false')
   const before = await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/index.ts')
@@ -41,7 +41,7 @@ export async function assertNewTurnVisible(page, viewer = page) {
     const rect = card.getBoundingClientRect(), area = document.querySelector('.flow-canvas').getBoundingClientRect()
     return rect.right > area.left && rect.left < area.right && rect.bottom > area.top && rect.top < area.bottom
   }))
-  assert.equal(await viewer.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false', 'blank recovery does not change the follow preference')
+  assert.equal(await viewer.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'false', 'blank recovery does not change the follow preference')
   assert.equal(await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/index.ts')
     return useAppStore.getState().activeSessionId

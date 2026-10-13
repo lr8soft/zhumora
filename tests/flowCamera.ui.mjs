@@ -4,8 +4,9 @@ import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { chromium } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
-import { assertFocusedNode, settleViewport, viewportStyle } from './helpers/flowCameraChecks.mjs'
+import { assertFollowedNode, settleViewport, viewportStyle } from './helpers/flowCameraChecks.mjs'
 import { assertNewTurnVisible } from './helpers/newTurnChecks.mjs'
+import { assertMultiAgentCamera } from './helpers/multiAgentCameraChecks.mjs'
 
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
   resolve: { alias: { '@shared': resolve('src/shared'), '@renderer': resolve('src/renderer/src') } },
@@ -26,32 +27,32 @@ try {
   })
   await page.goto(`http://127.0.0.1:${server.httpServer.address().port}`)
   // The final node begins far outside the initial viewport and has never been DOM-measured.
-  await assertFocusedNode(page, '发言 49')
+  await assertFollowedNode(page, '发言 49')
   assert.ok(await page.locator('.flow-card').count() < 10, 'follow keeps viewport virtualization instead of mounting all history')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
-  await page.waitForFunction(() => document.querySelector('.flow-toolbar-actions button[aria-label="跟随运行"]')?.getAttribute('aria-pressed') === 'false')
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
-  await assertFocusedNode(page, '发言 49')
+  await page.waitForFunction(() => document.querySelector('.flow-toolbar-actions button[aria-label="自动跟随"]')?.getAttribute('aria-pressed') === 'false')
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
+  await assertFollowedNode(page, '发言 49')
 
   await page.evaluate(() => {
     flowUiFixture.emit('agent.onRunningChange', { sessionId: 'parent', running: true })
     flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'latest-live', phase: 'start', content: '', toolCalls: [] })
     flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'latest-live', token: '最新发言' })
   })
-  await assertFocusedNode(page, '最新发言')
+  await assertFollowedNode(page, '最新发言')
   const fixed = await viewportStyle(page)
   await page.evaluate(() => flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'latest-live', token: '，继续输出' }))
   await page.waitForFunction(() => document.querySelector('.flow-speech-text')?.textContent?.includes('继续输出')
     || [...document.querySelectorAll('.flow-speech-text')].some(node => node.textContent === '最新发言，继续输出'))
   assert.equal(await viewportStyle(page), fixed, 'text deltas do not move the camera')
   await page.getByRole('button', { name: '最新输出', exact: true }).click()
-  await assertFocusedNode(page, '最新发言，继续输出')
+  await assertFollowedNode(page, '最新发言，继续输出')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
   await settleViewport(page)
   await page.locator('.flow-speech').filter({ has: page.locator('.flow-speech-text', { hasText: /^发言 25$/ }) }).click()
   assert.equal(await page.locator('.flow-detail-body .markdown-body').innerText(), '发言 25')
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
-  await assertFocusedNode(page, '最新发言，继续输出')
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
+  await assertFollowedNode(page, '最新发言，继续输出')
   await page.waitForFunction(() => document.querySelector('.flow-detail-body .markdown-body')?.textContent === '最新发言，继续输出')
   await page.evaluate(() => {
     flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'follow-next', phase: 'start', content: '', toolCalls: [] })
@@ -60,17 +61,17 @@ try {
   await page.waitForFunction(() => document.querySelector('.flow-detail-body .markdown-body')?.textContent === '新节点思考')
   assert.equal(await page.getByRole('tab', { name: '思考', exact: true }).getAttribute('aria-selected'), 'true')
   await page.evaluate(() => flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'follow-next', token: '跟随新发言' }))
-  await assertFocusedNode(page, '跟随新发言')
+  await assertFollowedNode(page, '跟随新发言')
   await page.waitForFunction(() => document.querySelector('.flow-detail-body .markdown-body')?.textContent === '跟随新发言')
   assert.equal(await page.locator('.flow-speech.is-selected .flow-speech-text').innerText(), '跟随新发言')
   await page.locator('.flow-inner-step.thinking').click()
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false')
+  assert.equal(await page.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'false')
   assert.equal(await page.locator('.flow-detail-body .markdown-body').innerText(), '新节点思考')
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
   await page.waitForFunction(() => document.querySelector('.flow-detail-body .markdown-body')?.textContent === '跟随新发言')
   // Explicit detail browsing pauses both follows and survives subsequent nodes.
   await page.getByRole('tab', { name: '思考', exact: true }).click()
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'false')
+  assert.equal(await page.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'false')
   await page.evaluate(() => {
     flowUiFixture.emit('agent.onAssistantMessage', { sessionId: 'parent', messageId: 'paused-next', phase: 'start', content: '', toolCalls: [] })
     flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'paused-next', token: '暂停期间节点' })
@@ -80,26 +81,26 @@ try {
     return useAppStore.getState().messages.parent.at(-1)?.content === '暂停期间节点'
   })
   assert.equal(await page.locator('.flow-detail-body .markdown-body').innerText(), '新节点思考')
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
-  await assertFocusedNode(page, '暂停期间节点')
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
+  await assertFollowedNode(page, '暂停期间节点')
   await page.waitForFunction(() => document.querySelector('.flow-detail-body .markdown-body')?.textContent === '暂停期间节点')
   // Pausing via the viewport keeps the most recently followed selection.
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
   assert.equal(await page.locator('.flow-detail-body .markdown-body').innerText(), '暂停期间节点')
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
   await page.getByRole('button', { name: '关闭详情', exact: true }).click()
-  await assertFocusedNode(page, '暂停期间节点')
+  await assertFollowedNode(page, '暂停期间节点')
 
   const canvas = await page.locator('.flow-canvas').boundingBox()
   await page.mouse.move(canvas.x + 40, canvas.y + 30)
   await page.mouse.wheel(0, -240)
   await settleViewport(page)
-  assert.equal(await page.getByRole('button', { name: '跟随运行', exact: true }).getAttribute('aria-pressed'), 'true')
+  assert.equal(await page.getByRole('button', { name: '自动跟随', exact: true }).getAttribute('aria-pressed'), 'true')
   const customZoom = await page.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a)
   await page.mouse.down()
   await page.mouse.move(canvas.x + 85, canvas.y + 55, { steps: 5 })
   await page.mouse.up()
-  await page.waitForFunction(() => document.querySelector('.flow-toolbar-actions button[aria-label="跟随运行"]')?.getAttribute('aria-pressed') === 'false')
+  await page.waitForFunction(() => document.querySelector('.flow-toolbar-actions button[aria-label="自动跟随"]')?.getAttribute('aria-pressed') === 'false')
   await settleViewport(page)
   const manual = await viewportStyle(page)
   await page.evaluate(() => {
@@ -111,17 +112,17 @@ try {
     return useAppStore.getState().messages.parent.at(-1)?.content === '下一节点'
   })
   assert.equal(await viewportStyle(page), manual, 'disabled follow preserves manual navigation when nodes arrive')
-  await page.getByRole('button', { name: '跟随运行', exact: true }).click()
-  await assertFocusedNode(page, '下一节点')
+  await page.getByRole('button', { name: '自动跟随', exact: true }).click()
+  await assertFollowedNode(page, '下一节点')
   assert.ok(Math.abs(await page.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a) - customZoom) < .000001,
     'resuming follow retains the user-selected zoom')
   assert.equal(await page.locator('.flow-inspector').count(), 0, 'closed details stay closed when following a new node')
   await page.getByRole('button', { name: '缩小', exact: true }).click()
-  await assertFocusedNode(page, '下一节点')
+  await assertFollowedNode(page, '下一节点')
   const reducedZoom = await page.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a)
   assert.ok(reducedZoom < customZoom, 'minus changes scale without disabling following')
   await page.getByRole('button', { name: '放大', exact: true }).click()
-  await assertFocusedNode(page, '下一节点')
+  await assertFollowedNode(page, '下一节点')
   const selectedZoom = await page.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a)
   assert.ok(selectedZoom > reducedZoom)
   await page.evaluate(() => {
@@ -129,11 +130,11 @@ try {
     flowUiFixture.emit('agent.onToken', { sessionId: 'parent', messageId: 'zoom-follow-next', token: '自定义缩放的新节点' })
   })
   const latestText = '自定义缩放的新节点'
-  await assertFocusedNode(page, latestText)
+  await assertFollowedNode(page, latestText)
   await page.getByRole('button', { name: '最新输出', exact: true }).click()
-  await assertFocusedNode(page, latestText)
+  await assertFollowedNode(page, latestText)
   await page.setViewportSize({ width: 1160, height: 850 })
-  await assertFocusedNode(page, latestText)
+  await assertFollowedNode(page, latestText)
   assert.ok(Math.abs(await page.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a) - selectedZoom) < .000001,
     'new nodes, opening details and resizing preserve the custom follow zoom')
   await page.getByRole('button', { name: '关闭详情', exact: true }).click()
@@ -144,13 +145,14 @@ try {
   const panel = page.locator('.dock-conversation')
   await panel.locator('.dock-panel-menu summary').click()
   await page.getByRole('menuitem', { name: '窗口内浮动', exact: true }).click()
-  await assertFocusedNode(page, latestText)
+  await assertFollowedNode(page, latestText)
   await panel.locator('.dock-panel-menu summary').click()
   await page.getByRole('menuitem', { name: '停靠中央', exact: true }).click()
-  await assertFocusedNode(page, latestText)
+  await assertFollowedNode(page, latestText)
   assert.ok(Math.abs(await page.evaluate(() => new DOMMatrix(document.querySelector('.react-flow__viewport').style.transform).a) - selectedZoom) < .000001,
     'pane remounts preserve the preferred scale')
   await assertNewTurnVisible(page)
+  await assertMultiAgentCamera(page)
   assert.deepEqual(errors, [])
   console.log('Camera UI passed: new-turn collapse recovery through the real send action, unmeasured latest, synchronized inspector, manual navigation, token stability and pane remounts')
 } finally {

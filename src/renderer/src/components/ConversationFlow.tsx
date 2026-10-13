@@ -86,7 +86,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
           <Layers size={13} /><span>{t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}</span></button>
         <button aria-pressed={showChildren} aria-label={t('flow.children')} title={t('flow.children')}
           onClick={() => { setShowChildren(value => !value); stopFollowing() }}><GitBranch size={13} /><span>{t('flow.children')}</span></button>
-        <button className={follow ? 'active' : ''} aria-pressed={follow} aria-label={t('flow.follow')} title={t('flow.follow')}
+        <button className={follow ? 'active' : ''} aria-pressed={follow} aria-label={t('flow.follow')} title={t('flow.followHint')}
           onClick={camera.toggleFollow}>
           <LocateFixed size={13} /><span>{t('flow.follow')}</span></button>
       </div>
@@ -108,6 +108,10 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
           <EmptyConversationHero workspacePath={workspacePath} /><div className="flow-empty-path"><UserStep />
             <ArrowRight size={16} /><span>{t('flow.kind.llm')}</span><ArrowRight size={16} /><span>{t('flow.kind.tool')}</span>
             <ArrowRight size={16} /><span>{t('flow.finalReply')}</span></div></>}</div>}
+        {follow && camera.hiddenActive > 0 && <div className="flow-follow-overflow">
+          <span>{t('flow.hiddenActive', { count: camera.hiddenActive })}</span>
+          <button onClick={camera.fitActive} title={t('flow.showActiveHint')}>{t('flow.showActive')}</button>
+        </div>}
         {graph.nodes.length > 0 && <div className="flow-zoom-tools">
           <button className="flow-icon-button" onClick={camera.zoomOut} aria-label={t('flow.zoomOut')} title={t('flow.zoomOut')}><Minus size={14} /></button>
           <span>{Math.round(zoom * 100)}%</span>
