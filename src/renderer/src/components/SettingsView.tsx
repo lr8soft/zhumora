@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import { parseProviderHeaders } from '@shared/providerHeaders'
+import { isValidProviderConcurrency } from '@shared/providerConcurrency'
 import type { ProviderHeaderDraft } from './settings/ProviderHeadersField'
 import { useTranslation } from 'react-i18next'
 import { BarChart3, Brain, Cable, MessagesSquare, PlugZap, Send, Server, Settings2, Sparkles, UserRound, Volume2 } from 'lucide-react'
@@ -38,6 +39,7 @@ export default function SettingsView() {
   // Raw header text belongs to this settings view so switching tabs preserves incomplete lines.
   const [headerDrafts, setHeaderDrafts] = useState<Record<string, ProviderHeaderDraft>>({})
   const invalidHeaders = settingsDraft.providers.some(provider => headerDrafts[provider.id]?.invalid)
+  const invalidConcurrency = settingsDraft.providers.some(provider => !isValidProviderConcurrency(provider.maxConcurrency))
 
   const updateHeaderDraft = (id: string, text: string) => {
     let headers: Record<string, string>
@@ -61,7 +63,7 @@ export default function SettingsView() {
   const tabs: SettingsTab[] = ['providers', 'mcp', 'mcpServer', 'bots', 'bbs', 'avatar', 'tts', 'skills', 'memory', 'usage', 'general']
 
   const handleSave = async () => {
-    if (invalidHeaders) return
+    if (invalidHeaders || invalidConcurrency) return
     await saveSettings()
     // 保存成功后回到聊天页（与旧行为一致）
     setView('chat')
@@ -150,6 +152,7 @@ export default function SettingsView() {
         {/* 保存 / 取消 */}
         <div className="settings-footer">
           {invalidHeaders && <span className="settings-dirty-hint" role="alert">{t('settings.providers.customHeadersInvalid')}</span>}
+          {invalidConcurrency && <span className="settings-dirty-hint" role="alert">{t('settings.providers.concurrencyInvalid')}</span>}
           {isSettingsDirty && <span className="settings-dirty-hint">{t('settings.unsaved')}</span>}
           <button className="btn-ghost" onClick={handleCancel}>
             {t('settings.cancel')}
@@ -157,7 +160,7 @@ export default function SettingsView() {
           <button
             className="btn-primary"
             onClick={handleSave}
-            disabled={!isSettingsDirty || invalidHeaders}
+            disabled={!isSettingsDirty || invalidHeaders || invalidConcurrency}
           >
             {t('settings.save')}
           </button>

@@ -3,6 +3,7 @@ import assert from 'node:assert/strict'
 import { AgentAbortedError, type ToolCall } from '../src/shared/types.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
 import { resolveSubagentModel, validateSubagentRequest } from '../src/main/agent/subagentPolicy.ts'
+import { resolveSubagentTargetFile, subagentFileKey } from '../src/main/agent/subagentWorkOrder.ts'
 import { executeToolCall } from '../src/main/agent/toolExecutor.ts'
 import { runToolCallPhase } from '../src/main/agent/turnEffects.ts'
 import { WorkingConversation } from '../src/main/agent/workingConversation.ts'
@@ -15,6 +16,10 @@ assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'cust
 assert.throws(() => resolveSubagentModel(providers, { providerId: 'a', model: 'm' }, { ...request, providerId: 'off' }), /disabled/)
 assert.throws(() => validateSubagentRequest({ description: '', prompt: 'x' }), /description/)
 assert.throws(() => validateSubagentRequest({ description: 'x', prompt: 'x'.repeat(24001) }), /prompt/)
+for (const targetFile of ['', '.', '..', 'src/', 'src/*.ts', 'C:relative.ts', 'a\nb']) {
+  assert.throws(() => validateSubagentRequest({ ...request, targetFile }), /targetFile/)
+}
+assert.equal(subagentFileKey(resolveSubagentTargetFile('D:/repo', 'src/../src/File.ts')!), 'd:\\repo\\src\\file.ts')
 const savedChildModel = { providerId: 'b', model: 'separate-child' }
 assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'parent' }, request, savedChildModel), savedChildModel)
 assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'parent' }, { ...request, providerId: 'a', model: 'explicit' }, savedChildModel),
@@ -43,6 +48,9 @@ const result = (value: object) => value as Result
   assert.deepEqual(conversation.messages.slice(2).map(message => message.tool_call_id), ['call0', 'call1'])
   assert.equal(children.length, 2); assert.ok(children.every(child => f.service.isRunning(child.session_id)))
   const a = f.running.get(children[0].session_id)!.options; const b = f.running.get(children[1].session_id)!.options
+  assert.match(parent.options.systemPromptExtra ?? '', /architect and project manager/)
+  assert.match(b.systemPromptExtra ?? '', /exactly one assigned project file/)
+  assert.match(b.systemPromptExtra ?? '', /integration tests\/build/)
   assert.equal(a.provider.id, 'a'); assert.equal(a.modelOverride, 'custom-a'); assert.equal(a.reasoningEffort, 'high')
   assert.equal(b.provider.id, 'b'); assert.equal(b.modelOverride, 'b-default'); assert.equal(b.reasoningEffort, undefined)
   assert.equal(b.workspacePath, 'D:/parent-workspace')
@@ -73,22 +81,71 @@ const result = (value: object) => value as Result
   await f.service.stopAll(); f.permissions.dispose()
 }
 
-// Capacity is reserved before async startup; invalid routing never creates phantom child sessions.
+// File ownership is reserved before startup and released only after the child's run settles.
+{
+  const f = fixture(); const parent = await f.root(); const unrelated = await f.root('another parent')
+  const owned = result(await parent.scope.spawn({ ...request, targetFile: 'src/task.ts' }))
+  const target = 'D:\\parent-workspace\\src\\task.ts'
+  assert.equal((owned as Result & { targetFile: string }).targetFile, target)
+  const options = f.running.get(owned.session_id)!.options
+  assert.match(String(options.messages[0].content), /Assigned file:/)
+  assert.ok(String(options.messages[0].content).includes(target))
+  const before = f.sessions.size
+  await assert.rejects(parent.scope.spawn({ ...request, targetFile: 'D:/PARENT-WORKSPACE/src/./task.ts' }), /File already assigned/)
+  assert.equal(f.sessions.size, before, 'a conflicting assignment creates no child session')
+  const parallel = result(await parent.scope.spawn({ ...request, targetFile: 'src/other.ts' }))
+  assert.ok(f.service.isRunning(parallel.session_id), 'other files still run concurrently')
+  const independent = result(await unrelated.scope.spawn({ ...request, targetFile: 'src/task.ts' }))
+  assert.ok(f.service.isRunning(independent.session_id), 'file coordination never creates a global cross-session lock')
+  f.finish(owned.session_id)
+  await assert.rejects(parent.scope.spawn({ ...request, targetFile: 'src/task.ts' }), /File already assigned/,
+    'a terminal report cannot release ownership before SessionService cleanup settles')
+  await parent.scope.wait([owned.task_id])
+  const followUp = result(await parent.scope.continue(owned.task_id, 'A small correction in this file.'))
+  assert.equal((followUp as Result & { targetFile: string }).targetFile, target)
+  await assert.rejects(parent.scope.spawn({ ...request, targetFile: 'src/task.ts' }), /File already assigned/)
+  await parent.scope.cancel(followUp.task_id)
+  const reassigned = result(await parent.scope.spawn({ ...request, targetFile: 'src/task.ts' }))
+  assert.ok(f.service.isRunning(reassigned.session_id), 'settled cancellation releases the file assignment')
+  await f.service.stopAll(); f.permissions.dispose()
+}
+
 {
   const f = fixture(); const parent = await f.root()
+  let resume!: () => void
+  const startup = new Promise<string>(resolve => { resume = () => resolve('') })
+  f.delayPrompt(() => startup)
+  const first = parent.scope.spawn({ ...request, targetFile: 'src/startup.ts' })
+  const before = f.sessions.size
+  await assert.rejects(parent.scope.spawn({ ...request, targetFile: 'src/./startup.ts' }), /File already assigned/)
+  assert.equal(f.sessions.size, before, 'file ownership is reserved while asynchronous startup is pending')
+  resume(); await first
+  await f.service.stopAll(); f.permissions.dispose()
+}
+
+// Provider capacity is advertised, without a second fixed task count or total-turn limit.
+{
+  const f = fixture(); f.setProviderConcurrency('a', 2); const parent = await f.root()
   await assert.rejects(parent.scope.spawn({ ...request, providerId: 'missing' }), /unknown/)
   assert.equal(f.sessions.size, 1)
-  const children = await Promise.all(Array.from({ length: 4 }, () => parent.scope.spawn(request).then(result)))
-  await assert.rejects(parent.scope.spawn(request), /concurrency/)
+  assert.equal(f.service.listSubagentProviders().find(provider => provider.id === 'a')!.maxConcurrency, 2)
+  assert.match(parent.options.systemPromptExtra ?? '', /"maxConcurrency":2/)
+  const children = await Promise.all(Array.from({ length: 12 }, () => parent.scope.spawn(request).then(result)))
+  assert.ok(children.every(child => f.service.isRunning(child.session_id)), 'task creation can queue behind provider capacity without a fixed child-count gate')
+  assert.equal((await parent.scope.wait(children.map(child => child.task_id), 0)).length, children.length,
+    'wait accepts the requested owned tasks without a hidden count cap')
   await assert.rejects(parent.scope.continue(children[0].task_id, 'busy'), /busy/)
   await assert.rejects(parent.scope.wait([children[0].task_id], NaN), /wait_ms/)
   for (const child of children) await parent.scope.cancel(child.task_id)
   let child = children[0]
-  for (let i = 0; i < 4; i++) {
+  for (let i = 0; i < 40; i++) {
     child = result(await parent.scope.continue(child.task_id, `turn ${i}`))
     f.finish(child.session_id); await parent.scope.wait([child.task_id])
   }
-  await assert.rejects(parent.scope.spawn(request), /turn limit/)
+  const next = result(await parent.scope.spawn(request))
+  assert.ok(f.service.isRunning(next.session_id), 'there is no invented cumulative task budget')
+  f.setProviderConcurrency('a', null)
+  assert.equal(f.service.listSubagentProviders().find(provider => provider.id === 'a')!.maxConcurrency, null)
   await f.service.stopAll(); f.permissions.dispose()
 }
 

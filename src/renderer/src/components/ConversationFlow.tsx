@@ -95,7 +95,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
     <DockWorkspace panels={[{ id: 'conversation', title: `${t('flow.title')} · ${t('flow.turnCount', { count: graph.turnIds.length })}`, toolbar, content: <div className="flow-pane">
       <div className="flow-canvas" ref={setCanvas}>
         <ReactFlow<ConversationNode, Edge> nodes={nodes} edges={edges} nodeTypes={NODE_TYPES} onNodeClick={(_event, node) => selectNode(node)}
-          onNodesChange={onNodesChange} onPaneClick={selection.close} onInit={camera.onInit}
+          onNodesChange={onNodesChange} onInit={camera.onInit}
           onMoveStart={camera.onMoveStart} onMove={camera.onMove} onMoveEnd={camera.onMoveEnd}
           nodesDraggable={false} nodesConnectable={false} edgesReconnectable={false} elevateNodesOnSelect={false} deleteKeyCode={null}
           panOnScroll={false} zoomOnScroll panOnDrag zoomOnDoubleClick={false} minZoom={CAMERA_ZOOM.min} maxZoom={CAMERA_ZOOM.max} onlyRenderVisibleElements

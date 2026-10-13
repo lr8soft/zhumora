@@ -48,6 +48,8 @@ export interface ProviderConfig {
   apiKey: string
   /** 自定义 HTTP 请求头，按名称忽略大小写覆盖默认头（包括 Authorization）。 */
   headers?: Record<string, string>
+  /** 同一提供商的并行 LLM 请求上限；null / 未设表示不限。 */
+  maxConcurrency?: number | null
   defaultModel: string
   enabled: boolean
   temperature?: number             // 采样温度，不设则由 API 默认

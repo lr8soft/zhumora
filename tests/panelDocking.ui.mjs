@@ -46,6 +46,9 @@ try {
   await page.locator('.flow-inner-step.tool').filter({ hasText: /^read$/ }).click()
   await page.locator('.dock-details').waitFor()
   assert.match(await page.locator('.flow-detail-body').innerText(), /SessionService/)
+  const blank = await page.locator('.flow-canvas').boundingBox()
+  await page.mouse.click(blank.x + 8, blank.y + 8)
+  assert.ok(await page.locator('.flow-inspector').isVisible(), 'blank clicks retain docked details')
 
   for (const [name, mode] of [['停靠左侧', 'left'], ['停靠顶部', 'top'], ['停靠底部', 'bottom'], ['停靠右侧', 'right'], ['窗口内浮动', 'floating']]) {
     await setPanelMode(page, 'details', name)
@@ -89,6 +92,9 @@ try {
   assert.equal(await electron.evaluate(({ BrowserWindow }) => BrowserWindow.getAllWindows().find(window => window.webContents.getURL().startsWith('http:')).webContents.getBackgroundThrottling()), false,
     'a detached viewer keeps the original token flush responsive while its main window is hidden')
   assert.equal(await page.locator('.flow-inspector').count(), 0, 'the detail panel moved, without creating a second copy')
+  assert.match(await detailWindow.locator('.flow-detail-body').innerText(), /SessionService/)
+  await page.mouse.click(blank.x + 8, blank.y + 8)
+  assert.ok(await detailWindow.locator('.flow-inspector').isVisible(), 'blank clicks do not close the native detail window')
   assert.match(await detailWindow.locator('.flow-detail-body').innerText(), /SessionService/)
   assert.equal(await detailWindow.evaluate(() => typeof window.panelNativeApi), 'undefined', 'a portal window does not bootstrap a second preload API or App')
   assert.equal(await electron.evaluate(({ app, BrowserWindow }) => {

@@ -1,23 +1,43 @@
 # Zhumora 智能体
 
-**开源的桌面 AI 智能体（Windows / Ubuntu Linux）。**
+**开源的桌面端多 Agent 工作台，用流程图看见 AI 如何完成任务（Windows / Ubuntu Linux）。**
 
 Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏览器和桌面。程序本体以本地运行为主，同时支持 MCP、Skills、长期记忆和权限控制。
 
-[English](README.en-US.md) · [技术文档](./TECHNICAL.md) · [bilibili视频](https://www.bilibili.com/video/BV1Yyew6SEmN/)
+主 Agent 负责理解需求、设计方案、协调与验收，子 Agent 负责边界明确的小任务，编码任务默认按单个文件分工。你可以分别配置主、子 Agent 的模型，并在同一张流程图里查看派工、执行与结果汇合。
+
+[English](README.en-US.md) · [我们的愿景](./docs/VISION.md) · [宣传方案与 PPT](./docs/PROMOTION.md) · [技术文档](./TECHNICAL.md) · [bilibili视频](https://www.bilibili.com/video/BV1Yyew6SEmN/)
 
 <p align="center">
-  <img src="./img/image-main.png" alt="Zhumora — AI 智能体聊天界面" width="960" />
+  <img src="./img/multi-agent.png" alt="Zhumora — 主 Agent 与多个子 Agent 并发执行的对话流程图" width="960" />
 </p>
 
 
-<p align="center">
-  <img src="./img/image-chart.png" alt="架构图" width="960" />
-</p>
+## 新版工作台
+
+### 整个对话是一张流程图
+
+每次 LLM 发言是一个主节点，思考和工具调用作为内部小节点展开。子 Agent 从具体派工步骤分叉，主 Agent 取回子任务的终态结果后，连线汇合到对应的等待步骤。点击节点可以查看正文、模型实际返回的思考、工具参数与结果。
+
+历史按用户轮次折叠，最新一轮保持展开，旧轮次可单独展开。折叠只改变展示，不删除完整消息历史。
+
+### 工作区按你的习惯摆放
+
+对话流程、节点详情、输入区都是可移动面板，支持停靠、浮动或打开为独立窗口，并沿用深色 / 浅色主题。移动输入区时，未发送的文字和附件会保留。
+
+画布滚轮控制缩放；开启“跟随运行”后，画布和已打开的详情跟随最新主节点，并保留你选择的缩放比例。发言正文与详情在运行中滚动到最新输出，手动向上阅读时暂停内容跟随，回到底部后恢复。点击旧节点会暂停运行跟随，方便检查历史。
+
+### 多 Agent 有明确分工
+
+主 Agent 优先把可独立执行的修改派给子 Agent，负责接口约定、依赖顺序、实际改动审查及最终测试。子 Agent 默认聚焦一个文件或一个只读问题。同一父任务会拒绝把仍由活动子任务负责的文件再次派给另一个子任务。
+
+并发上限来自各 LLM provider 的配置，留空不限制。同一 provider 的主 Agent、子 Agent、其他会话及辅助补全共享请求额度，超过上限时排队。没有额外写死的子 Agent 并发数量或累计启动次数限制。
 
 ## 功能
 
-- 以可视化流程图查看对话、LLM 轮次与工具执行，展开子 Agent 分支并查看结果汇合
+- 以 LLM 发言组织对话流程图，内嵌思考 / 工具步骤，显示子 Agent 分叉与结果汇合
+- 对话、详情、输入面板可停靠、浮动或独立成窗，支持自定义缩放下的运行跟随
+- 主 / 子 Agent 模型独立配置，按 provider 统一控制 LLM 请求并发
 - 支持 OpenAI 兼容 API，也可接入 Ollama、llama.cpp、vLLM 等本地端点
 - 在指定工作目录内读取、编辑、搜索和管理文件
 - 通过按格式划分的内置工具读写 Word、Excel、PowerPoint 和 PDF 文件
@@ -120,8 +140,11 @@ npm run build:linux
 - Temperature
 - Reasoning Effort
 - Context Window
+- 并发上限（正整数，留空不限制）
 
 本地和远程模型端点均可使用。
+
+并发上限在 **设置 → LLM 提供商** 的单个 provider 中配置并保存。它限制该 provider 同时进行的 LLM 请求，流式回复直到结束才释放额度；超额请求排队，取消任务时仍可取消等待。不同 provider 分别计数，同一 provider 下不同模型共享额度。该值是你配置的客户端限制，不代表 Zhumora 自动探测到了服务商的真实容量。
 
 ## VRM Avatar
 
@@ -131,7 +154,7 @@ Avatar 自带程序生成的待机、说话、点头、摇头、打招呼、挥�
 
 项目不附带角色模型。`@pixiv/three-vrm` 代码采用 MIT 许可证，但每个 VRM 模型拥有独立许可；导入和分发模型前请自行确认模型作者的授权范围。
 
-## 子 Agent（初版）
+## 子 Agent 协作
 
 在 **设置 → 通用 → Agent 行为 → 启用子 Agent** 打开或关闭（点击“保存设置”后生效）。关闭会阻止新建和继续子任务，已启动任务仍可完成、等待或取消。
 
@@ -143,11 +166,25 @@ Zhumora 可以在工作时主动创建多个子 Agent；每个子 Agent 有独�
 
 主 Agent 使用 `spawn_subagent` 创建、`wait_subagents` 等待、`continue_subagent` 继续已有子会话、`cancel_subagent` 停止自己的子任务，`list_subagent_providers` 查看可选 provider。默认使用设置中选择的子模型；选择“继承”时使用主运行的 provider/model。显式切换到其他 provider 且未指定模型时，使用其默认模型。
 
-侧边栏“子 Agent”分组可查看各自输出、创建模型和主会话。初版限制一层子 Agent、每个主运行最多 4 个并行和 8 次启动（含继续）。主任务停止或结束时清理未结束子任务，完整子历史保留；重启后不自动恢复任务。工具仍受统一权限控制，文件、浏览器和物理桌面仍是共享资源。
+编码任务建议直接说明分工，例如：
+
+> 先确认接口和验收标准，再把独立修改按文件交给子 Agent 并行完成。每个子 Agent 只负责一个文件，遇到额外依赖先向你报告。你负责协调、审查实际 diff、运行最终测试与构建，全部完成后汇总。
+
+主 Agent 能读取启用 provider 的 `maxConcurrency` 来安排派工；额度只约束实际 LLM 请求，排队中的子任务仍然是活动任务。未填写上限时不限制并发，系统不再另设固定的子任务数量或累计启动次数预算。
+
+侧边栏“子 Agent”分组可查看各自输出、创建模型和主会话，流程图可查看任务分叉与汇合。当前支持一层子 Agent，不支持子 Agent 再次派工。主任务停止或结束时取消未结束子任务，完整子历史保留；重启后不自动恢复任务。文件分工是协作契约与同一父任务内的防冲突检查，不是文件系统沙箱。文件、浏览器和物理桌面仍是共享资源，所有工具继续受统一权限控制。
+
+## 我们的愿景
+
+我们希望每个人都能在自己的电脑上组织一支看得见、能干预的 AI 工作团队。用户提出目标，主 Agent 负责计划与验收，子 Agent 处理清晰的小任务；整个过程保留可检查的执行记录。
+
+Zhumora 将持续围绕可视化协作、模型选择权和用户控制权发展。执行过程可以更自主，授权边界仍由人决定。详细愿景与未来方向见 [VISION.md](./docs/VISION.md)，其中未来目标不代表已经实现。
 
 ## 文档
 
 会话/消息系统的权威架构与开发约束见 [ARCHITECTURE.md](./ARCHITECTURE.md) 和 [AGENTS.md](./AGENTS.md)；工具系统、上下文管理、长期记忆、MCP 和构建细节见 [TECHNICAL.md](./TECHNICAL.md)。
+
+产品愿景见 [VISION.md](./docs/VISION.md)；对外介绍、演示脚本与宣传 PPT 见 [PROMOTION.md](./docs/PROMOTION.md)。反馈和复现信息可提交到 [GitHub Issues](https://github.com/lr8soft/zhumora/issues)。
 
 ## 许可证
 

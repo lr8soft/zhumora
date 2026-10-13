@@ -9,6 +9,7 @@ import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 import { assertPassiveLanes } from './helpers/flowLaneChecks.mjs'
 import { assertFoldedAppearance, assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
 import { assertResponsiveSpeech } from './helpers/speechSizingChecks.mjs'
+import { assertProviderConcurrencySettings } from './helpers/providerConcurrencyUiChecks.mjs'
 
 // No Electron, provider requests or user database: this drives the production renderer with explicit IPC fixtures.
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
@@ -49,6 +50,13 @@ try {
   await assertFoldedAppearance(page)
   await page.locator('.flow-inner-step.tool').filter({ hasText: /^read$/ }).click()
   await page.locator('.flow-inspector').waitFor()
+  const inspectedText = await page.locator('.flow-detail-body').innerText()
+  const inspectedTab = await page.locator('.flow-detail-tabs button.active').innerText()
+  const blank = await page.locator('.flow-canvas').boundingBox()
+  await page.mouse.click(blank.x + 8, blank.y + 8)
+  assert.ok(await page.locator('.flow-inspector').isVisible(), 'blank canvas clicks retain the open inspector')
+  assert.equal(await page.locator('.flow-detail-body').innerText(), inspectedText, 'blank clicks preserve the inspected step')
+  assert.equal(await page.locator('.flow-detail-tabs button.active').innerText(), inspectedTab)
   assert.equal(await page.locator('.flow-step-list button').count(), 2, 'the spoken message exposes its LLM and tool actions')
   assert.match(await page.locator('.flow-detail-body').innerText(), /SessionService/)
   await page.locator('.flow-step-list button').first().click()
@@ -247,6 +255,7 @@ try {
   await page.waitForFunction(() => document.querySelector('.flow-detail-body')?.textContent.includes('实时详情。'))
   await assertStreamingDetail(page, page, 'detail-live', true)
   await assertResponsiveSpeech(page, output)
+  await assertProviderConcurrencySettings(page, output)
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
   console.log(`Flow UI passed: responsive speech height/width, latest text, bounded tool scrolling/ports, light/dark, folding, live details, ID routing and camera stability. Screenshots: ${output}`)
 } catch (error) {

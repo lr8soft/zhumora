@@ -231,6 +231,7 @@ app.on('before-quit', () => {
   void applicationServices?.bots.stopAll()
   void applicationServices?.mcpServer.stop()
   void applicationServices?.sessions.stopAll()
+  applicationServices?.llmRequests.dispose()
   applicationServices?.permissions.dispose()
   applicationServices?.avatar.dispose()
   applicationServices?.tts.dispose()

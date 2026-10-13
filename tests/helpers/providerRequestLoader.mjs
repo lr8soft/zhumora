@@ -6,7 +6,7 @@ export function resolve(specifier, context, nextResolve) {
     const source = specifier.endsWith('/net/fetch')
       ? 'export function getFetch() { return globalThis.fetch }'
       : specifier.endsWith('/store/db')
-        ? 'export function getSettings() { return { maxRetries: 0, useSystemCerts: false } }'
+        ? 'export function getSettings() { return { maxRetries: 0, useSystemCerts: false, providers: [] } }'
         : null
     if (source) return { url: `data:text/javascript,${encodeURIComponent(source)}`, shortCircuit: true }
     if (specifier.startsWith('.') && !/\.[cm]?[jt]s$/.test(specifier)) {

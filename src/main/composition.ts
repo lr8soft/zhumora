@@ -19,6 +19,7 @@ import { SessionService } from './agent/sessionService'
 import { runAgent } from './agent/runner'
 import { fetchContextWindow, planAutoCompact } from './agent/context'
 import { complete } from './llm/provider'
+import { providerRequests } from './llm/requestRuntime'
 import { log } from './llm/logger'
 import { BotSessionAdapter } from './bot/sessionAdapter'
 import { BotPlatformManager, defineBotPlatform } from './bot/platformManager'
@@ -51,6 +52,7 @@ export interface ApplicationServices {
   avatar: AvatarWindowManager
   tts: TtsManager
   desktopControl: DesktopControlCoordinator
+  llmRequests: typeof providerRequests
 }
 
 export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
@@ -106,5 +108,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, sessions, bots, mcpServer, avatar, tts, desktopControl }
+  return { tools: toolRegistry, permissions, sessions, bots, mcpServer, avatar, tts, desktopControl, llmRequests: providerRequests }
 }

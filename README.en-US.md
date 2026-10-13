@@ -1,22 +1,32 @@
 # Zhumora Agent
 
-An open source desktop AI agent for Windows and Ubuntu Linux.
+An open source desktop workspace for multiple AI agents, with a graph that shows how they complete your tasks. Available for Windows and Ubuntu Linux.
 
 Zhumora connects to OpenAI-compatible models and can work with your files, terminal, browser, and desktop. It is designed as a local-first agent runtime with support for MCP, skills, memory, and user-controlled permissions.
 
-[简体中文](README.md) · [Technical documentation](./TECHNICAL.md) · [Bilibili video](https://www.bilibili.com/video/BV1Yyew6SEmN/)
+The main agent plans the work, coordinates dependencies, reviews changes, and owns final validation. Subagents handle small, clearly scoped tasks, normally one file per coding assignment. Main and child agents can use separately configured models.
+
+[简体中文](README.md) · [Vision (Chinese)](./docs/VISION.md) · [Presentation and promotion plan (Chinese)](./docs/PROMOTION.md) · [Technical documentation](./TECHNICAL.md) · [Bilibili video](https://www.bilibili.com/video/BV1Yyew6SEmN/)
 
 <p align="center">
-  <img src="./img/image-main.png" alt="Zhumora — AI agent chat interface" width="960" />
+  <img src="./img/multi-agent.png" alt="Zhumora — main agent and concurrent subagents in a conversation graph" width="960" />
 </p>
 
-<p align="center">
-  <img src="./img/image-chart.png" alt="Architecture Chart" width="960" />
-</p>
+## The new workspace
+
+Each LLM utterance is a main graph node. Reasoning returned by the model and tool calls appear as smaller steps inside it. Subagent branches start at the delegation step and return to the matching wait step after the parent retrieves a terminal result. Clicking a node shows its content, reasoning, tool arguments, and results.
+
+Earlier user turns collapse by default while the latest stays open. Expanding and collapsing change the view, preserving the full message history.
+
+The conversation graph, inspector, and composer can dock, float, or open in separate windows. Moving the composer preserves its unsent text and attachments. Light and dark themes apply throughout the workspace.
+
+The canvas mouse wheel controls zoom. Follow mode tracks the latest main node and updates an open inspector while keeping your chosen zoom level. Streaming content scrolls to the latest output. Scrolling upward pauses content following until you return to the bottom. Selecting historical nodes pauses run following.
 
 ## Features
 
-- Explore conversations as execution graphs with LLM turns, tool nodes, subagent branches, and returned results
+- Explore conversations as utterance nodes with nested reasoning and tool steps, subagent branches, and returned results
+- Dock, float, or detach the graph, inspector, and composer, with follow mode at your chosen zoom level
+- Configure main and child models independently and control request concurrency per provider
 - Connect to OpenAI-compatible APIs, including local endpoints such as Ollama, llama.cpp, and vLLM
 - Read, edit, search, and manage files in the selected workspace
 - Read and write Word, Excel, PowerPoint, and PDF artifacts with format-specific built-in tools
@@ -120,8 +130,27 @@ Open **Settings** and add an OpenAI-compatible provider:
 - Temperature
 - Reasoning effort
 - Context window
+- Concurrency limit (a positive integer, or blank for unlimited)
 
 Local and remote endpoints are both supported.
+
+Set the limit under **Settings → LLM Providers** and save. All models, main agents, subagents, other sessions, and auxiliary completions using that provider share its allowance. Excess requests queue and remain cancellable. A streaming response holds its slot until it ends. Each provider has a separate allowance. This is a configured client limit, not an automatically discovered service capacity.
+
+## Subagent collaboration
+
+Enable subagents under **Settings → General → Agent behavior**, select a separate default provider/model or inherit the main model, and save. An explicit task-level model choice overrides the default. Continuing a child session keeps its original model. Disabling subagents blocks new or continued tasks, while existing tasks can still finish, be awaited, or be cancelled.
+
+The main agent acts as an architect and coordinator. It defines interfaces, assigns independent file edits, checks actual diffs, and runs final integration validation. Each child normally edits one assigned file or answers one bounded read-only question. A parent run rejects duplicate assignments for a file that an active child still owns.
+
+Concurrency comes only from the selected provider's `maxConcurrency`. Blank means unlimited. There is no additional fixed simultaneous-child cap or cumulative child-start budget. Queued children remain active tasks.
+
+Use the graph and the sidebar's subagent group to inspect each child's work. Delegation supports one level, without nested child delegation. A parent ending or stopping cancels unfinished children, preserving their histories. Tasks do not resume automatically after an application restart. File assignments are coordination contracts, not filesystem sandboxes. Files, browser tabs, and the physical desktop remain shared, and all tools retain the normal permission controls.
+
+## Our vision
+
+We want people to organize an AI team on their own computers, understand its work, and intervene when needed. The user sets the goal, the main agent plans and verifies, and subagents complete focused tasks with inspectable execution records.
+
+We will continue developing visual collaboration, model choice, and user control. More autonomous execution must keep authorization with the user. The [full vision](./docs/VISION.md) separates today's capabilities from future goals.
 
 ## VRM Avatar
 
@@ -142,6 +171,8 @@ No character model is bundled. The `@pixiv/three-vrm` code is MIT-licensed, but 
 ## Documentation
 
 The authoritative session/message architecture and contribution rules are documented in [ARCHITECTURE.md](./ARCHITECTURE.md) and [AGENTS.md](./AGENTS.md). Tool interfaces, context management, memory, MCP, and build notes are in [TECHNICAL.md](./TECHNICAL.md).
+
+The [vision](./docs/VISION.md) and [promotion plan with a presentation](./docs/PROMOTION.md) describe the product direction. Report bugs with reproduction steps through [GitHub Issues](https://github.com/lr8soft/zhumora/issues).
 
 ## License
 

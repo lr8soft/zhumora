@@ -13,6 +13,7 @@ import {
 } from './sseAccumulator'
 import { isMalformedToolArgumentsError, isReasoningParamRejected } from './errors'
 import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
+import { withProviderRequest } from './requestRuntime'
 
 export type { TokenUsage }
 
@@ -182,6 +183,13 @@ export async function streamChat(
  * "流中断续写"兜底读取）；用户中止路径不写（该部分按正常完成返回）。
  */
 async function attemptStreamChat(
+  url: string, body: Record<string, unknown>, provider: ProviderConfig, params: CompletionParams,
+  cb: StreamCallbacks | undefined, state: { emitted: boolean; partial: AttemptResult | null }
+): Promise<AttemptResult> {
+  return withProviderRequest(provider, params.signal, () => executeStreamChat(url, body, provider, params, cb, state))
+}
+
+async function executeStreamChat(
   url: string,
   body: Record<string, unknown>,
   provider: ProviderConfig,
@@ -278,9 +286,10 @@ export async function complete(
   }
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
   return withRetry(
-    async () => {
+    () => withProviderRequest(provider, signal, async () => {
       const resp = await getFetch()(url, {
         method: 'POST',
+        signal,
         headers: createProviderRequestHeaders(provider),
         body: JSON.stringify({
           model: model || provider.defaultModel,
@@ -302,7 +311,7 @@ export async function complete(
       if (!resp.ok) throw new HttpError(resp.status, `LLM API ${resp.status}: ${await resp.text()}`)
       const json: any = await resp.json()
       return json.choices?.[0]?.message?.content || ''
-    },
+    }),
     {
       maxRetries: getMaxRetries(),
       label: `LLM complete ${provider.name || provider.baseUrl}`,

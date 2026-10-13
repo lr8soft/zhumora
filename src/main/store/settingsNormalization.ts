@@ -9,9 +9,10 @@ import { normalizeBbsConfig } from '../../shared/bbs.ts'
 import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/mcpServer.ts'
 import { normalizeReasoningDialect } from '../../shared/reasoning.ts'
 import { normalizeProviderHeaders } from '../../shared/providerHeaders.ts'
+import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
 import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 13
+export const SETTINGS_SCHEMA_VERSION = 14
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {
@@ -23,6 +24,7 @@ export function defaultSettings(workspacePath: string): AppSettings {
         baseUrl: 'https://api.zhuminet.com/v1',
         apiKey: '',
         headers: {},
+        maxConcurrency: null,
         defaultModel: '',
         enabled: true
       }
@@ -53,7 +55,7 @@ export function defaultSettings(workspacePath: string): AppSettings {
 }
 
 /**
- * Provider 列表的结构归一化：思考强度方言和自定义请求头在此收口。
+ * Provider 列表的结构归一化：思考方言、请求头和并发上限在此收口。
  * 其余字段保持原样——它们的默认值由各消费方（上下文窗口探测、模型列表、
  * 用量统计）决定，在这里补默认值会形成第二份默认值定义。
  */
@@ -64,6 +66,7 @@ function normalizeProviders(input: unknown): AppSettings['providers'] | null {
     return {
       ...provider,
       headers: normalizeProviderHeaders((provider as AppSettings['providers'][number]).headers),
+      maxConcurrency: normalizeProviderConcurrency((provider as AppSettings['providers'][number]).maxConcurrency),
       reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect)
     }
   })

@@ -7,6 +7,7 @@ import { providerRequestIdentity } from '@shared/providerHeaders'
 import { ProviderHeadersField, type ProviderHeaderDraft } from './ProviderHeadersField'
 import { useProviderContextDetection } from './useProviderContextDetection'
 import { TEMPERATURE_MAX, TEMPERATURE_MIN, TEMPERATURE_STEP, TemperatureInput } from './TemperatureInput'
+import ProviderConcurrencyField from './ProviderConcurrencyField'
 
 interface Props {
   providers: ProviderConfig[]
@@ -81,7 +82,8 @@ export function ProviderSettings({ providers, activeId, onChange, headerDrafts, 
       temperature: undefined,
       reasoningEnabled: false,
       reasoningDialect: 'auto',
-      contextWindow: 0
+      contextWindow: 0,
+      maxConcurrency: null
     }
     onChange([...providers, newProv], activeId || id)
   }
@@ -301,6 +303,8 @@ export function ProviderSettings({ providers, activeId, onChange, headerDrafts, 
             </div>
             <p className="form-hint">{t('settings.providers.reasoningDialectHint')}</p>
           </div>
+
+          <ProviderConcurrencyField id={p.id} value={p.maxConcurrency} onChange={value => updateProvider(i, { maxConcurrency: value })} />
 
           {/* Context Window */}
           <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center' }}>

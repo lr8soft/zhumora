@@ -9,6 +9,7 @@ import type {
 import { AgentAbortedError } from '../../shared/types.ts'
 import { sessionNeedsTitle } from '../../shared/sessionTitle.ts'
 import type { SessionModelSelection } from '../../shared/sessionModel.ts'
+import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
 import { resolveSessionModel, saveSessionModelSelection } from './sessionModelPolicy.ts'
 import { compactSession } from './sessionCompaction.ts'
 import { mapPersistedHistory } from './messageMapper.ts'
@@ -123,7 +124,7 @@ export class SessionService {
         modelOverride,
         reasoningEffort: request.reasoningEffort,
         systemPromptExtra: [request.sourcePrompt, commonPrompt,
-          session.subagent ? SUBAGENT_CHILD_GUIDANCE : this.deps.tools.get('spawn_subagent') ? subagentDelegationGuidance(settings.subagentsEnabled, settings.subagentModel) : undefined]
+          session.subagent ? SUBAGENT_CHILD_GUIDANCE : this.deps.tools.get('spawn_subagent') ? subagentDelegationGuidance(settings.subagentsEnabled, settings.subagentModel, settings.providers) : undefined]
           .filter(Boolean).join('\n\n'),
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
@@ -191,9 +192,9 @@ export class SessionService {
     return run.subagents
   }
 
-  listSubagentProviders(): { id: string; name: string; defaultModel: string }[] {
+  listSubagentProviders(): { id: string; name: string; defaultModel: string; maxConcurrency: number | null }[] {
     return this.deps.store.getSettings().providers.filter(item => item.enabled)
-      .map(({ id, name, defaultModel }) => ({ id, name, defaultModel }))
+      .map(({ id, name, defaultModel, maxConcurrency }) => ({ id, name, defaultModel, maxConcurrency: normalizeProviderConcurrency(maxConcurrency) }))
   }
 
   listSessions(): Session[] {
@@ -281,6 +282,7 @@ export class SessionService {
   ): SubagentScope {
     const parent = { providerId: provider.id, model: modelOverride || provider.defaultModel }
     return new SubagentScope({
+      workspacePath: session.workspacePath || this.deps.store.getSettings().workspacePath,
       assertEnabled: () => assertSubagentsEnabled(this.deps.store.getSettings().subagentsEnabled),
       resolveModel: input => {
         const settings = this.deps.store.getSettings()

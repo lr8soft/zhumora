@@ -63,6 +63,7 @@ export function registerGeneralIpc(win: BrowserWindow, services: ApplicationServ
     const previous = db.getSettings()
     db.saveSettings(requested)
     const settings = db.getSettings()
+    services.llmRequests.configureLimits(settings.providers)
     const mcpChanged = !equivalentConfigList(settings.mcpServers, previous.mcpServers)
     const skillsChanged = !equivalentConfigList(settings.skills, previous.skills)
     const certModeChanged = (settings.useSystemCerts === true) !== (previous.useSystemCerts === true)

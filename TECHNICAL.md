@@ -137,6 +137,17 @@ QQ ─────── BotMessageQueue ─┘          │                │
 
 `SessionService` is the only persistent-session application use case and the only module allowed to invoke the injected Agent executor. IPC, Telegram, QQ, and the inbound MCP server are transport adapters over that API. The renderer does not receive unrestricted Electron IPC access; preload exposes a limited application API through `contextBridge`.
 
+Internal delegation defaults to an architect/coordinator parent and small single-file
+implementation assistants. The parent defines interfaces/dependencies, dispatches ready
+work concurrently and owns diff review, integration validation and the final answer.
+Optional `spawn_subagent.targetFile` supplies a canonical file work order; one parent
+run cannot assign the same file to two active/starting children. Ownership is retained
+through SessionService cleanup and inherited by continuation. This is a collaboration
+contract, not a filesystem sandbox or a global cross-session lock. All tools and normal
+permissions remain intact. Provider-configured concurrency is the only inference
+capacity limit; empty means unlimited. Prompts and provider discovery expose those
+limits for planning. There is no additional fixed child-count or cumulative task cap.
+
 Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
 Each Avatar window owns an `AvatarWindowInteraction` instance for drag capture and mouse passthrough. Renderer hit-testing selects the character or explicit drag handles; typed IPC sends only start/move/end phases, and main calculates positions from Electron's DIP cursor coordinates. Blur/end releases capture. Global dimensions are normalized at the settings boundary (schema version 8), applied on save, and fitted to each monitor's work area; renderer framing retains stable model bounds when resized.
@@ -148,6 +159,16 @@ TTS is another isolated presentation adapter. A session-persisted opt-in flag le
 ## 4. LLM providers
 
 Zhumora uses OpenAI-compatible chat-completions endpoints and SSE streaming.
+
+Each provider may set `maxConcurrency` to a positive integer; an empty field is
+normalized to null (unlimited) by settings schema v14. All models and main/subagent
+or auxiliary completions share the provider-ID capacity. The network adapter owns
+a cancellable FIFO and holds permits until stream EOF/abort or response parsing
+finishes, releasing them before retry backoff. Other providers remain independent.
+Saving settings updates waiting queues immediately; reducing a limit does not abort
+active requests. Metadata discovery does not consume inference permits. Shutdown
+disposes pending requests through the composition root; SessionService retains
+exclusive ownership of Agent runs, cancellation and permissions.
 
 A provider stores:
 
