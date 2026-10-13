@@ -52,6 +52,7 @@ export interface AgentRunOptions {
   permissionCheck?: (toolName: string, args: Record<string, unknown>) => Promise<boolean>
   signal?: AbortSignal
   systemPromptExtra?: string
+  systemPromptRole?: string
   /** 由组合根提供的已加载 Skill 提示词，runner 不读取模块级全局状态。 */
   skillsPrompt?: string
   /** 构建系统提示词所需的运行时快照，避免 prompt builder 反向依赖 MCP/registry。 */
@@ -254,7 +255,7 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
   // 会话仍是默认标题 → 注入命名提醒（否则 LLM 不主动调 set_title 时标题永远不更新）。
   // 放提示词顶部（topExtra）而不是末尾：末尾的指令在长上下文里最容易模型"看不见"。
   const extraParts = [opts.systemPromptExtra]
-  const topParts: string[] = []
+  const topParts: string[] = opts.systemPromptRole ? [opts.systemPromptRole] : []
   if (opts.sessionNeedsTitle) topParts.push(SESSION_TITLE_REMINDER)
   const systemPrompt = buildSystemPrompt(
     opts.workspacePath, skillsPrompt, memoryPrompt, promptRuntime,

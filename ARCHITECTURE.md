@@ -226,6 +226,10 @@ Bot 层禁止拥有：
 
 ### 内部子 Agent（初版）
 
+主 Agent 的协调角色通过 `sessionPromptOptions → AgentRunOptions.systemPromptRole → buildSystemPrompt(topExtra)` 放在身份之后、环境与工具清单之前；子会话注入聚焦执行角色，关闭委托时注入禁用说明。完整职责、单文件派工与等待/验收流程仍在追加指导中，来源适配器规则保持。非简单任务默认先识别、派发已就绪的独立小任务，无需用户提及 subagent；先确定接口再派发依赖它的实现。工具清单设独立 Agent Collaboration 分类。普通工具批量调用仍顺序执行，提示词不得把批量父编辑描述成真实并行；工具注册、权限与 `tool_choice=auto` 语义不变。
+
+每个 provider 可设置 `allowSubagents`（缺失默认 true，settings JSON schema v15）。关闭时该 provider 仍可用于主会话，但从子模型菜单的可选项、子模型目录请求、`list_subagent_providers` 和提示词可用并发列表排除；已有保存选择保留为不可用，不能自动选到其他端点。子模型的显式指定、默认选择和继承都必须通过同一 `assertSubagentProvider` 校验。spawn 在创建会话前检查；SessionService 对所有子会话输入（含 continue 和独立打开后的手动输入）在开始准备前、准备结束且持久化输入前现读设置重查；手动压缩子会话同样校验。迟到的批准和准备不能绕过此设置。已启动的子运行不强制中止，允许完成、等待、取消；再次启动受新设置限制。限制属于模型路由资格，不替代 PermissionBroker，不过滤完整工具注册表，不新增并发数量上限。
+
 Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。
 
 设置 → 通用 → Agent 行为提供 `subagentsEnabled` 开关（默认 true，保存后生效）和独立的子模型下拉（`subagentModel: {providerId, model} | null`，null 表示继承主模型）。settings JSON schema v12 在 `store/settingsNormalization.ts` 的唯一 normalizeSettings 边界补齐旧配置；开关缺失保留原开启行为，非布尔非法值关闭，旧配置的子模型缺失则继承主模型。db.ts 仍是 settings cache/保存/刷新 owner，不创建第二份配置缓存。关闭后不新建、不继续子运行，但已启动任务可完成、等待和取消；旧子会话历史保留，用户仍可单独打开。SubagentScope 的容量入口和 SessionService 的权限检查均现读权威设置，批准前后重查；启动准备结束、持久化输入前也重查，关闭不能被缓存 scope、迟到批准或在途准备绕过。完整工具注册表不变，新主运行的提示词明确说明委托关闭。

@@ -151,6 +151,8 @@ export default {
       apiKeyPlaceholder: '(opcional para local)',
       customHeaders: 'Cabeceras personalizadas (opcional)',
       maxConcurrency: 'Límite de concurrencia',
+      allowSubagents: 'Permitir este proveedor para subagentes',
+      allowSubagentsHint: 'Al desactivar, las sesiones principales pueden seguir usándolo, pero se bloquean tareas secundarias nuevas o continuadas. Las tareas en curso pueden terminar. Elija otro modelo en General; no se cambia de proveedor automáticamente.',
       concurrencyUnlimited: 'Sin límite',
       concurrencyHint: 'Todos los modelos, agentes y llamadas auxiliares comparten el límite del proveedor. El resto espera en cola. Vacío: sin límite.',
       concurrencyInvalid: 'Introduzca un entero positivo o deje vacío para no limitar.',

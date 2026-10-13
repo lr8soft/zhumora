@@ -155,6 +155,8 @@ export default {
       apiKeyPlaceholder: '(optional for local)',
       customHeaders: 'Custom headers (optional)',
       maxConcurrency: 'Concurrency limit',
+      allowSubagents: 'Allow subagents to use this provider',
+      allowSubagentsHint: 'When off, main sessions can still use this provider, but new and continued child tasks are blocked. Running tasks may finish. Choose another child model in General settings; providers are never switched automatically.',
       concurrencyUnlimited: 'Unlimited',
       concurrencyHint: 'All models, main/subagents and auxiliary completions share this provider limit. Extra requests queue. Leave empty for unlimited.',
       concurrencyInvalid: 'Enter a positive whole number, or leave empty for unlimited.',

@@ -73,6 +73,7 @@ export function createSubagentFixture() {
     setDelegation: (enabled: boolean) => { settings.subagentsEnabled = enabled },
     setChildModel: (model: SubagentModelSelection | null) => { settings.subagentModel = model },
     setProviderConcurrency: (id: string, limit: number | null) => { settings.providers.find(provider => provider.id === id)!.maxConcurrency = limit },
+    setProviderSubagentAccess: (id: string, allowed: boolean) => { settings.providers.find(provider => provider.id === id)!.allowSubagents = allowed },
     makeStuck: () => { stuck = true }, delayPrompt: (fn: () => Promise<string>) => { delayPrompt = fn } }
 }
 

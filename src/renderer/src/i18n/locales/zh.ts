@@ -171,6 +171,8 @@ export default {
       apiKeyPlaceholder: '(本地服务可留空)',
       customHeaders: '自定义请求头（可选）',
       maxConcurrency: '并发上限',
+      allowSubagents: '允许子 Agent 使用',
+      allowSubagentsHint: '关闭后，此提供商仍可用于主会话，但不能新建或继续子任务。已有子任务可完成；请在通用设置中选择其他子模型，不会自动切换提供商。',
       concurrencyUnlimited: '不限制',
       concurrencyHint: '同一提供商的所有模型、主/子 Agent 和辅助补全共享额度，超过上限时排队。留空不限制。',
       concurrencyInvalid: '请输入正整数，或留空表示不限制。',

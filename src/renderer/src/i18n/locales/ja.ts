@@ -151,6 +151,8 @@ export default {
       apiKeyPlaceholder: '(ローカルは省略可)',
       customHeaders: 'カスタムヘッダー（任意）',
       maxConcurrency: '同時リクエスト数の上限',
+      allowSubagents: 'サブエージェントによる利用を許可',
+      allowSubagentsHint: 'オフでもメイン会話では利用できますが、子タスクの新規作成・継続はできません。実行中のタスクは完了できます。一般設定で別の子モデルを選択してください。プロバイダーは自動変更されません。',
       concurrencyUnlimited: '制限なし',
       concurrencyHint: '同じプロバイダーの全モデル、メイン/サブエージェントと補助生成で共有します。超過分は待機。空欄は無制限。',
       concurrencyInvalid: '正の整数を入力するか、空欄で無制限にしてください。',

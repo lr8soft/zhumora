@@ -1,5 +1,6 @@
 import type { ProviderConfig } from '../../shared/types.ts'
 import type { SubagentModelSelection } from '../../shared/subagents.ts'
+import { canUseSubagentProvider } from '../../shared/providerSubagents.ts'
 
 export interface SubagentModelOption {
   value: string
@@ -14,7 +15,7 @@ export function buildSubagentModelOptions(
   providers: ProviderConfig[], catalogs: Record<string, { id: string }[]>, selected: SubagentModelSelection | null
 ): SubagentModelOption[] {
   const options: SubagentModelOption[] = []
-  for (const provider of providers.filter(item => item.enabled)) {
+  for (const provider of providers.filter(canUseSubagentProvider)) {
     const models = [provider.defaultModel, ...(catalogs[provider.id] || []).map(item => item.id),
       ...(selected?.providerId === provider.id ? [selected.model] : [])]
     for (const model of new Set(models)) {

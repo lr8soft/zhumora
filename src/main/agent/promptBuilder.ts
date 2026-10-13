@@ -50,12 +50,12 @@ const EDITING_APPROACH = `## Editing Approach
 - NEVER proactively create documentation files (*.md) or README files unless the user asks.
 - Do not add code comments unless the logic is genuinely non-obvious.
 - ALWAYS read a file before editing it. Never use edit with a guessed oldString — if it doesn't match, the edit will fail.
-- For large changes across many text/code files, prefer bash with sed/awk or write the entire file.
+- For changes spanning multiple files, follow the coordination workflow when delegation is enabled; keep each child's edit scope small and explicit.
 - Always verify your edits at the end: read the edited file back or run the project's build/lint/tests.`
 
 const TOOL_USAGE_POLICY = `## Tool Usage Policy
-- You can call multiple tools in a single response. When several independent reads, searches, commands, or edits are needed, emit them all together — do not serialize independent work across turns.
-- Good parallelism: read all known relevant files at once; run independent inspection commands together; edit multiple files in one response.
+- Batch independent reads and searches in one response to reduce interaction overhead. Ordinary tool calls execute sequentially; a batch of tools does not itself provide parallel execution.
+- When subagent delegation is enabled, use spawn_subagent for actual overlapping independent work. Dispatch ready tasks before waiting; do not use a batch of parent edits as a substitute for delegation. Children must receive agreed interfaces and separate file ownership first.
 - For file operations, prefer the dedicated tools over bash: use read (not cat/type), glob (not dir /s / find), grep (not findstr / grep in bash), edit (not sed), write (not echo > file).
 - When referencing code, use the format \`file_path:line_number\` so the user can navigate to the source.`
 
@@ -85,6 +85,10 @@ When to use memory tools:
 // ============================================================
 
 const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
+  {
+    label: 'Agent Collaboration',
+    tools: ['list_subagent_providers', 'spawn_subagent', 'wait_subagents', 'continue_subagent', 'cancel_subagent']
+  },
   {
     label: 'Reading & Exploring',
     tools: ['read', 'ls', 'glob', 'grep']
@@ -245,13 +249,13 @@ export function buildSystemPrompt(
   const date = new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' })
 
   let prompt = `You are Zhumora, a desktop AI agent that can code, automate tasks, and operate your computer. You run in a local Electron desktop environment.
+${topExtra ? '\n' + topExtra + '\n' : ''}
 
 ## Environment
 - Platform: ${platform}
 - Working directory: ${workspacePath}
 - Date: ${date}
 - You also have access to MCP tools and Skills for extended capabilities.${mcpSection}
-${topExtra ? '\n' + topExtra + '\n' : ''}
 ${TONE_AND_STYLE}
 
 ${VISUAL_OUTPUT}

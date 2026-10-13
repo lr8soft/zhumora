@@ -2,6 +2,7 @@ import assert from 'node:assert/strict'
 
 import { buildSystemPrompt } from '../src/main/agent/promptBuilder.ts'
 import { subagentDelegationGuidance, SUBAGENT_CHILD_GUIDANCE } from '../src/main/agent/subagentPolicy.ts'
+import { createSubagentFixture } from './helpers/subagentFixture.ts'
 
 const prompt = buildSystemPrompt('D:\\workspace', '', '', {
   tools: [],
@@ -28,3 +29,30 @@ assert.match(SUBAGENT_CHILD_GUIDANCE, /focused validation/)
 assert.doesNotMatch(subagentDelegationGuidance(false, null), /Launch as many/)
 
 console.log('system prompt visual-output guidance tests passed')
+
+// Exercise production SessionService assembly, not just standalone prompt constants.
+{
+  const f = createSubagentFixture()
+  try {
+    const root = await f.root()
+    const render = (options: typeof root.options) => buildSystemPrompt('D:/workspace', '', '', options.promptRuntime!,
+      options.systemPromptExtra, options.systemPromptRole)
+    const parentPrompt = render(root.options)
+    assert.ok(parentPrompt.indexOf('lead architect and coordinator') < parentPrompt.indexOf('## Environment'))
+    assert.match(parentPrompt, /without waiting for the user to mention subagents/)
+    assert.match(parentPrompt, /Before implementing a nontrivial task/)
+    assert.match(parentPrompt, /Ordinary tool calls execute sequentially/)
+    assert.match(parentPrompt, /\*\*Agent Collaboration:\*\*/)
+    assert.doesNotMatch(parentPrompt, /Good parallelism:|edit multiple files in one response/)
+    assert.match(parentPrompt, /Example: after agreeing a shared interface/)
+    const child = await root.scope.spawn({ description: 'single file', prompt: 'inspect it' })
+    const childPrompt = render(f.running.get(child.session_id)!.options)
+    assert.match(childPrompt, /You are a focused subagent/)
+    assert.doesNotMatch(childPrompt, /lead architect and coordinator|Proactive delegation is the default/)
+    f.setDelegation(false)
+    const disabled = await f.root('disabled')
+    assert.doesNotMatch(render(disabled.options), /lead architect and coordinator|Proactive delegation is the default/)
+    assert.match(render(disabled.options), /Subagents are disabled/)
+    assert.deepEqual(disabled.options.promptRuntime!.tools, root.options.promptRuntime!.tools)
+  } finally { await f.service.stopAll(); f.permissions.dispose() }
+}

@@ -151,6 +151,8 @@ export default {
       apiKeyPlaceholder: '(optionnel pour local)',
       customHeaders: 'En-têtes personnalisés (facultatif)',
       maxConcurrency: 'Limite de simultanéité',
+      allowSubagents: 'Autoriser ce fournisseur pour les sous-agents',
+      allowSubagentsHint: 'Désactivé : les sessions principales restent utilisables, mais les nouvelles tâches déléguées et leurs reprises sont bloquées. Les tâches en cours peuvent finir. Choisissez un autre modèle dans Général ; aucun changement automatique de fournisseur.',
       concurrencyUnlimited: 'Illimitée',
       concurrencyHint: 'Tous les modèles, agents et appels auxiliaires partagent cette limite. Les demandes supplémentaires attendent. Vide : illimitée.',
       concurrencyInvalid: 'Saisissez un entier positif ou laissez vide pour ne pas limiter.',

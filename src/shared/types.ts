@@ -50,6 +50,8 @@ export interface ProviderConfig {
   headers?: Record<string, string>
   /** 同一提供商的并行 LLM 请求上限；null / 未设表示不限。 */
   maxConcurrency?: number | null
+  /** Defaults to true. False reserves this provider for main sessions. */
+  allowSubagents?: boolean
   defaultModel: string
   enabled: boolean
   temperature?: number             // 采样温度，不设则由 API 默认

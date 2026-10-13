@@ -148,6 +148,13 @@ permissions remain intact. Provider-configured concurrency is the only inference
 capacity limit; empty means unlimited. Prompts and provider discovery expose those
 limits for planning. There is no additional fixed child-count or cumulative task cap.
 
+`sessionPromptOptions` assigns a parent coordinator or focused-child role near the
+start of the system prompt. Eligible independent work should be dispatched without
+the user mentioning subagents, after contracts are agreed. Agent Collaboration has
+its own tool category; ordinary tool batching remains sequential, whereas spawned
+child runs can overlap. Delegation-disabled and child roles do not receive the parent
+coordinator instruction. Tool visibility and normal approval rules remain unchanged.
+
 Avatar rendering is a fourth, deliberately isolated renderer boundary. Each enabled session owns one transparent `BrowserWindow` with its own sandboxed preload. The window requests managed VRM/VRMA bytes by opaque asset ID; filesystem paths and general IPC are never exposed to it. `avatar_control` is a normal registry tool whose adapter talks only to the Avatar controller and waits for a renderer acknowledgement. The Agent runner, provider, Office tools, MCP tools, and other built-ins contain no Avatar-specific branching.
 
 Each Avatar window owns an `AvatarWindowInteraction` instance for drag capture and mouse passthrough. Renderer hit-testing selects the character or explicit drag handles; typed IPC sends only start/move/end phases, and main calculates positions from Electron's DIP cursor coordinates. Blur/end releases capture. Global dimensions are normalized at the settings boundary (schema version 8), applied on save, and fitted to each monitor's work area; renderer framing retains stable model bounds when resized.
@@ -169,6 +176,17 @@ Saving settings updates waiting queues immediately; reducing a limit does not ab
 active requests. Metadata discovery does not consume inference permits. Shutdown
 disposes pending requests through the composition root; SessionService retains
 exclusive ownership of Agent runs, cancellation and permissions.
+
+`allowSubagents` defaults to true for new and legacy providers (settings schema v15).
+False keeps the provider available to main sessions but excludes it from child-model
+choices, child catalog requests, provider discovery and eligible-capacity guidance.
+An unavailable saved child model remains visible. Explicit routing, saved defaults
+and inheritance all reject disallowed providers without automatic fallback.
+SessionService checks every child start/continuation before and after asynchronous
+preparation, before persisting input, including direct child-session input. Manual
+child compaction also checks eligibility. Saving false does not abort an already
+started child; waiting and cancellation remain available. No new runtime, permission
+owner or concurrency limit is introduced.
 
 A provider stores:
 

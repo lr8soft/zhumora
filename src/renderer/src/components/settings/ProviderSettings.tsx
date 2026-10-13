@@ -8,6 +8,7 @@ import { ProviderHeadersField, type ProviderHeaderDraft } from './ProviderHeader
 import { useProviderContextDetection } from './useProviderContextDetection'
 import { TEMPERATURE_MAX, TEMPERATURE_MIN, TEMPERATURE_STEP, TemperatureInput } from './TemperatureInput'
 import ProviderConcurrencyField from './ProviderConcurrencyField'
+import { ProviderAccessSettings } from './ProviderAccessSettings'
 
 interface Props {
   providers: ProviderConfig[]
@@ -79,6 +80,7 @@ export function ProviderSettings({ providers, activeId, onChange, headerDrafts, 
       headers: {},
       defaultModel: '',
       enabled: true,
+      allowSubagents: true,
       temperature: undefined,
       reasoningEnabled: false,
       reasoningDialect: 'auto',
@@ -231,19 +233,7 @@ export function ProviderSettings({ providers, activeId, onChange, headerDrafts, 
               draft={headerDrafts[p.id]}
               onChange={text => onHeaderChange(p.id, text)}
             />
-            <div className="form-field span-2">
-              <div className="switch-row">
-                <div>
-                  <strong>{t('settings.providers.enabled')}</strong>
-                </div>
-                <input
-                  type="checkbox"
-                  className="switch"
-                  checked={p.enabled}
-                  onChange={(e) => updateProvider(i, { enabled: e.target.checked })}
-                />
-              </div>
-            </div>
+            <ProviderAccessSettings provider={p} onChange={updates => updateProvider(i, updates)} />
           </div>
 
           {/* Temperature */}

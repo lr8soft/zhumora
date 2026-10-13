@@ -10,6 +10,8 @@ import { AgentAbortedError } from '../../shared/types.ts'
 import { sessionNeedsTitle } from '../../shared/sessionTitle.ts'
 import type { SessionModelSelection } from '../../shared/sessionModel.ts'
 import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
+import { assertSubagentProvider, canUseSubagentProvider } from '../../shared/providerSubagents.ts'
+import { sessionPromptOptions } from './sessionPrompt.ts'
 import { resolveSessionModel, saveSessionModelSelection } from './sessionModelPolicy.ts'
 import { compactSession } from './sessionCompaction.ts'
 import { mapPersistedHistory } from './messageMapper.ts'
@@ -22,7 +24,7 @@ import { collectUserTexts, ensureSessionTitle } from './titleService.ts'
 import { SessionEventHub } from './sessionEventHub.ts'
 import { generateId } from '../id.ts'
 import { SubagentScope } from './subagentScope.ts'
-import { assertSubagentsEnabled, resolveSubagentModel, SUBAGENT_CHILD_GUIDANCE, subagentDelegationGuidance } from './subagentPolicy.ts'
+import { assertSubagentsEnabled, resolveSubagentModel } from './subagentPolicy.ts'
 import { createSessionPermissionCheck } from './sessionPermissionCheck.ts'
 import type { ActiveSessionRun, SessionStore, SessionRunRequest, SessionRunHandle, SessionCompactInfo, SessionServiceDependencies } from './sessionContracts.ts'
 
@@ -74,6 +76,7 @@ export class SessionService {
     }
     const settings = this.deps.store.getSettings()
     const { provider, modelOverride } = resolveSessionModel(settings, session, request)
+    if (session.subagent) assertSubagentProvider(settings.providers, provider.id)
     if (request.approveMode) this.setApproveMode(sessionId, request.approveMode)
 
     const settleDefer = deferred<void>()
@@ -95,6 +98,7 @@ export class SessionService {
       const commonPrompt = await awaitWithSignal(this.deps.getSystemPromptExtra?.(sessionId) ?? Promise.resolve(undefined), run.controller.signal)
       if (run.controller.signal.aborted) throw new AgentAbortedError()
       if (parentRun) assertSubagentsEnabled(this.deps.store.getSettings().subagentsEnabled)
+      if (session.subagent) assertSubagentProvider(this.deps.store.getSettings().providers, provider.id)
 
       const userMessage = this.persistUserMessage(sessionId, request.message)
       run.events.userMessage?.(userMessage, request.inputSource || 'renderer')
@@ -123,18 +127,10 @@ export class SessionService {
         permissionCheck,
         modelOverride,
         reasoningEffort: request.reasoningEffort,
-        systemPromptExtra: [request.sourcePrompt, commonPrompt,
-          session.subagent ? SUBAGENT_CHILD_GUIDANCE : this.deps.tools.get('spawn_subagent') ? subagentDelegationGuidance(settings.subagentsEnabled, settings.subagentModel, settings.providers) : undefined]
-          .filter(Boolean).join('\n\n'),
+        ...sessionPromptOptions(session, settings, this.deps.tools, this.deps.getMcpStatus(), request.sourcePrompt, commonPrompt),
         memoryEnabled: settings.memoryEnabled !== false,
         maxRounds: settings.maxRounds,
         skillsPrompt: this.deps.getSkillsPrompt(),
-        promptRuntime: {
-          tools: this.deps.tools.definitions(),
-          builtinTools: this.deps.tools.definitionsBySource('builtin'),
-          mcpTools: this.deps.tools.definitionsBySource(source => source.startsWith('mcp:')),
-          mcpServers: this.deps.getMcpStatus()
-        },
         toolRegistry: this.deps.tools,
         sessionNeedsTitle: needsTitle,
         onSessionTitleUpdate: (id, title) => run.events.titleUpdated?.(id, title),
@@ -193,7 +189,7 @@ export class SessionService {
   }
 
   listSubagentProviders(): { id: string; name: string; defaultModel: string; maxConcurrency: number | null }[] {
-    return this.deps.store.getSettings().providers.filter(item => item.enabled)
+    return this.deps.store.getSettings().providers.filter(canUseSubagentProvider)
       .map(({ id, name, defaultModel, maxConcurrency }) => ({ id, name, defaultModel, maxConcurrency: normalizeProviderConcurrency(maxConcurrency) }))
   }
 
@@ -274,6 +270,7 @@ export class SessionService {
     const session = this.deps.store.getSession(sessionId)
     if (!session) throw new Error('Session not found.')
     const { provider, modelOverride } = resolveSessionModel(settings, session)
+    if (session.subagent) assertSubagentProvider(settings.providers, provider.id)
     return compactSession(sessionId, provider, modelOverride, { deps: this.deps, events: this.events, now: this.now })
   }
 

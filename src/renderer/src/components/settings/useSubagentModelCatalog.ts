@@ -1,5 +1,6 @@
 import { useEffect, useState } from 'react'
 import type { ProviderConfig } from '@shared/types'
+import { canUseSubagentProvider } from '@shared/providerSubagents'
 
 type ModelLists = Record<string, { id: string; name?: string }[]>
 
@@ -15,7 +16,7 @@ export function useSubagentModelCatalog(providers: ProviderConfig[], enabled: bo
       return
     }
     let current = true
-    const active = providers.filter(provider => provider.enabled)
+    const active = providers.filter(canUseSubagentProvider)
     setCatalog({ providers, models: {}, failed: [], loading: true })
     void Promise.allSettled(active.map(provider => window.api.provider.listModels(provider, revision > 0))).then(results => {
       if (!current) return

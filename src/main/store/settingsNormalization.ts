@@ -10,9 +10,10 @@ import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/m
 import { normalizeReasoningDialect } from '../../shared/reasoning.ts'
 import { normalizeProviderHeaders } from '../../shared/providerHeaders.ts'
 import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
+import { normalizeProviderSubagentAccess } from '../../shared/providerSubagents.ts'
 import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 14
+export const SETTINGS_SCHEMA_VERSION = 15
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {
@@ -25,6 +26,7 @@ export function defaultSettings(workspacePath: string): AppSettings {
         apiKey: '',
         headers: {},
         maxConcurrency: null,
+        allowSubagents: true,
         defaultModel: '',
         enabled: true
       }
@@ -67,6 +69,7 @@ function normalizeProviders(input: unknown): AppSettings['providers'] | null {
       ...provider,
       headers: normalizeProviderHeaders((provider as AppSettings['providers'][number]).headers),
       maxConcurrency: normalizeProviderConcurrency((provider as AppSettings['providers'][number]).maxConcurrency),
+      allowSubagents: normalizeProviderSubagentAccess((provider as AppSettings['providers'][number]).allowSubagents),
       reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect)
     }
   })

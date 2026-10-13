@@ -1,5 +1,6 @@
 import type { ProviderConfig } from './types.ts'
 import { normalizeProviderConcurrency } from './providerConcurrency.ts'
+import { normalizeProviderSubagentAccess } from './providerSubagents.ts'
 
 type ProviderRequestConfig = Pick<ProviderConfig, 'baseUrl' | 'apiKey' | 'headers'>
 
@@ -70,5 +71,6 @@ export function validateProviderRequest(input: unknown): ProviderConfig {
   if (typeof provider.enabled !== 'boolean') throw new Error('Invalid provider enabled')
   const url = new URL(provider.baseUrl)
   if (!['http:', 'https:'].includes(url.protocol)) throw new Error('Invalid provider URL protocol')
-  return { ...provider, headers: normalizeProviderHeaders(provider.headers), maxConcurrency: normalizeProviderConcurrency(provider.maxConcurrency) }
+  return { ...provider, headers: normalizeProviderHeaders(provider.headers), maxConcurrency: normalizeProviderConcurrency(provider.maxConcurrency),
+    allowSubagents: normalizeProviderSubagentAccess(provider.allowSubagents) }
 }

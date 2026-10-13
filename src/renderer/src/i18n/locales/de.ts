@@ -151,6 +151,8 @@ export default {
       apiKeyPlaceholder: '(optional für lokal)',
       customHeaders: 'Eigene Header (optional)',
       maxConcurrency: 'Parallelitätslimit',
+      allowSubagents: 'Anbieter für Unteragenten erlauben',
+      allowSubagentsHint: 'Deaktiviert: Hauptsitzungen bleiben nutzbar, neue und fortgesetzte Unteraufgaben werden blockiert. Laufende Aufgaben dürfen enden. Wählen Sie unter Allgemein ein anderes Untermodell; kein automatischer Anbieterwechsel.',
       concurrencyUnlimited: 'Unbegrenzt',
       concurrencyHint: 'Alle Modelle, Haupt-/Unteragenten und Hilfsanfragen teilen dieses Anbieterlimit. Weitere Anfragen warten. Leer bedeutet unbegrenzt.',
       concurrencyInvalid: 'Eine positive ganze Zahl eingeben oder für unbegrenzt leer lassen.',

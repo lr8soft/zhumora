@@ -1,4 +1,5 @@
 import { createSubagentFixture as fixture, createSubagentTestProviders } from './helpers/subagentFixture.ts'
+import './subagentProviderAccess.test.ts'
 import assert from 'node:assert/strict'
 import { AgentAbortedError, type ToolCall } from '../src/shared/types.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'

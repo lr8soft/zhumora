@@ -142,6 +142,10 @@ Enable subagents under **Settings → General → Agent behavior**, select a sep
 
 The main agent acts as an architect and coordinator. It defines interfaces, assigns independent file edits, checks actual diffs, and runs final integration validation. Each child normally edits one assigned file or answers one bounded read-only question. A parent run rejects duplicate assignments for a file that an active child still owns.
 
+When enabled, the main agent is instructed to proactively dispatch ready independent tasks without the user mentioning subagents. It first agrees interfaces and acceptance criteria; trivial edits may stay with the parent.
+
+Each provider has an **Allow subagents to use this provider** switch under **Settings → LLM Providers**, enabled by default. Turn it off to reserve an expensive provider for main sessions, and choose another child model in General settings. New and continued child tasks cannot use a disallowed provider, even through explicit model overrides. Running children may finish, be awaited or cancelled. An unavailable saved or inherited child model produces a clear error; no automatic provider switch occurs.
+
 Concurrency comes only from the selected provider's `maxConcurrency`. Blank means unlimited. There is no additional fixed simultaneous-child cap or cumulative child-start budget. Queued children remain active tasks.
 
 Use the graph and the sidebar's subagent group to inspect each child's work. Delegation supports one level, without nested child delegation. A parent ending or stopping cancels unfinished children, preserving their histories. Tasks do not resume automatically after an application restart. File assignments are coordination contracts, not filesystem sandboxes. Files, browser tabs, and the physical desktop remain shared, and all tools retain the normal permission controls.
