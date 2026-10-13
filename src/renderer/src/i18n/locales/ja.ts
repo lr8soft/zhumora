@@ -138,6 +138,9 @@ export default {
     unsaved: '未保存の変更があります',
     confirmLeave: '未保存の変更があります。離れますか？未保存の変更は破棄されます。',
     providers: {
+      sections: { connection: "接続と認証", generation: "モデルと生成", execution: "Agent の利用と同時実行" },
+      empty: "プロバイダーを追加してください。",
+      configured: "設定済み",
       hint: 'LLM プロバイダーを設定。OpenAI 互換のエンドポイントなら何でも動作します (Ollama, vLLM, OpenAI, Anthropic など)。',
       zhuminetBanner: 'AI モデル API サービス、登録で無料枠付き',
       zhuminetRegister: '登録へ →',

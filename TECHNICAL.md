@@ -165,6 +165,15 @@ TTS is another isolated presentation adapter. A session-persisted opt-in flag le
 
 ## 4. LLM providers
 
+The provider settings UI uses a directory and one selected editor. Selecting an
+entry only changes the editing view; setting the default provider is a separate
+action. Connection/authentication, model/generation, and Agent access/concurrency
+are grouped by function. Custom headers and reasoning protocol use disclosures;
+invalid header drafts remain visible and block saving even after switching entries.
+All drafts remain owned by the existing settings view; the layout introduces no
+new settings store, network endpoint or IPC. It follows the existing theme tokens
+and switches to a single-column editor at narrow container widths.
+
 Zhumora uses OpenAI-compatible chat-completions endpoints and SSE streaming.
 
 Each provider may set `maxConcurrency` to a positive integer; an empty field is

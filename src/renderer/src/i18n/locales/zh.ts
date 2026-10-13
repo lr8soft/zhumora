@@ -158,6 +158,9 @@ export default {
     unsaved: '有未保存的更改',
     confirmLeave: '有未保存的更改，确定要离开吗？未保存的更改将丢失。',
     providers: {
+      sections: { connection: "连接与认证", generation: "模型与生成", execution: "Agent 使用与并发" },
+      empty: "尚未配置提供商，添加一家开始使用。",
+      configured: "已配置",
       hint: '配置 LLM 提供商。任意 OpenAI 兼容端点均可（Ollama、vLLM、OpenAI、Anthropic 等）。',
       zhuminetBanner: '一站式 AI 模型 API 服务，注册即送免费额度',
       zhuminetRegister: '前往注册 →',

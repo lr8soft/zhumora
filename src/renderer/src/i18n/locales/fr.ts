@@ -138,6 +138,9 @@ export default {
     unsaved: 'Modifications non enregistrées',
     confirmLeave: 'Vous avez des modifications non enregistrées. Quitter quand même ? Les modifications non enregistrées seront perdues.',
     providers: {
+      sections: { connection: "Connexion et authentification", generation: "Modèle et génération", execution: "Accès des agents et simultanéité" },
+      empty: "Ajoutez un fournisseur pour commencer.",
+      configured: "Configuré",
       hint: 'Configurez les fournisseurs LLM. Tout endpoint compatible OpenAI fonctionne (Ollama, vLLM, OpenAI, Anthropic, etc.).',
       zhuminetBanner: 'Service API de modèles IA, inscription avec crédit gratuit',
       zhuminetRegister: "S'inscrire →",

@@ -1,14 +1,14 @@
 import { useState } from 'react'
 import { useTranslation } from 'react-i18next'
-import { Circle, CircleDot, Plus, Trash2, Loader2, RefreshCw } from 'lucide-react'
-import type { ProviderConfig, ReasoningCapability } from '@shared/types'
-import type { ReasoningDialect } from '@shared/reasoning'
-import { providerRequestIdentity } from '@shared/providerHeaders'
-import { ProviderHeadersField, type ProviderHeaderDraft } from './ProviderHeadersField'
+import { Check, Cpu, Network, Plus, Settings2, Trash2, Users } from 'lucide-react'
+import type { ProviderConfig } from '@shared/types'
+import { type ProviderHeaderDraft } from './ProviderHeadersField'
 import { useProviderContextDetection } from './useProviderContextDetection'
-import { TEMPERATURE_MAX, TEMPERATURE_MIN, TEMPERATURE_STEP, TemperatureInput } from './TemperatureInput'
 import ProviderConcurrencyField from './ProviderConcurrencyField'
 import { ProviderAccessSettings } from './ProviderAccessSettings'
+import { ProviderConnectionSettings } from './ProviderConnectionSettings'
+import { ProviderModelSettings } from './ProviderModelSettings'
+import './providerSettings.css'
 
 interface Props {
   providers: ProviderConfig[]
@@ -18,323 +18,79 @@ interface Props {
   onHeaderChange: (id: string, text: string) => void
 }
 
-/**
- * 端点能力声明 → i18n key。
- * "未声明"与"声明不支持"必须区分：前者是 vLLM / SGLang / LiteLLM 的常态
- * （仍会收到标准参数），不代表配置有问题。
- */
-function reasoningCapabilityHintKey(capability: ReasoningCapability): string {
-  if (capability.declaresSupport === true) return 'settings.providers.reasoningCapability.supported'
-  if (capability.declaresSupport === false) return 'settings.providers.reasoningCapability.unsupported'
-  return 'settings.providers.reasoningCapability.unknown'
-}
-
 export function ProviderSettings({ providers, activeId, onChange, headerDrafts, onHeaderChange }: Props) {
   const { t } = useTranslation()
-  const { detecting, detected, detectContextWindow, reasoningCapabilities } = useProviderContextDetection({ providers, activeId, onChange })
-  // 视图实例缓存：providerId + 有效请求配置，配置变化失效，卸载时释放。
-  const [modelLists, setModelLists] = useState<Record<string, { id: string; name?: string; ownedBy?: string }[]>>({})
-  const [modelsLoading, setModelsLoading] = useState<Record<string, boolean>>({})
-  const [modelsError, setModelsError] = useState<Record<string, string>>({})
-  const [openModelList, setOpenModelList] = useState<string | null>(null)
-
-  const listKey = (p: ProviderConfig) => `${p.id}::${providerRequestIdentity(p)}`
-
-  /** 拉取模型列表（聚焦时懒加载；刷新按钮 force 强拉） */
-  const loadModels = async (idx: number, force: boolean) => {
-    const p = providers[idx]
-    const key = listKey(p)
-    if (!p?.baseUrl || modelsLoading[key]) return
-    if (!force && modelLists[key]) return
-    setModelsLoading((s) => ({ ...s, [key]: true }))
-    try {
-      const res = await window.api.provider.listModels(p, force)
-      if (res.models && res.models.length > 0) {
-        setModelLists((s) => ({ ...s, [key]: res.models }))
-        setModelsError((s) => {
-          const n = { ...s }
-          delete n[key]
-          return n
-        })
-      } else if (res.error) {
-        setModelsError((s) => ({ ...s, [key]: res.error! }))
-      }
-    } catch (err) {
-      setModelsError((s) => ({ ...s, [key]: (err as Error).message }))
-    } finally {
-      setModelsLoading((s) => {
-        const n = { ...s }
-        delete n[key]
-        return n
-      })
-    }
+  const [selectedId, setSelectedId] = useState(activeId)
+  const selected = providers.find(p => p.id === selectedId) || providers.find(p => p.id === activeId) || providers[0]
+  const detection = useProviderContextDetection({ providers, activeId, onChange })
+  const update = (updates: Partial<ProviderConfig>) => {
+    onChange(providers.map(p => p.id === selected.id ? { ...p, ...updates } : p), activeId)
   }
-
-  const addProvider = () => {
+  const add = () => {
     const id = `prov-${Date.now()}`
-    const newProv: ProviderConfig = {
-      id,
-      name: 'New Provider',
-      baseUrl: 'https://api.zhuminet.com/v1',
-      apiKey: '',
-      headers: {},
-      defaultModel: '',
-      enabled: true,
-      allowSubagents: true,
-      temperature: undefined,
-      reasoningEnabled: false,
-      reasoningDialect: 'auto',
-      contextWindow: 0,
-      maxConcurrency: null
-    }
-    onChange([...providers, newProv], activeId || id)
+    onChange([...providers, { id, name: 'New Provider', baseUrl: 'https://api.zhuminet.com/v1', apiKey: '',
+      headers: {}, defaultModel: '', enabled: true, allowSubagents: true, reasoningEnabled: false,
+      reasoningDialect: 'auto', contextWindow: 0, maxConcurrency: null }], activeId || id)
+    setSelectedId(id)
+  }
+  const remove = () => {
+    const next = providers.filter(p => p.id !== selected.id)
+    onChange(next, selected.id === activeId ? next[0]?.id || null : activeId)
+    setSelectedId(next[0]?.id || null)
   }
 
-  const updateProvider = (idx: number, updates: Partial<ProviderConfig>) => {
-    const next = [...providers]
-    next[idx] = { ...next[idx], ...updates }
-    onChange(next, activeId)
-  }
-
-  const removeProvider = (idx: number) => {
-    const next = providers.filter((_, i) => i !== idx)
-    const newActiveId = providers[idx].id === activeId
-      ? (next[0]?.id || null)
-      : activeId
-    onChange(next, newActiveId)
-  }
-
-  return (
-    <div>
-      <p className="form-hint" style={{ marginBottom: 14 }}>{t('settings.providers.hint')}</p>
-
-      {/* 煮米 API 引流 */}
-      <div className="promo-banner">
-        <span><strong>煮米 API</strong> — {t('settings.providers.zhuminetBanner')}</span>
-        <button
-          onClick={() => window.api.settings.openExternal('https://api.zhuminet.com/')}
-          className="link-button"
-        >
-          {t('settings.providers.zhuminetRegister')}
-        </button>
-      </div>
-
-      {providers.map((p, i) => (
-        <div key={p.id} className={activeId === p.id ? 'provider-card active' : 'provider-card'}>
-          <div className="provider-card-head">
-            <button
-              className="provider-name-button"
-              onClick={() => onChange(providers, p.id)}
-              title={activeId === p.id ? t('settings.providers.active') : t('settings.providers.activate')}
-            >
-              {activeId === p.id ? <CircleDot size={14} /> : <Circle size={14} />}
-              {p.name}
-            </button>
-            <button onClick={() => removeProvider(i)} className="danger-link">
-              <Trash2 size={12} style={{ verticalAlign: -2, marginRight: 4 }} />
-              {t('settings.providers.remove')}
-            </button>
-          </div>
-          <div className="provider-fields">
-            <div className="form-field">
-              <label className="form-label">{t('settings.providers.name')}</label>
-              <input
-                className="input-field"
-                value={p.name}
-                onChange={(e) => updateProvider(i, { name: e.target.value })}
-              />
-            </div>
-            <div className="form-field">
-              <label className="form-label">{t('settings.providers.defaultModel')}</label>
-              <div className="model-combobox">
-                <div className="model-picker">
-                  <input
-                    className="input-field"
-                    value={p.defaultModel}
-                    placeholder={t('settings.providers.modelPlaceholder')}
-                    onChange={(e) => updateProvider(i, { defaultModel: e.target.value })}
-                    onFocus={() => {
-                      setOpenModelList(p.id)
-                      void loadModels(i, false)
-                    }}
-                  />
-                  {openModelList === p.id && modelLists[listKey(p)]?.length > 0 && (
-                    <>
-                      <button className="model-list-backdrop" aria-label={t('settings.cancel')} onClick={() => setOpenModelList(null)} />
-                      <div className="model-list" role="listbox">
-                        {modelLists[listKey(p)].map((model) => (
-                          <button
-                            type="button"
-                            role="option"
-                            aria-selected={model.id === p.defaultModel}
-                            className={model.id === p.defaultModel ? 'model-list-item active' : 'model-list-item'}
-                            key={model.id}
-                            onClick={() => {
-                              updateProvider(i, { defaultModel: model.id })
-                              setOpenModelList(null)
-                              void detectContextWindow({ ...p, defaultModel: model.id })
-                            }}
-                          >
-                            <span>{model.name || model.id}</span>
-                            {model.name && <small>{model.id}</small>}
-                            {model.ownedBy && <small>{model.ownedBy}</small>}
-                          </button>
-                        ))}
-                      </div>
-                    </>
-                  )}
-                </div>
-                <button
-                  className="icon-button"
-                  style={{ flex: 'none' }}
-                  title={t('settings.providers.modelRefresh')}
-                  disabled={!!modelsLoading[listKey(p)]}
-                  onClick={() => {
-                    setOpenModelList(p.id)
-                    void loadModels(i, true)
-                  }}
-                >
-                  {modelsLoading[listKey(p)]
-                    ? <Loader2 size={14} className="spin" />
-                    : <RefreshCw size={14} />}
-                </button>
-              </div>
-              {modelsError[listKey(p)] && (
-                <p className="form-hint" style={{ color: 'var(--app-color-danger)' }}>
-                  {t('settings.providers.modelLoadFailed')}: {modelsError[listKey(p)]}
-                </p>
-              )}
-            </div>
-            <div className="form-field span-2">
-              <label className="form-label">{t('settings.providers.baseUrl')}</label>
-              <input
-                className="input-field mono"
-                value={p.baseUrl}
-                onChange={(e) => updateProvider(i, { baseUrl: e.target.value })}
-                onBlur={() => void detectContextWindow(p)}
-              />
-            </div>
-            <div className="form-field span-2">
-              <label className="form-label">{t('settings.providers.apiKey')}</label>
-              <input
-                className="input-field mono"
-                type="password"
-                value={p.apiKey || ''}
-                placeholder={t('settings.providers.apiKeyPlaceholder')}
-                onChange={(e) => updateProvider(i, { apiKey: e.target.value })}
-                onBlur={() => {
-                  const current = providers.find(provider => provider.id === p.id)
-                  if (current) void detectContextWindow(current)
-                }}
-              />
-            </div>
-            <ProviderHeadersField
-              headers={p.headers}
-              draft={headerDrafts[p.id]}
-              onChange={text => onHeaderChange(p.id, text)}
-            />
-            <ProviderAccessSettings provider={p} onChange={updates => updateProvider(i, updates)} />
-          </div>
-
-          {/* Temperature */}
-          <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto auto', alignItems: 'center' }}>
-            <label className="form-label">{t('settings.providers.temperature')}{p.temperature === undefined && ` (${t('settings.providers.temperatureDefault')})`}</label>
-            <input
-              type="range"
-              min={TEMPERATURE_MIN}
-              max={TEMPERATURE_MAX}
-              step={TEMPERATURE_STEP}
-              value={p.temperature ?? 1}
-              onChange={(e) => updateProvider(i, { temperature: parseFloat(e.target.value) })}
-              className="range-input"
-            />
-            <TemperatureInput
-              value={p.temperature ?? 1}
-              disabled={p.temperature === undefined}
-              onCommit={(v) => updateProvider(i, { temperature: v })}
-            />
-            <button
-              onClick={() => updateProvider(i, { temperature: undefined })}
-              className="link-button"
-            >
-              {t('settings.providers.temperatureReset')}
-            </button>
-          </div>
-          <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.temperatureHint')}</p>
-
-          {/* 思考强度功能开关（具体强度在聊天输入框里按会话选择）。
-              多行提示 + 下拉必须纵向排列，不能用横向的 .provider-row */}
-          <div className="provider-block">
-            <label className="provider-block-toggle">
-              <input
-                type="checkbox"
-                className="checkbox"
-                checked={p.reasoningEnabled || false}
-                onChange={(e) => updateProvider(i, { reasoningEnabled: e.target.checked })}
-              />
-              <span className="form-label">{t('settings.providers.reasoningEffort')}</span>
-            </label>
-            <p className="form-hint">{t('settings.providers.reasoningEnabledHint')}</p>
-            {reasoningCapabilities[p.id] && (
-              <p className="form-hint">{t(reasoningCapabilityHintKey(reasoningCapabilities[p.id]))}</p>
-            )}
-            <div className="provider-block-field">
-              <label className="form-label">{t('settings.providers.reasoningDialect')}</label>
-              <select
-                className="input-field"
-                value={p.reasoningDialect || 'auto'}
-                onChange={(e) => updateProvider(i, { reasoningDialect: e.target.value as ReasoningDialect })}
-              >
-                <option value="auto">{t('settings.providers.reasoningDialectAuto')}</option>
-                <option value="openai">{t('settings.providers.reasoningDialectOpenai')}</option>
-                <option value="deepseek">{t('settings.providers.reasoningDialectDeepseek')}</option>
-                <option value="qwen">{t('settings.providers.reasoningDialectQwen')}</option>
-              </select>
-            </div>
-            <p className="form-hint">{t('settings.providers.reasoningDialectHint')}</p>
-          </div>
-
-          <ProviderConcurrencyField id={p.id} value={p.maxConcurrency} onChange={value => updateProvider(i, { maxConcurrency: value })} />
-
-          {/* Context Window */}
-          <div className="provider-row" style={{ display: 'grid', gridTemplateColumns: 'auto 1fr auto', alignItems: 'center' }}>
-            <label className="form-label">{t('settings.providers.contextWindow')}</label>
-            <div style={{ display: 'flex', alignItems: 'center', gap: 8, minWidth: 0 }}>
-              <input
-                type="number"
-                className="input-field"
-                style={{ flex: 1, minWidth: 0, width: 'auto' }}
-                value={p.contextWindow || 0}
-                min={0}
-                step={1024}
-                onChange={(e) => updateProvider(i, { contextWindow: parseInt(e.target.value) || 0 })}
-                placeholder="0"
-              />
-              {detected[p.id] > 0 && (
-                <span className="form-hint" style={{ whiteSpace: 'nowrap', flex: 'none' }}>
-                  {t('settings.providers.contextWindowDetected')}: {detected[p.id].toLocaleString()}
-                </span>
-              )}
-              {detecting[p.id] && <Loader2 size={13} className="spin" style={{ flex: 'none' }} />}
-              <button
-                onClick={() => void detectContextWindow(p, true)}
-                className="link-button"
-                title={t('settings.providers.contextWindowDetect')}
-                style={{ whiteSpace: 'nowrap', flex: 'none' }}
-              >
-                <RefreshCw size={12} style={{ verticalAlign: -1, marginRight: 3 }} />
-                {t('settings.providers.contextWindowAuto')}
-              </button>
-            </div>
-          </div>
-          <p className="form-hint" style={{ marginTop: 4 }}>{t('settings.providers.contextWindowHint')}</p>
-        </div>
-      ))}
-
-      <button onClick={addProvider} className="btn-ghost" style={{ width: '100%', marginTop: 8 }}>
-        <Plus size={14} />
-        {t('settings.providers.addProvider')}
-      </button>
+  return <div className="provider-workspace">
+    <div className="provider-intro">
+      <p className="form-hint">{t('settings.providers.hint')}</p>
+      <button className="btn-ghost" onClick={add}><Plus size={14} />{t('settings.providers.addProvider')}</button>
     </div>
-  )
+    <div className="provider-layout">
+      <nav className="provider-directory" aria-label={t('settings.tabs.providers')}>
+        <div className="provider-directory-title"><Settings2 size={14} />{t('settings.tabs.providers')}<span>{providers.length}</span></div>
+        {providers.map(p => <button key={p.id} className={`provider-directory-item${p.id === selected?.id ? ' selected' : ''}`}
+          aria-pressed={p.id === selected?.id} onClick={() => setSelectedId(p.id)}>
+          <span className="provider-directory-name"><span className={`provider-status-dot${p.enabled ? ' enabled' : ''}`} />{p.name}</span>
+          <span className="provider-directory-model">{p.defaultModel || t('settings.providers.modelPlaceholder')}</span>
+          {activeId === p.id && <span className="provider-badge"><Check size={10} />{t('settings.providers.active')}</span>}
+        </button>)}
+        <div className="provider-service-note"><strong>煮米 API</strong><p>{t('settings.providers.zhuminetBanner')}</p>
+          <button className="link-button" onClick={() => window.api.settings.openExternal('https://api.zhuminet.com/')}>
+            {t('settings.providers.zhuminetRegister')}</button>
+        </div>
+      </nav>
+      {selected ? <div className="provider-editor" key={selected.id}>
+        <header className="provider-editor-header">
+          <div><h3>{selected.name}</h3><p>{selected.defaultModel || t('settings.providers.modelPlaceholder')}</p></div>
+          <div className="provider-editor-actions">
+            <button className="btn-ghost" disabled={activeId === selected.id || !selected.enabled}
+              onClick={() => onChange(providers, selected.id)}>
+              {activeId === selected.id && <Check size={13} />}{t(activeId === selected.id ? 'settings.providers.active' : 'settings.providers.activate')}
+            </button>
+            <button className="provider-remove icon-button" onClick={remove} aria-label={t('settings.providers.remove')} title={t('settings.providers.remove')}>
+              <Trash2 size={15} /></button>
+          </div>
+        </header>
+        <div className="provider-function-grid">
+          <section className="provider-function-section provider-connection">
+            <h4><Network size={16} />{t('settings.providers.sections.connection')}</h4>
+            <ProviderConnectionSettings provider={selected} draft={headerDrafts[selected.id]} onChange={update}
+              onHeaderChange={text => onHeaderChange(selected.id, text)} onDetect={detection.detectContextWindow} />
+          </section>
+          <section className="provider-function-section provider-generation">
+            <h4><Cpu size={16} />{t('settings.providers.sections.generation')}</h4>
+            <ProviderModelSettings provider={selected} onChange={update} detectContextWindow={detection.detectContextWindow}
+              capability={detection.reasoningCapabilities[selected.id]} detecting={detection.detecting[selected.id]} detected={detection.detected[selected.id]} />
+          </section>
+          <section className="provider-function-section provider-execution">
+            <h4><Users size={16} />{t('settings.providers.sections.execution')}</h4>
+            <div className="provider-execution-grid">
+              <ProviderAccessSettings provider={selected} onChange={update} />
+              <ProviderConcurrencyField id={selected.id} value={selected.maxConcurrency} onChange={value => update({ maxConcurrency: value })} />
+            </div>
+          </section>
+        </div>
+      </div> : <div className="provider-empty"><Network size={28} /><p>{t('settings.providers.empty')}</p>
+        <button className="btn-ghost" onClick={add}><Plus size={14} />{t('settings.providers.addProvider')}</button></div>}
+    </div>
+  </div>
 }

@@ -138,6 +138,9 @@ export default {
     unsaved: 'Ungespeicherte Änderungen',
     confirmLeave: 'Du hast ungespeicherte Änderungen. Jetzt gehen? Ungespeicherte Änderungen gehen verloren.',
     providers: {
+      sections: { connection: "Verbindung & Authentifizierung", generation: "Modell & Generierung", execution: "Agent-Zugriff & Parallelität" },
+      empty: "Fügen Sie einen Anbieter hinzu.",
+      configured: "Konfiguriert",
       hint: 'Konfigurieren Sie LLM-Anbieter. Jeder OpenAI-kompatible Endpunkt funktioniert (Ollama, vLLM, OpenAI, Anthropic, etc.).',
       zhuminetBanner: 'KI-Modell-API-Dienst, Registrierung mit kostenlosem Guthaben',
       zhuminetRegister: 'Registrieren →',

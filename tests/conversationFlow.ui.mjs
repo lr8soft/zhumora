@@ -10,6 +10,7 @@ import { assertPassiveLanes } from './helpers/flowLaneChecks.mjs'
 import { assertFoldedAppearance, assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
 import { assertResponsiveSpeech } from './helpers/speechSizingChecks.mjs'
 import { assertProviderConcurrencySettings } from './helpers/providerConcurrencyUiChecks.mjs'
+import { assertProviderWorkspace } from './helpers/providerWorkspaceUiChecks.mjs'
 
 // No Electron, provider requests or user database: this drives the production renderer with explicit IPC fixtures.
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
@@ -256,6 +257,7 @@ try {
   await assertStreamingDetail(page, page, 'detail-live', true)
   await assertResponsiveSpeech(page, output)
   await assertProviderConcurrencySettings(page, output)
+  await assertProviderWorkspace(page, output)
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
   console.log(`Flow UI passed: responsive speech height/width, latest text, bounded tool scrolling/ports, light/dark, folding, live details, ID routing and camera stability. Screenshots: ${output}`)
 } catch (error) {

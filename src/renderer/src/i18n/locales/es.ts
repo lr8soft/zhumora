@@ -138,6 +138,9 @@ export default {
     unsaved: 'Cambios sin guardar',
     confirmLeave: 'Tienes cambios sin guardar. ¿Salir de todos modos? Los cambios sin guardar se perderán.',
     providers: {
+      sections: { connection: "Conexión y autenticación", generation: "Modelo y generación", execution: "Acceso de agentes y concurrencia" },
+      empty: "Añada un proveedor para empezar.",
+      configured: "Configurado",
       hint: 'Configura proveedores LLM. Cualquier endpoint compatible con OpenAI funciona (Ollama, vLLM, OpenAI, Anthropic, etc.).',
       zhuminetBanner: 'Servicio de API de modelos de IA, registro con crédito gratis',
       zhuminetRegister: 'Registrarse →',

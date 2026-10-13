@@ -142,6 +142,9 @@ export default {
     unsaved: 'Unsaved changes',
     confirmLeave: 'You have unsaved changes. Leave anyway? Unsaved changes will be discarded.',
     providers: {
+      sections: { connection: "Connection & authentication", generation: "Model & generation", execution: "Agent access & concurrency" },
+      empty: "Add a provider to get started.",
+      configured: "Configured",
       hint: 'Configure LLM providers. Any OpenAI-compatible endpoint works (Ollama, vLLM, OpenAI, Anthropic, etc.).',
       zhuminetBanner: 'All-in-one AI model API service. Sign up to get free credits.',
       zhuminetRegister: 'Sign up →',
