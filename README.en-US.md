@@ -6,7 +6,7 @@ Zhumora connects to OpenAI-compatible models and can work with your files, termi
 
 The main agent plans the work, coordinates dependencies, reviews changes, and owns final validation. Subagents handle small, clearly scoped tasks, normally one file per coding assignment. Main and child agents can use separately configured models.
 
-[简体中文](README.md) · [Vision (Chinese)](./docs/VISION.md) · [Presentation and promotion plan (Chinese)](./docs/PROMOTION.md) · [Technical documentation](./TECHNICAL.md) · [Bilibili video](https://www.bilibili.com/video/BV1Yyew6SEmN/)
+[简体中文](README.md) · [Technical documentation](./TECHNICAL.md) · [Bilibili video](https://www.bilibili.com/video/BV1Yyew6SEmN/)
 
 <p align="center">
   <img src="./img/multi-agent.png" alt="Zhumora — main agent and concurrent subagents in a conversation graph" width="960" />

@@ -6,7 +6,7 @@ Zhumora 可以连接 OpenAI 兼容模型，并操作你的文件、终端、浏�
 
 主 Agent 负责理解需求、设计方案、协调与验收，子 Agent 负责边界明确的小任务，编码任务默认按单个文件分工。你可以分别配置主、子 Agent 的模型，并在同一张流程图里查看派工、执行与结果汇合。
 
-[English](README.en-US.md) · [我们的愿景](./docs/VISION.md) · [宣传方案与 PPT](./docs/PROMOTION.md) · [技术文档](./TECHNICAL.md) · [bilibili视频](https://www.bilibili.com/video/BV1Yyew6SEmN/)
+[English](README.en-US.md) · [技术文档](./TECHNICAL.md) · [bilibili视频](https://www.bilibili.com/video/BV1Yyew6SEmN/)
 
 <p align="center">
   <img src="./img/multi-agent.png" alt="Zhumora — 主 Agent 与多个子 Agent 并发执行的对话流程图" width="960" />
