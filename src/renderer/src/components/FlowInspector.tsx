@@ -1,8 +1,9 @@
 import { useCallback, useEffect, useState } from 'react'
 import { useTranslation } from 'react-i18next'
 import { ArrowUpRight, Check, Copy, GitBranch, X } from 'lucide-react'
-import type { FlowData, FlowDetailFocus, FlowDetailTab as DetailTab, FlowNode } from '../flow/types'
+import type { FlowDetailFocus, FlowDetailTab as DetailTab, FlowNode } from '../flow/types'
 import { primaryStep } from '../flow/nestedSteps'
+import { followedDetailStep, defaultDetailTab } from '../flow/followDetail'
 import { useDetailAutoScroll } from '../flow/useDetailAutoScroll'
 import { useAppStore } from '../store'
 import MarkdownView from './MarkdownView'
@@ -18,7 +19,9 @@ export default function FlowInspector({ node, focus, following, onBrowse, onClos
   const { data } = node
   const session = sessions.find(session => session.id === data.sessionId)
   const [selectedStepId, setSelectedStepId] = useState<string | null>(focus?.stepId ?? null)
-  const detail = data.steps?.find(step => step.id === selectedStepId) ?? primaryStep(node)
+  const automatic = followedDetailStep(node)
+  const automaticTab = defaultDetailTab(automatic.data)
+  const detail = following ? automatic : data.steps?.find(step => step.id === selectedStepId) ?? primaryStep(node)
   const value = detail.data
   const tabs: DetailTab[] = value.call ? ['args', 'result'] : ['content', ...(value.message?.reasoning ? ['reasoning' as const] : [])]
   const [tab, setTab] = useState<{ stepId: string; value: DetailTab } | null>(focus?.tab ? { stepId: focus.stepId, value: focus.tab } : null)
@@ -29,9 +32,11 @@ export default function FlowInspector({ node, focus, following, onBrowse, onClos
     setCopyState('idle')
   }, [focus])
   useEffect(() => {
-    if (following) { setSelectedStepId(null); setTab(null); setCopyState('idle') }
-  }, [following])
-  const activeTab = tab?.stepId === detail.id && tabs.includes(tab.value) ? tab.value : defaultTab(value)
+    if (following) {
+      setSelectedStepId(automatic.id); setTab({ stepId: automatic.id, value: automaticTab }); setCopyState('idle')
+    }
+  }, [following, automatic.id, automaticTab])
+  const activeTab = !following && tab?.stepId === detail.id && tabs.includes(tab.value) ? tab.value : defaultDetailTab(value)
   const text = activeTab === 'args' ? formatArguments(value.call?.function.arguments ?? '')
     : activeTab === 'result' ? value.result?.content ?? t('flow.noResult')
       : activeTab === 'reasoning' ? value.message?.reasoning ?? ''
@@ -77,11 +82,6 @@ export default function FlowInspector({ node, focus, following, onBrowse, onClos
         && <button className="danger" onClick={() => void window.api.agent.abort(data.sessionId)}>{t('chat.stop')}</button>}
     </footer>
   </aside>
-}
-
-function defaultTab(data: FlowData): DetailTab {
-  if (data.call) return data.result ? 'result' : 'args'
-  return !data.message?.content && data.message?.reasoning ? 'reasoning' : 'content'
 }
 
 function formatArguments(value: string): string {

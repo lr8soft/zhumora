@@ -58,7 +58,7 @@ React Flow wrapper and retain a fixed background layer, so clicking their empty
 area cannot cover child cards. Selection does not elevate graph elements.
 The mouse wheel
 zooms and dragging pans. Wheel/pinch and zoom buttons retain follow and record the
-chosen scale; tracking new nodes, resized panes and pane remounts centers without
+chosen scale; tracking new nodes, resized panes and pane remounts pans only as needed without
 changing it. Panning or manual node/step browsing pauses follow. Explicit fit resets
 the zoom preference and pauses follow; before any user zoom, latest-node framing
 uses automatic fitting. Programmatic camera moves cannot overwrite the preference.
@@ -76,10 +76,16 @@ estimate. Measurements update lanes, the minimap and camera bounds. At the conte
 limit, text deltas scroll without moving geometry or camera. A live
 utterance is allocated before its first text token; a tool-only end folds it back.
 `useFlowCamera` fits projected bounds directly, so offscreen nodes do not need
-DOM measurements before they can be followed. Enabling follow centers the latest
-main node; new geometry and canvas resizing maintain that focus.
+DOM measurements before they can be followed. Enabling follow frames the main anchor
+and concurrent active frontiers; new geometry and resizing keep them visible with minimal movement.
 `useFlowSelection` uses the same follow flag and latest node ID to advance an open
 inspector immediately and when new main nodes arrive, in any dock or native window.
+Within a stable speech container, followDetail chooses a running step or the latest
+executed step, excluding queued/unresolved calls. Tool arguments transition to actual
+results; subsequent LLM output selects content/reasoning. The last automatic step/tab
+is remembered when follow pauses. Manual card selection explicitly targets its speech.
+Step navigation reveals the selected row using container-relative bounds, including
+detached-window sizing.
 Manual card/step/tab selection pauses following; resuming clears the old step/tab
 focus. Pausing retains the latest followed node, and closed details stay closed.
 Initialization

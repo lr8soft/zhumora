@@ -41,7 +41,7 @@ export function previewRowCount(data: FlowData, columns = 2): number {
   return rows + (halfRow ? 1 : 0)
 }
 
-export function primaryStep(node: FlowNode): FlowStep {
+export function primaryStep(node: Pick<FlowNode, 'id' | 'data'>): FlowStep {
   return node.data.steps?.find(step => !step.data.call && step.data.message?.id === node.data.message?.id)
     ?? node.data.steps?.at(-1) ?? { id: node.id, data: node.data }
 }

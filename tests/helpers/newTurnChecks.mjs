@@ -18,10 +18,12 @@ export async function assertNewTurnVisible(page, viewer = page) {
   const before = await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/index.ts')
     const run = window.api.agent.run
+    flowUiFixture.newTurnResponseSettled = false
     window.api.agent.run = async (...args) => {
       window.api.agent.run = run
       const result = await run(...args)
       await new Promise(resolve => setTimeout(resolve, 250))
+      flowUiFixture.newTurnResponseSettled = true
       return result
     }
     return useAppStore.getState().messages.parent.map(message => message.id)
@@ -32,6 +34,9 @@ export async function assertNewTurnVisible(page, viewer = page) {
     const { useAppStore } = await import('/src/store/index.ts')
     return useAppStore.getState().messages.parent.some(message => message.content === '新一轮输入，画布应该保持可见。' && message.id.startsWith('pending-'))
   })
+  // A concurrent history read can expose the persisted user before invoke resolves.
+  // Finish that response before the next scenario replaces the fixture history.
+  await page.waitForFunction(() => flowUiFixture.newTurnResponseSettled)
   await page.waitForFunction(async () => {
     const { useAppStore } = await import('/src/store/index.ts')
     return useAppStore.getState().messages.parent.some(message => message.content === '新一轮输入，画布应该保持可见。' && !message.id.startsWith('pending-'))

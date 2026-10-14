@@ -20,7 +20,7 @@ Earlier user turns collapse by default while the latest stays open. Expanding an
 
 The conversation graph, inspector, and composer can dock, float, or open in separate windows. Moving the composer preserves its unsent text and attachments. Light and dark themes apply throughout the workspace.
 
-The canvas mouse wheel controls zoom. Auto-follow moves only when current work leaves the view and frames the main flow plus concurrent agents’ active frontiers. Your chosen zoom stays fixed; an offscreen-node notice offers an explicit Show active nodes action to adjust it. Open details track the main conversation without switching among siblings. Streaming content scrolls to the latest output. Scrolling upward pauses content following until you return to the bottom. Selecting historical nodes pauses run following.
+The canvas mouse wheel controls zoom. Auto-follow moves only when current work leaves the view and frames the main flow plus concurrent agents’ active frontiers. Your chosen zoom stays fixed; an offscreen-node notice offers an explicit Show active nodes action to adjust it. Open details track the main conversation and its current internal step: tool arguments, then results, then subsequent LLM content/reasoning. Queued calls do not take focus; manual step/tab selection pauses automatic switching. Details do not switch among siblings. Streaming content scrolls to the latest output. Scrolling upward pauses content following until you return to the bottom. Selecting historical nodes pauses run following.
 
 ## Features
 

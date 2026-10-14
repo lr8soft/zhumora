@@ -5,7 +5,7 @@ import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlo
 import { ArrowRight, Focus, GitBranch, Layers, LocateFixed, Maximize2, Minus, Plus, RotateCcw } from 'lucide-react'
 import { useFlowGraph } from '../flow/useFlowGraph'
 import type { ConversationGraph, FlowNode } from '../flow/types'
-import { stepHandleId } from '../flow/nestedSteps'
+import { stepHandleId, primaryStep } from '../flow/nestedSteps'
 import { useFlowCamera } from '../flow/useFlowCamera'
 import { useFlowSelection } from '../flow/useFlowSelection'
 import { useFlowSizing, useMeasuredFlowGraph } from '../flow/useFlowSizing'
@@ -71,7 +71,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
       setExpandedTurns(previous => new Set([...previous, node.data.turnId!]))
       selection.close()
       stopFollowing()
-    } else selection.select(node.id)
+    } else selection.select(node.id, { stepId: primaryStep(node).id })
   }
   const onNodesChange: OnNodesChange<ConversationNode> = changes => {
     const change = changes.find(change => change.type === 'select' && change.selected)

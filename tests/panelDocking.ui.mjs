@@ -7,6 +7,7 @@ import { createServer } from 'vite'
 import react from '@vitejs/plugin-react'
 import { _electron } from 'playwright'
 import { installFlowUiFixture } from './helpers/flowUiFixture.mjs'
+import { assertInnerDetailFollow } from './helpers/innerDetailFollowChecks.mjs'
 import { assertWindowControlHitAreas } from './helpers/windowControlsChecks.mjs'
 import { assertFollowedNode, settleViewport } from './helpers/flowCameraChecks.mjs'
 import { assertStreamingDetail } from './helpers/flowDetailChecks.mjs'
@@ -185,6 +186,11 @@ try {
   await newTurnWindow.locator('.flow-canvas').waitFor()
   await assertNewTurnVisible(page, newTurnWindow)
   await newTurnWindow.getByRole('button', { name: '停靠回主窗口', exact: true }).click()
+  await assertInnerDetailFollow(page, { detach: async () => {
+    const next = electron.waitForEvent('window')
+    await page.locator('.dock-details').getByRole('button', { name: '在独立窗口打开', exact: true }).click()
+    const child = await next; observe(child); return child
+  } })
   await page.getByRole('button', { name: '最新输出', exact: true }).click()
   const teardownWindow = electron.waitForEvent('window')
   await page.locator('.dock-details').getByRole('button', { name: '在独立窗口打开', exact: true }).click()

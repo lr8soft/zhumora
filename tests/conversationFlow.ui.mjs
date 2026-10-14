@@ -11,6 +11,7 @@ import { assertFoldedAppearance, assertStreamingDetail } from './helpers/flowDet
 import { assertResponsiveSpeech } from './helpers/speechSizingChecks.mjs'
 import { assertProviderConcurrencySettings } from './helpers/providerConcurrencyUiChecks.mjs'
 import { assertProviderWorkspace } from './helpers/providerWorkspaceUiChecks.mjs'
+import { assertInnerDetailFollow } from './helpers/innerDetailFollowChecks.mjs'
 
 // No Electron, provider requests or user database: this drives the production renderer with explicit IPC fixtures.
 const server = await createServer({ configFile: false, root: resolve('src/renderer'), plugins: [react()],
@@ -270,6 +271,8 @@ try {
   await assertResponsiveSpeech(page, output)
   await assertProviderConcurrencySettings(page, output)
   await assertProviderWorkspace(page, output)
+  await page.locator('.sidebar').getByText('项目架构分析', { exact: true }).click()
+  await assertInnerDetailFollow(page)
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
   console.log(`Flow UI passed: responsive speech height/width, latest text, bounded tool scrolling/ports, light/dark, folding, live details, ID routing and camera stability. Screenshots: ${output}`)
 } catch (error) {

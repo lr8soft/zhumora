@@ -11,11 +11,18 @@ export default function FlowStepList({ steps, selectedId, onSelect }: {
   const listRef = useRef<HTMLDivElement>(null)
   useEffect(() => {
     const list = listRef.current
-    const selected = list?.querySelector<HTMLElement>('[aria-pressed="true"]')
-    if (!list || !selected) return
-    const top = selected.offsetTop, bottom = top + selected.offsetHeight
-    if (top < list.scrollTop) list.scrollTop = top
-    else if (bottom > list.scrollTop + list.clientHeight) list.scrollTop = bottom - list.clientHeight
+    if (!list) return
+    const reveal = () => {
+      const selected = list.querySelector<HTMLElement>('[aria-pressed="true"]')
+      if (!selected) return
+      const area = list.getBoundingClientRect(), row = selected.getBoundingClientRect()
+      if (row.top < area.top) list.scrollTop -= area.top - row.top
+      else if (row.bottom > area.bottom) list.scrollTop += row.bottom - area.bottom
+    }
+    reveal()
+    const observer = new ResizeObserver(reveal)
+    observer.observe(list)
+    return () => observer.disconnect()
   }, [selectedId])
 
   return <div className="flow-stage-navigation">
