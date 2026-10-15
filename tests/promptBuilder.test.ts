@@ -17,7 +17,7 @@ assert.match(prompt, /presentation capability, not a tool/)
 assert.match(prompt, /Do not use HTML labels, click directives, hyperlinks/)
 assert.match(prompt, /external chat channel/)
 const coordinated = buildSystemPrompt('D:\\workspace', '', '', { tools: [], builtinTools: [], mcpTools: [], mcpServers: [] },
-  subagentDelegationGuidance(true, null, [{ id: 'p', name: 'provider', baseUrl: 'https://test', apiKey: 'private-key', defaultModel: 'm', enabled: true, maxConcurrency: 3 }]))
+  subagentDelegationGuidance(true, [], 'priority', [{ id: 'p', name: 'provider', baseUrl: 'https://test', apiKey: 'private-key', defaultModel: 'm', enabled: true, maxConcurrency: 3 }]))
 for (const guidance of [/architect and project manager/, /exactly one project file/, /targetFile/, /provider.*configured maxConcurrency/,
   /Review actual diffs/, /integration tests\/build/, /settled terminal state/, /ownership contract/]) assert.match(coordinated, guidance)
 assert.match(coordinated, /"maxConcurrency":3/)
@@ -31,7 +31,9 @@ assert.match(coordinated, /dependsOn/)
 assert.match(coordinated, /send_subagent_message/)
 assert.match(coordinated, /completed child is not automatically an accepted change/)
 assert.doesNotMatch(buildSystemPrompt('D:/workspace', '', '', { tools: [], builtinTools: [], mcpTools: [], mcpServers: [] }, undefined, undefined, false), /## Long-term Memory/)
-assert.doesNotMatch(subagentDelegationGuidance(false, null), /Launch as many/)
+assert.doesNotMatch(subagentDelegationGuidance(false, [], 'priority'), /Launch as many/)
+assert.match(coordinated, /application distributes new tasks/)
+assert.match(coordinated, /priority sequence/)
 
 console.log('system prompt visual-output guidance tests passed')
 

@@ -19,7 +19,7 @@ export function createSubagentFixture() {
   const sessions = new Map<string, Session>()
   const messages = new Map<string, UIMessage[]>()
   const settings = { providers: createSubagentTestProviders(), activeProviderId: 'a', workspacePath: 'D:/shared', memoryEnabled: false, maxRounds: 20,
-    subagentsEnabled: true, subagentModel: null } as AppSettings
+    subagentsEnabled: true, subagentModels: [], subagentDispatch: 'priority' } as AppSettings
   const store: SessionStore = {
     createSession(title = 'root', workspacePath, subagent) {
       const id = `s${++sequence}`
@@ -71,7 +71,10 @@ export function createSubagentFixture() {
   }
   return { service, tools, permissions, pending, sessions, messages, running, finish, root, compactModels,
     setDelegation: (enabled: boolean) => { settings.subagentsEnabled = enabled },
-    setChildModel: (model: SubagentModelSelection | null) => { settings.subagentModel = model },
+    setChildModel: (model: SubagentModelSelection | null) => { settings.subagentModels = model ? [model] : [] },
+    setChildRouting: (models: SubagentModelSelection[], dispatch: AppSettings['subagentDispatch']) => {
+      settings.subagentModels = models; settings.subagentDispatch = dispatch
+    },
     setProviderConcurrency: (id: string, limit: number | null) => { settings.providers.find(provider => provider.id === id)!.maxConcurrency = limit },
     setProviderSubagentAccess: (id: string, allowed: boolean) => { settings.providers.find(provider => provider.id === id)!.allowSubagents = allowed },
     makeStuck: () => { stuck = true }, delayPrompt: (fn: () => Promise<string>) => { delayPrompt = fn } }

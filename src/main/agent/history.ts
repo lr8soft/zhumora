@@ -202,7 +202,7 @@ export function planCompact(
 
 /**
  * 按 token 预算规划 compact 切分（Cline 风格）：
- * - 从尾部向前累加 token，直到累计 >= preserveTokenBudget
+ * - 从尾部向前累加 token，在下一条会超过预算时停止；至少保留最后一条
  * - 在该位置找安全切分点
  * - toCompress = 切点之前；toKeep = 切点之后
  *
@@ -214,23 +214,22 @@ export function planCompactByTokens(
   preserveTokenBudget: number,
   estimateMsg: MessageTokenEstimator
 ): { toCompress: ChatMessage[]; toKeep: ChatMessage[] } {
-  if (messages.length <= 4) {
+  if (messages.length === 0) {
     return { toCompress: [], toKeep: messages }
   }
 
-  // 从尾部向前累加 token，找到满足预算的最早索引
+  // 最近一条可能独自超预算，仍先保留；其工具组正文由请求投影缩减。
   let accumulated = 0
   let splitIdx = messages.length // 默认：全部保留
   for (let i = messages.length - 1; i >= 0; i--) {
-    accumulated += estimateMsg(messages[i])
+    const tokens = estimateMsg(messages[i])
+    if (accumulated > 0 && accumulated + tokens > preserveTokenBudget) break
+    accumulated += tokens
     splitIdx = i
-    if (accumulated >= preserveTokenBudget) break
   }
 
-  // 至少保留 2 条消息（防止全部压缩）
-  if (splitIdx >= messages.length - 2) {
-    splitIdx = messages.length - 2
-  }
+  // 至少保留最后一条及其完整工具组；大小由请求预算处理，不能按消息条数跳过。
+  splitIdx = Math.min(splitIdx, messages.length - 1)
 
   // 找安全切分点
   const safeIdx = splitAtSafeBoundary(messages, splitIdx)

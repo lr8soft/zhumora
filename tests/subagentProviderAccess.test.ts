@@ -3,7 +3,7 @@ import { createSubagentFixture } from './helpers/subagentFixture.ts'
 import { normalizeSettings, SETTINGS_SCHEMA_VERSION } from '../src/main/store/settingsNormalization.ts'
 import { normalizeProviderSubagentAccess } from '../src/shared/providerSubagents.ts'
 import { validateProviderRequest } from '../src/shared/providerHeaders.ts'
-import { resolveSubagentModel } from '../src/main/agent/subagentPolicy.ts'
+import { SubagentModelRouter } from '../src/main/agent/subagentRouting.ts'
 import { buildSubagentModelOptions } from '../src/renderer/src/subagentModelOptions.ts'
 import { executeToolCall } from '../src/main/agent/toolExecutor.ts'
 
@@ -25,10 +25,10 @@ assert.equal(validateProviderRequest(provider).allowSubagents, true)
 assert.equal(validateProviderRequest(saved.providers[0]).allowSubagents, false)
 const parentModel = { providerId: 'p', model: 'm' }
 for (const [input, selection] of [[request, null], [{ ...request, providerId: 'p' }, null], [request, parentModel]] as const) {
-  assert.throws(() => resolveSubagentModel(saved.providers, parentModel, input, selection), blocked)
+  assert.throws(() => new SubagentModelRouter().select({ ...saved, subagentModels: selection ? [selection] : [] }, parentModel, input), blocked)
 }
-assert.deepEqual(buildSubagentModelOptions(saved.providers, { p: [{ id: 'm' }] }, null), [])
-const options = buildSubagentModelOptions(saved.providers, { p: [{ id: 'm' }] }, parentModel)
+assert.deepEqual(buildSubagentModelOptions(saved.providers, { p: [{ id: 'm' }] }, []), [])
+const options = buildSubagentModelOptions(saved.providers, { p: [{ id: 'm' }] }, [parentModel])
 assert.equal(options.length, 1); assert.equal(options[0].unavailable, true, 'saved choice remains visible but cannot be selected')
 
 // Saved access applies to cached parent scopes and explicit overrides, without changing the main model.

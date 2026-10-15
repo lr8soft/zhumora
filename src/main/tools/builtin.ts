@@ -6,6 +6,7 @@ import { updateSessionTitle } from '../store/db'
 import { editFileExact, readPath, resolveToolPath, writeFilePreservingBom } from './fileOperations'
 import { globWithRipgrep, grepWithRipgrep } from './ripgrep'
 import { executeShellCommand } from './shell'
+import { limitToolOutput } from './outputLimits'
 
 export const readTool: ToolHandler = {
   definition: {
@@ -102,7 +103,7 @@ const bashDescription = [
   `Execute a non-interactive command using ${shellName}. OS: ${process.platform}.`,
   'Use workdir instead of cd. Use dedicated read/write/edit/grep/glob tools for filesystem work.',
   'Use mode="detach" when starting a GUI app or long-running service. It returns immediately and leaves that process running. Do not use shell backgrounding syntax.',
-  'stdout and stderr are returned in arrival order with exit metadata. Output is capped at 1MB.',
+  'stdout and stderr return a bounded preview with exit metadata: at most 500 output lines, 48000 characters and 2000 characters per line. Long output preserves the beginning and end, including trailing errors, and marks omissions. For verbose logs, redirect output to a file and use read with offset/limit; narrow commands/searches instead of repeating huge outputs.',
   'mode="wait" is the default. Its timeout is 120 seconds by default and 600 seconds maximum; timeout or cancellation terminates the process tree.',
   process.platform === 'win32'
     ? 'Use cmd.exe syntax (%VAR%, &&, quoted paths); do not use Bash-only syntax.'
@@ -148,7 +149,7 @@ export const grepTool: ToolHandler = {
       description: [
         'Search file contents with ripgrep regular expressions and return path:line: preview.',
         'Search respects .gitignore/.ignore rules, includes hidden files, and always excludes .git.',
-        'Use include to constrain file globs and exclude for additional directory names or globs. Results are capped; narrow the pattern/path when truncated.'
+        'Use include to constrain file globs and exclude for additional directory names or globs. Results have a 48000-character/2000-line cap in addition to match limits; narrow the pattern/path when truncated.'
       ].join('\n'),
       parameters: {
         type: 'object',
@@ -185,7 +186,7 @@ export const globTool: ToolHandler = {
       description: [
         'Find files with ripgrep glob matching.',
         'Search respects .gitignore/.ignore rules and always excludes .git.',
-        'Examples: **/*.ts, **/*AuthManager*, src/**/*.cpp. Results are capped; narrow the pattern/path when truncated.'
+        'Examples: **/*.ts, **/*AuthManager*, src/**/*.cpp. Results have a 48000-character/2000-line cap in addition to file limits; narrow the pattern/path when truncated.'
       ].join('\n'),
       parameters: {
         type: 'object',
@@ -217,7 +218,7 @@ export const lsTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'ls',
-      description: 'List one directory level, with directories first. Returns d/f/l entry markers. Use glob for recursive discovery.',
+      description: 'List one directory level, with directories first. Returns d/f/l entry markers, limited to 48000 characters / 2000 lines. Use read with offset/limit for paginated directory listings, or glob for recursive discovery.',
       parameters: {
         type: 'object',
         properties: {
@@ -236,7 +237,7 @@ export const lsTool: ToolHandler = {
       .filter(entry => !ignore.has(entry.name))
       .sort((a, b) => a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1)
       .map(entry => `${entry.isDirectory() ? 'd' : entry.isFile() ? 'f' : 'l'} ${entry.name}${entry.isDirectory() ? '/' : ''}`)
-    return lines.join('\n') || '(empty directory)'
+    return limitToolOutput(lines.join('\n') || '(empty directory)', 'Use read on this directory with offset/limit for a paginated listing.')
   }
 }
 

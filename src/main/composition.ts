@@ -17,7 +17,8 @@ import { getSkillsSystemPrompt } from './skill/manager'
 import { PermissionBroker } from './agent/permissionBroker'
 import { SessionService } from './agent/sessionService'
 import { runAgent } from './agent/runner'
-import { fetchContextWindow, planAutoCompact } from './agent/context'
+import { fetchContextWindow } from './agent/context'
+import { planAutoCompact } from './agent/compaction'
 import { complete } from './llm/provider'
 import { providerRequests } from './llm/requestRuntime'
 import { log } from './llm/logger'
@@ -85,6 +86,7 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     fetchContextWindow,
     planAutoCompact,
     completeText: complete,
+    providerRequestLoads: () => providerRequests.snapshot(),
     log
   })
   const botSessions = new BotSessionAdapter({ sessions })

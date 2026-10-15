@@ -10,3 +10,5 @@ export function normalizeProviderConcurrency(input: unknown): number | null {
   }
   return input
 }
+/** Read-only request occupancy; limits remain authoritative settings, not inferred capacity. */
+export interface ProviderRequestLoad { active: number; waiting: number }

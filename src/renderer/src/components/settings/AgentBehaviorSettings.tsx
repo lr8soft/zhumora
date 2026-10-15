@@ -61,8 +61,8 @@ export function AgentBehaviorSettings() {
             checked={settingsDraft.subagentsEnabled}
             onChange={event => updateSettingsDraft({ subagentsEnabled: event.target.checked })} />
         </div>
-        <SubagentModelSettings providers={settingsDraft.providers} selection={settingsDraft.subagentModel}
-          enabled={settingsDraft.subagentsEnabled} onChange={subagentModel => updateSettingsDraft({ subagentModel })} />
+        <SubagentModelSettings providers={settingsDraft.providers} subagentModels={settingsDraft.subagentModels}
+          subagentDispatch={settingsDraft.subagentDispatch} enabled={settingsDraft.subagentsEnabled} onChange={updateSettingsDraft} />
       </section>
   )
 }

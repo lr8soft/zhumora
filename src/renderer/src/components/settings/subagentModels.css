@@ -1,0 +1,22 @@
+.subagent-models { margin-top: 20px; padding-top: 18px; border-top: 1px solid var(--app-color-border); }
+.subagent-models-heading { display: flex; justify-content: space-between; align-items: center; gap: 12px; }
+.subagent-models-heading strong { font-size: .88rem; }
+.subagent-dispatch { display: flex; align-items: center; gap: 16px; margin-top: 14px; font-size: .82rem; }
+.subagent-dispatch select { width: min(260px, 65%); margin-left: auto; }
+.subagent-priority-list { list-style: none; padding: 0; margin: 14px 0; display: grid; gap: 8px; }
+.subagent-priority-list li { display: flex; align-items: center; gap: 10px; padding: 10px; border: 1px solid var(--app-color-border); border-radius: 10px; background: var(--app-color-surface); }
+.subagent-sort-handle, .subagent-priority-actions button { display: inline-flex; justify-content: center; align-items: center; border: 0; background: transparent; color: var(--app-color-text-soft); padding: 5px; border-radius: 5px; }
+.subagent-sort-handle { cursor: grab; }
+.subagent-sort-handle:active { cursor: grabbing; }
+.subagent-priority-actions { display: flex; gap: 3px; margin-left: auto; flex-shrink: 0; }
+.subagent-priority-actions button:not(:disabled):hover { color: var(--app-color-primary); background: var(--app-color-bg); }
+.subagent-priority-list button:disabled { opacity: .35; cursor: default; }
+.subagent-priority-number { font-size: .76rem; color: var(--app-color-text-mute); min-width: 15px; }
+.subagent-priority-name { display: grid; gap: 3px; min-width: 0; }
+.subagent-priority-name strong { font-size: .82rem; overflow-wrap: anywhere; }
+.subagent-priority-name small { font-size: .74rem; color: var(--app-color-text-mute); overflow-wrap: anywhere; }
+.subagent-models-empty { border: 1px dashed var(--app-color-border); border-radius: 10px; padding: 16px; color: var(--app-color-text-mute); font-size: .8rem; }
+.subagent-models-add { display: flex; flex-wrap: wrap; gap: 8px; align-items: center; }
+.subagent-models-add select { flex: 1; min-width: 180px; }
+.subagent-models-add button { font-size: .78rem; }
+@media (max-width: 620px) { .subagent-priority-list li { gap: 5px; padding: 8px 5px; } .subagent-sort-handle { display: none; } }

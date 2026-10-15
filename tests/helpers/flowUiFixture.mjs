@@ -56,7 +56,7 @@ export function installFlowUiFixture() {
     settings: section('settings', { get: async () => {
       const { initialSettingsProjection } = await import('/src/store/settingsDefaults.ts')
       return { ...initialSettingsProjection(), language: 'zh', workspacePath: 'D:\\mini-agent',
-        subagentsEnabled: true, subagentModel: null,
+        subagentsEnabled: true, subagentModels: [], subagentDispatch: 'priority',
         providers: [{ id: 'local', name: '本地模型', enabled: true, defaultModel: '默认模型', baseUrl: 'http://fixture.invalid', apiKey: '' }], activeProviderId: 'local' }
     } }),
     window: nativeWindow ?? section('window', { isMaximized: async () => false }),

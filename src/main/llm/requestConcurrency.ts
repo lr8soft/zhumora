@@ -1,4 +1,4 @@
-import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
+import { normalizeProviderConcurrency, type ProviderRequestLoad } from '../../shared/providerConcurrency.ts'
 
 interface WaitingRequest {
   resolve: (release: () => void) => void
@@ -46,6 +46,10 @@ export class ProviderRequestConcurrency {
       if (limits.has(id)) queue.limit = limits.get(id)!
       this.drain(id, queue)
     }
+  }
+
+  snapshot(): Record<string, ProviderRequestLoad> {
+    return Object.fromEntries([...this.queues].map(([id, queue]) => [id, { active: queue.active, waiting: queue.waiting.length }]))
   }
 
   dispose(): void {

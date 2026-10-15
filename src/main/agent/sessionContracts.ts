@@ -7,6 +7,7 @@ import type { SubagentScope } from './subagentScope.ts'
 import type { SessionModelSelection } from '../../shared/sessionModel.ts'
 import type { SubagentAssignment } from './subagentAssignment.ts'
 import type { RunInbox } from './runInbox.ts'
+import type { ProviderRequestLoad } from '../../shared/providerConcurrency.ts'
 
 type Provider = AppSettings['providers'][number]
 
@@ -60,6 +61,7 @@ export interface SessionCompactInfo {
 }
 
 export interface ActiveSessionRun {
+  subagentProviderId?: string
   inbox: RunInbox
   controller: AbortController
   events: AgentEventSink
@@ -81,6 +83,7 @@ export interface ActiveSessionRun {
 }
 
 export interface SessionServiceDependencies {
+  providerRequestLoads?: () => Record<string, ProviderRequestLoad>
   store: SessionStore
   tools: ToolRegistry
   permissions: PermissionBroker

@@ -30,13 +30,14 @@ The canvas mouse wheel controls zoom. Auto-follow moves only when current work l
 - Connect to OpenAI-compatible APIs, including local endpoints such as Ollama, llama.cpp, and vLLM
 - Read, edit, search, and manage files in the selected workspace
 - Read and write Word, Excel, PowerPoint, and PDF artifacts with format-specific built-in tools
-- Run terminal commands
+- Run terminal commands with bounded head/tail output; paginate file and directory reads, with bounded search and browser text previews
 - Automate Chromium with Playwright
 - Observe and control Windows applications with accessibility targets, screenshots, mouse, and keyboard input (on Linux, desktop control keeps screenshot observation only)
 - Extend tools through MCP servers
 - Serve as an MCP server that external orchestrators (Claude Code, Codex, …) can delegate tasks to
 - Load reusable skills from Markdown files
 - Local session history, long-term memory, and token usage records
+- Compact model context while preserving full history, with complete-request budget rechecks and bounded previews of oversized recent tool results
 - Chat with the same agent from your phone through a Telegram bot or a QQ bot, with live progress updates
 - Import VRM characters and opt into a separate transparent Avatar window per session, with Agent-controlled configured motions and expressions
 - Import local sherpa-onnx VITS/Kokoro voices and opt into spoken final responses per session
@@ -138,13 +139,15 @@ Set the limit under **Settings → LLM Providers** and save. All models, main ag
 
 ## Subagent collaboration
 
-Enable subagents under **Settings → General → Agent behavior**, select a separate default provider/model or inherit the main model, and save. An explicit task-level model choice overrides the default. Continuing a child session keeps its original model. Disabling subagents blocks new or continued tasks, while existing tasks can still finish, be awaited, or be cancelled.
+Enable subagents under **Settings → General → Agent behavior** and edit **Subagent model priority**. Add provider/model pairs, drag or use arrow buttons to reorder, or add provider defaults in one action. Save to apply to new tasks. Legacy single selections migrate to one-entry lists; an empty list inherits the parent model. Explicit user-requested models override dispatch. Continuing a child keeps its original session/history/model. Disabling subagents blocks new or continued tasks, while existing tasks can finish, be awaited, or be cancelled.
+
+**Prefer priority** selects the first available provider; an unlimited first provider may leave later entries unused. **Spread concurrent work** rotates among available providers in list order. Models on one provider share its allowance and rotation position; its first listed model has priority. Dispatch considers actual request occupancy and preparing/active child assignments, so tool/permission waits can make placement conservative. The provider request gate remains the hard limit; all-busy selections queue cancellably. No fixed child-count cap is added.
 
 The main agent acts as an architect and coordinator. It defines interfaces, assigns independent file edits, checks actual diffs, and runs final integration validation. Each child normally edits one assigned file or answers one bounded read-only question. A parent run rejects duplicate assignments for a file that an active child still owns.
 
 When enabled, the main agent is instructed to proactively dispatch ready independent tasks without the user mentioning subagents. It first agrees interfaces and acceptance criteria; trivial edits may stay with the parent.
 
-Each provider has an **Allow subagents to use this provider** switch under **Settings → LLM Providers**, enabled by default. Turn it off to reserve an expensive provider for main sessions, and choose another child model in General settings. New and continued child tasks cannot use a disallowed provider, even through explicit model overrides. Running children may finish, be awaited or cancelled. An unavailable saved or inherited child model produces a clear error; no automatic provider switch occurs.
+Each provider has an **Allow subagents to use this provider** switch under **Settings → LLM Providers**, enabled by default. Turn it off to reserve an expensive provider for main sessions. New dispatches skip disabled/disallowed entries while retaining them visibly in the sequence; an entirely unavailable sequence fails clearly. Explicit overrides and continuations cannot use disallowed providers. Running children may finish, be awaited or cancelled. Continuations keep the original provider and never silently migrate to another model.
 
 The composer’s **Parallel work** toggle requests scoped delegation for the next input (including execution of an existing plan), then resets. It changes no model, permission or provider limits.
 

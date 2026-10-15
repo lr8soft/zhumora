@@ -10,8 +10,7 @@ import { AgentAbortedError } from '../../shared/types.ts'
 import { sessionNeedsTitle } from '../../shared/sessionTitle.ts'
 import type { SessionModelSelection } from '../../shared/sessionModel.ts'
 import { normalizeParallelPreference } from '../../shared/subagents.ts'
-import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
-import { assertSubagentProvider, canUseSubagentProvider } from '../../shared/providerSubagents.ts'
+import { assertSubagentProvider } from '../../shared/providerSubagents.ts'
 import { sessionPromptOptions } from './sessionPrompt.ts'
 import { resolveSessionModel, saveSessionModelSelection } from './sessionModelPolicy.ts'
 import { compactSession } from './sessionCompaction.ts'
@@ -25,6 +24,7 @@ import { collectUserTexts, ensureSessionTitle } from './titleService.ts'
 import { SessionEventHub } from './sessionEventHub.ts'
 import { generateId } from '../id.ts'
 import { SubagentScope } from './subagentScope.ts'
+import { SubagentModelRouter, assignedSubagentProviders, subagentProviderChoices } from './subagentRouting.ts'
 import { assertSubagentsEnabled } from './subagentPolicy.ts'
 import { RunInbox } from './runInbox.ts'
 import { takeRunCoordinationMessages } from './sessionCoordination.ts'
@@ -59,6 +59,7 @@ export class SessionService {
   private readonly executeAgent: typeof runAgent
   private readonly nextMessageId: () => string
   private readonly now: () => number
+  private readonly childModels = new SubagentModelRouter()
 
   constructor(deps: SessionServiceDependencies) {
     this.deps = deps
@@ -86,6 +87,7 @@ export class SessionService {
 
     const settleDefer = deferred<void>()
     const run: ActiveSessionRun = {
+      subagentProviderId: session.subagent ? provider.id : undefined,
       inbox: new RunInbox(), controller: new AbortController(),
       events: this.events.forRun(request.localEvents),
       abortNotified: false,
@@ -196,8 +198,7 @@ export class SessionService {
   }
 
   listSubagentProviders(): { id: string; name: string; defaultModel: string; maxConcurrency: number | null }[] {
-    return this.deps.store.getSettings().providers.filter(canUseSubagentProvider)
-      .map(({ id, name, defaultModel, maxConcurrency }) => ({ id, name, defaultModel, maxConcurrency: normalizeProviderConcurrency(maxConcurrency) }))
+    return subagentProviderChoices(this.deps.store.getSettings().providers)
   }
 
   listSessions(): Session[] {
@@ -284,18 +285,15 @@ export class SessionService {
   private createSubagentScope(
     session: Session, run: ActiveSessionRun, request: SessionRunRequest, provider: ProviderConfig, modelOverride?: string
   ): SubagentScope {
-    return new SubagentScope(createSessionSubagentHost({ store: this.deps.store, session, request,
-      parentModel: { providerId: provider.id, model: modelOverride || provider.defaultModel }, signal: run.controller.signal,
+    const parentModel = { providerId: provider.id, model: modelOverride || provider.defaultModel }
+    const waitIdle = async (id: string) => { await this.active.get(id)?.settled }
+    return new SubagentScope(createSessionSubagentHost({ store: this.deps.store, session, request, parentModel, signal: run.controller.signal,
+      resolveModel: input => this.childModels.select(this.deps.store.getSettings(), parentModel, input,
+        this.deps.providerRequestLoads?.(), assignedSubagentProviders(this.active.values())),
       send: input => this.sendMessage(input),
       sendMessage: (childId, content, taskId) => this.sendChildMessage(childId, content, taskId, run.controller.signal),
       isRunning: id => this.isRunning(id),
-      stop: async id => {
-        const child = this.active.get(id)
-        if (child) { this.abortRun(id, child); await child.settled }
-      },
-      waitIdle: async id => {
-        await this.active.get(id)?.settled
-      }
+      stop: async id => { this.abort(id); await waitIdle(id) }, waitIdle
     }), run.controller.signal)
   }
 

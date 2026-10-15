@@ -13,6 +13,7 @@ import fr from './locales/fr'
 import de from './locales/de'
 import { flowTranslations } from '../flow/translations'
 import { dockTranslations } from '../docking/translations'
+import { subagentRoutingTranslations } from '../components/settings/subagentRoutingTranslations'
 
 export type AppLanguage = 'en' | 'zh' | 'ja' | 'es' | 'fr' | 'de' | 'auto'
 
@@ -86,12 +87,12 @@ const effectiveLang = getEffectiveLanguage(storedLang)
 
 i18n.use(initReactI18next).init({
   resources: {
-    en: { translation: { ...en, flow: flowTranslations.en, dock: dockTranslations.en } },
-    zh: { translation: { ...zh, flow: flowTranslations.zh, dock: dockTranslations.zh } },
-    ja: { translation: { ...ja, flow: flowTranslations.ja, dock: dockTranslations.ja } },
-    es: { translation: { ...es, flow: flowTranslations.es, dock: dockTranslations.es } },
-    fr: { translation: { ...fr, flow: flowTranslations.fr, dock: dockTranslations.fr } },
-    de: { translation: { ...de, flow: flowTranslations.de, dock: dockTranslations.de } }
+    en: { translation: { ...en, flow: flowTranslations.en, dock: dockTranslations.en, subagentRouting: subagentRoutingTranslations.en } },
+    zh: { translation: { ...zh, flow: flowTranslations.zh, dock: dockTranslations.zh, subagentRouting: subagentRoutingTranslations.zh } },
+    ja: { translation: { ...ja, flow: flowTranslations.ja, dock: dockTranslations.ja, subagentRouting: subagentRoutingTranslations.ja } },
+    es: { translation: { ...es, flow: flowTranslations.es, dock: dockTranslations.es, subagentRouting: subagentRoutingTranslations.es } },
+    fr: { translation: { ...fr, flow: flowTranslations.fr, dock: dockTranslations.fr, subagentRouting: subagentRoutingTranslations.fr } },
+    de: { translation: { ...de, flow: flowTranslations.de, dock: dockTranslations.de, subagentRouting: subagentRoutingTranslations.de } }
   },
   lng: effectiveLang,
   fallbackLng: 'en',

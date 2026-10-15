@@ -26,6 +26,10 @@ assert.throws(() => normalizeSettings({ providers: [{ ...config, maxConcurrency:
   const second = gate.acquire('p', 1).then(release => { secondStarted = true; return release })
   const third = gate.acquire('p', 1).then(release => { thirdStarted = true; return release })
   const other = await gate.acquire('other', 1)
+  const occupancy = gate.snapshot()
+  assert.deepEqual(occupancy.p, { active: 1, waiting: 2 })
+  occupancy.p.active = 100
+  assert.equal(gate.snapshot().p.active, 1, 'routing snapshots cannot mutate the request gate')
   await turn()
   assert.equal(secondStarted, false, 'same provider queues behind its active request')
   assert.equal(thirdStarted, false)
@@ -36,6 +40,7 @@ assert.throws(() => normalizeSettings({ providers: [{ ...config, maxConcurrency:
   releaseSecond()
   const releaseThird = await third
   releaseThird()
+  assert.deepEqual(gate.snapshot(), {}, 'idle occupancy entries do not linger')
   gate.dispose()
 }
 {

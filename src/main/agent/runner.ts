@@ -27,6 +27,7 @@ import { isValidToolCall } from '../../shared/toolCalls'
 import { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS, RecoveryBudget } from './recoveryPolicy'
 import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
+import { finalizeRun } from './finalizeRun'
 import { decideTurnOutcome } from './turnDecision'
 import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
 import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
@@ -202,7 +203,7 @@ export async function runAgent(
   }
 
   // 优雅收尾：不带 tools 的最后一次调用，强制模型纯文本总结进度
-  await finalizeRun(provider, opts.modelOverride, signal, hardStop, conversation, allAssistantMessages, cb, reasoningEffort)
+  await finalizeRun(provider, opts.modelOverride, signal, hardStop, conversation, allAssistantMessages, cb, reasoningEffort, compactor)
 
   return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
 }
@@ -292,60 +293,6 @@ async function streamRound(
     onRetry: cb.onRetry
   })
   return { content, toolCalls, usage, finishReason, reasoning: roundReasoning, streamInterrupted }
-}
-
-/**
- * 停止时的优雅收尾（达到轮数上限 / 循环硬停）
- * 追加一条收尾指令后发起一次不带 tools 的调用，强制模型纯文本输出：
- * 已完成什么、剩下什么、关键文件路径。收尾调用失败不影响主流程。
- */
-async function finalizeRun(
-  provider: ProviderConfig,
-  modelOverride: string | undefined,
-  signal: AbortSignal | undefined,
-  reason: string,
-  conversation: WorkingConversation,
-  allAssistantMessages: ChatMessage[],
-  cb: AgentEventCallbacks,
-  reasoningEffort: ReasoningEffortParam | undefined
-): Promise<void> {
-  const finalizeMessages: ChatMessage[] = [
-    ...conversation.messages,
-    {
-      role: 'user',
-      content: `[System notice] The agent run has been stopped: ${reason}. You must now respond with text only — do NOT call any tools. In 1-3 short paragraphs, summarize: (1) what has been accomplished so far, (2) what remains to be done, (3) any important file paths or decisions. Be concrete and actionable so the user can continue in the next message.`
-    }
-  ]
-  try {
-    const model = modelOverride || provider.defaultModel
-    let roundReasoning = ''
-    const { content, usage } = await streamChat(provider, {
-      messages: finalizeMessages,
-      tools: undefined,   // 无 tools → 强制纯文本
-      model,
-      temperature: provider.temperature,
-      reasoningEffort,
-      signal
-    }, {
-      onToken: cb.onToken,
-      onReasoningToken: (t) => {
-        roundReasoning += t
-        cb.onReasoningToken?.(t)
-      },
-      // 收尾失败不覆盖主流程错误状态、不触发重试 UI
-      onError: undefined,
-      onRetry: undefined
-    })
-    if (usage) cb.onTokenUsage?.(usage, model)
-    // 理论上无 tools 不会产生 tool_calls；若个别模型仍返回，丢弃（不入库，避免悬空）
-    const msg: ChatMessage = { role: 'assistant', content: content || null }
-    conversation.append(msg, null)
-    allAssistantMessages.push(msg)
-    cb.onAssistantMessage?.(content, [], roundReasoning || undefined)
-    log('info', 'Finalize summary completed')
-  } catch (err) {
-    log('error', `Finalize summary failed: ${(err as Error).message}`)
-  }
 }
 
 /** 从消息列表中获取最后一条 user 消息的 content（可能是字符串或多模态 ContentPart[]） */

@@ -16,7 +16,7 @@ export async function compactSession(
 ): Promise<SessionCompactInfo> {
   const { deps, events, now } = context
   const history = deps.store.getMessages(sessionId)
-  if (history.length < 4) return { beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: history.length }
+  if (!history.length) return { beforeTokens: 0, afterTokens: 0, compressedCount: 0, keptCount: history.length }
 
   const { messages, ids } = mapPersistedHistory(history)
   const sanitized = sanitizeHistoryWithIds(messages, ids)

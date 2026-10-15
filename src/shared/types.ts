@@ -7,7 +7,7 @@ import type { ReasoningDialect } from './reasoning'
 import type { TtsModelConfig } from './tts'
 import type { BrowserTarget } from './browser'
 import type { BbsConfig } from './bbs'
-import type { SubagentModelSelection } from './subagents'
+import type { SubagentDispatch, SubagentModelSelection } from './subagents'
 import type { SessionModelSelection } from './sessionModel'
 
 /** LLM 角色标记 */
@@ -319,7 +319,8 @@ export interface AppSettings {
   /** Allow new delegated runs; normalized at the settings boundary. Existing tasks can still be managed. */
   subagentsEnabled: boolean
   /** null inherits the parent model; otherwise delegated runs have an independent provider/model default. */
-  subagentModel: SubagentModelSelection | null
+  subagentModels: SubagentModelSelection[]
+  subagentDispatch: SubagentDispatch
   /** 界面语言 ('auto' 时跟随系统) */
   language?: string
   /** LLM/MCP 网络请求失败的最大重试次数（-1 = 无限重试，0 = 不重试，默认 5） */

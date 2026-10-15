@@ -12,20 +12,20 @@ export interface SubagentModelOption {
 
 /** UI projection retains saved selections when catalogs fail or a provider is removed. */
 export function buildSubagentModelOptions(
-  providers: ProviderConfig[], catalogs: Record<string, { id: string }[]>, selected: SubagentModelSelection | null
+  providers: ProviderConfig[], catalogs: Record<string, { id: string }[]>, selected: readonly SubagentModelSelection[]
 ): SubagentModelOption[] {
   const options: SubagentModelOption[] = []
   for (const provider of providers.filter(canUseSubagentProvider)) {
     const models = [provider.defaultModel, ...(catalogs[provider.id] || []).map(item => item.id),
-      ...(selected?.providerId === provider.id ? [selected.model] : [])]
+      ...selected.filter(item => item.providerId === provider.id).map(item => item.model)]
     for (const model of new Set(models)) {
       if (!model?.trim() || model.length > 200) continue
       options.push({ value: JSON.stringify([provider.id, model]), providerId: provider.id, providerName: provider.name, model, unavailable: false })
     }
   }
-  if (selected && !options.some(option => option.providerId === selected.providerId && option.model === selected.model)) {
-    options.push({ value: JSON.stringify([selected.providerId, selected.model]), ...selected,
-      providerName: providers.find(provider => provider.id === selected.providerId)?.name || selected.providerId, unavailable: true })
+  for (const item of selected) if (!options.some(option => option.providerId === item.providerId && option.model === item.model)) {
+    options.push({ value: JSON.stringify([item.providerId, item.model]), ...item,
+      providerName: providers.find(provider => provider.id === item.providerId)?.name || item.providerId, unavailable: true })
   }
   return options
 }

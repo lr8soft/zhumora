@@ -1,9 +1,10 @@
 import { spawn } from 'node:child_process'
 import * as path from 'node:path'
+import { StringDecoder } from 'node:string_decoder'
+import { BoundedToolOutput, MAX_COMMAND_OUTPUT_LINES } from './outputLimits.ts'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 600_000
-const MAX_OUTPUT_BYTES = 1024 * 1024
 
 export type ShellExecutionMode = 'wait' | 'detach'
 
@@ -47,23 +48,14 @@ export async function executeShellCommand(options: {
       detached: process.platform !== 'win32',
       stdio: ['ignore', 'pipe', 'pipe']
     })
-    const chunks: Buffer[] = []
-    let captured = 0
-    let truncated = false
+    const preview = new BoundedToolOutput('Narrow the command, or redirect verbose logs to a file and read it with offset/limit.', MAX_COMMAND_OUTPUT_LINES)
     let settled = false
 
-    const collect = (chunk: Buffer) => {
-      if (captured >= MAX_OUTPUT_BYTES) {
-        truncated = true
-        return
-      }
-      const accepted = chunk.subarray(0, MAX_OUTPUT_BYTES - captured)
-      chunks.push(accepted)
-      captured += accepted.length
-      if (accepted.length < chunk.length) truncated = true
+    for (const stream of [child.stdout, child.stderr]) {
+      const decoder = new StringDecoder('utf8')
+      stream.on('data', (chunk: Buffer) => preview.append(decoder.write(chunk)))
+      stream.on('end', () => preview.append(decoder.end()))
     }
-    child.stdout.on('data', collect)
-    child.stderr.on('data', collect)
 
     const cleanup = () => {
       clearTimeout(timeout)
@@ -75,11 +67,10 @@ export async function executeShellCommand(options: {
       child.unref()
     }
     const output = (code: number | null, timedOut = false) => {
-      const text = Buffer.concat(chunks).toString('utf8').trimEnd()
+      const text = preview.snapshot().text.trimEnd()
       const metadata = [
         `[exit code: ${code ?? -1}]`,
-        ...(timedOut ? [`[timed out after ${Math.round(timeoutMs / 1000)}s]`] : []),
-        ...(truncated ? [`[output truncated at ${MAX_OUTPUT_BYTES} bytes]`] : [])
+        ...(timedOut ? [`[timed out after ${Math.round(timeoutMs / 1000)}s]`] : [])
       ]
       return `${text || '(no output)'}\n${metadata.join('\n')}`
     }

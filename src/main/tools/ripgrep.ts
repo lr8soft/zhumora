@@ -1,6 +1,7 @@
 import { spawn } from 'node:child_process'
 import * as path from 'node:path'
 import { rgPath } from '@vscode/ripgrep'
+import { limitToolOutput } from './outputLimits.ts'
 
 const MAX_RECORD_BYTES = 64 * 1024
 const MAX_PREVIEW_CHARS = 2_000
@@ -90,8 +91,9 @@ export async function grepWithRipgrep(options: {
   args.push('--', options.pattern, targetArgument)
 
   const result = await runRipgrep(args, cwd, options.signal)
-  if (result.code === 2) throw new Error(result.stderr.trim() || 'ripgrep rejected the search pattern')
-  if (result.code !== 0 && result.code !== 1) throw new Error(result.stderr.trim() || `ripgrep exited with code ${result.code}`)
+  if (result.code !== 0 && result.code !== 1) {
+    throw new Error(limitToolOutput(result.stderr.trim() || `ripgrep exited with code ${result.code}`, 'Simplify the search pattern and path.'))
+  }
 
   const matches: string[] = []
   for (const record of result.stdout.split(/\r?\n/)) {
@@ -111,7 +113,7 @@ export async function grepWithRipgrep(options: {
     matches.length = limit
     matches.push(`... (truncated at ${limit} matches; narrow the pattern or path)`)
   }
-  return matches.join('\n')
+  return limitToolOutput(matches.join('\n'), 'Narrow the pattern/path or lower limit to inspect omitted matches.')
 }
 
 export async function globWithRipgrep(options: {
@@ -128,7 +130,9 @@ export async function globWithRipgrep(options: {
   for (const exclude of options.exclude || []) args.push(`--glob=${exclusionGlob(exclude)}`)
   args.push('.')
   const result = await runRipgrep(args, cwd, options.signal)
-  if (result.code !== 0 && result.code !== 1) throw new Error(result.stderr.trim() || `ripgrep exited with code ${result.code}`)
+  if (result.code !== 0 && result.code !== 1) {
+    throw new Error(limitToolOutput(result.stderr.trim() || `ripgrep exited with code ${result.code}`, 'Simplify the glob pattern and path.'))
+  }
 
   const files = result.stdout.split(/\r?\n/).filter(Boolean)
     .map(file => normalizeResultPath(options.workspacePath, cwd, file))
@@ -138,5 +142,5 @@ export async function globWithRipgrep(options: {
     files.length = limit
     files.push(`... (truncated at ${limit} files; narrow the pattern or path)`)
   }
-  return files.join('\n')
+  return limitToolOutput(files.join('\n'), 'Narrow the pattern/path or lower limit to inspect omitted files.')
 }

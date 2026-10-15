@@ -44,10 +44,11 @@ export function estimateMessageTokens(msg: ChatMessage): number {
   }
   if (msg.tool_calls) {
     for (const tc of msg.tool_calls) {
-      tokens += estimateTextTokens(tc.function.name) + estimateTextTokens(tc.function.arguments) + 5
+      tokens += estimateTextTokens(tc.id) + estimateTextTokens(tc.function.name) + estimateTextTokens(tc.function.arguments) + 5
     }
   }
   if (msg.name) tokens += estimateTextTokens(msg.name)
+  if (msg.tool_call_id) tokens += estimateTextTokens(msg.tool_call_id)
   return tokens
 }
 
@@ -60,6 +61,9 @@ export interface ContextBudgetUsage {
   toolDefinitionTokens: number
   estimatedRequestTokens: number
   threshold: number
+  contextWindow: number
+  inputBudget: number
+  outputReserve: number
 }
 
 /**
@@ -70,8 +74,13 @@ export interface ContextBudgetUsage {
 export function measureContextBudget(
   messages: ChatMessage[],
   contextWindow: number,
-  tools: ToolDefinition[] = []
+  tools: ToolDefinition[] = [],
+  reservedOutputTokens?: number
 ): ContextBudgetUsage {
+  if (!Number.isSafeInteger(contextWindow) || contextWindow <= 0) throw new Error('Invalid context window')
+  const outputReserve = reservedOutputTokens ?? Math.max(1, Math.ceil(contextWindow * (1 - CONTEXT_WINDOW_INPUT_RATIO)))
+  if (!Number.isSafeInteger(outputReserve) || outputReserve < 0) throw new Error('Invalid output token reserve')
+  const inputBudget = Math.max(0, Math.min(Math.floor(contextWindow * CONTEXT_WINDOW_INPUT_RATIO), contextWindow - outputReserve))
   const messageTokens = estimateTokens(messages)
   const toolDefinitionTokens = tools.length > 0
     ? estimateTextTokens(JSON.stringify(tools))
@@ -80,8 +89,26 @@ export function measureContextBudget(
     messageTokens,
     toolDefinitionTokens,
     estimatedRequestTokens: Math.ceil((messageTokens + toolDefinitionTokens) * TOKEN_ESTIMATE_SAFETY_FACTOR),
-    threshold: getCompactThreshold(contextWindow)
+    threshold: Math.min(getCompactThreshold(contextWindow), Math.floor(inputBudget * COMPACTION_TRIGGER_RATIO)),
+    contextWindow, inputBudget, outputReserve
   }
+}
+
+export class ContextBudgetExceededError extends Error {
+  readonly usage: ContextBudgetUsage
+
+  constructor(usage: ContextBudgetUsage) {
+    super(`Context remains too large after compaction: estimated input ${usage.estimatedRequestTokens} tokens exceeds input budget ${usage.inputBudget} (window ${usage.contextWindow}, output reserve ${usage.outputReserve}). Request was not sent. Reduce the input, system prompt or tool definitions, or start a new conversation.`)
+    this.name = 'ContextBudgetExceededError'
+    this.usage = usage
+  }
+}
+
+/** Every conversation request, including summaries and finalization, must pass this last check. */
+export function assertContextFits(messages: ChatMessage[], contextWindow: number, tools: ToolDefinition[] = [], reservedOutputTokens?: number): ContextBudgetUsage {
+  const usage = measureContextBudget(messages, contextWindow, tools, reservedOutputTokens)
+  if (usage.estimatedRequestTokens > usage.inputBudget) throw new ContextBudgetExceededError(usage)
+  return usage
 }
 
 export function needsCompact(

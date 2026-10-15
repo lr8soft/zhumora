@@ -11,9 +11,9 @@ import { normalizeReasoningDialect } from '../../shared/reasoning.ts'
 import { normalizeProviderHeaders } from '../../shared/providerHeaders.ts'
 import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
 import { normalizeProviderSubagentAccess } from '../../shared/providerSubagents.ts'
-import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel } from '../../shared/subagents.ts'
+import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel, normalizeSubagentModels, normalizeSubagentDispatch } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 15
+export const SETTINGS_SCHEMA_VERSION = 16
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {
@@ -40,7 +40,8 @@ export function defaultSettings(workspacePath: string): AppSettings {
     workspacePath,
     memoryEnabled: true,
     subagentsEnabled: DEFAULT_SUBAGENTS_ENABLED,
-    subagentModel: null,
+    subagentModels: [],
+    subagentDispatch: 'priority',
     language: 'auto',
     maxRetries: 5,
     maxRounds: 20,
@@ -79,7 +80,8 @@ function normalizeProviders(input: unknown): AppSettings['providers'] | null {
 export function normalizeSettings(input: unknown, workspacePath = process.cwd()): AppSettings {
   const defaults = defaultSettings(workspacePath)
   if (!input || typeof input !== 'object') return defaults
-  const raw = input as Partial<AppSettings>
+  const { subagentModel: legacyModel, ...raw } = input as Partial<AppSettings> & { subagentModel?: unknown }
+  const migratedModel = normalizeSubagentModel(legacyModel)
   const avatarModels = normalizeAvatarModels(raw.avatarModels)
   const ttsModels = normalizeTtsModels(raw.ttsModels)
   return {
@@ -88,7 +90,8 @@ export function normalizeSettings(input: unknown, workspacePath = process.cwd())
     schemaVersion: SETTINGS_SCHEMA_VERSION,
     providers: normalizeProviders(raw.providers) ?? defaults.providers,
     subagentsEnabled: normalizeSubagentsEnabled(raw.subagentsEnabled),
-    subagentModel: normalizeSubagentModel(raw.subagentModel),
+    subagentModels: normalizeSubagentModels(raw.subagentModels === undefined && migratedModel ? [migratedModel] : raw.subagentModels),
+    subagentDispatch: normalizeSubagentDispatch(raw.subagentDispatch),
     mcpServers: Array.isArray(raw.mcpServers) ? raw.mcpServers : defaults.mcpServers,
     mcpServer: ensureMcpServerToken(normalizeMcpServerSettings(raw.mcpServer)),
     telegramBot: normalizeTelegramBotConfig(raw.telegramBot),

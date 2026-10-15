@@ -54,8 +54,8 @@ export function createSubagentTools(services: SubagentServices): { name: string;
       description: { type: 'string', maxLength: 120, description: 'Short task title.' },
       prompt: { type: 'string', maxLength: 24000, description: 'One small change or bounded question, necessary context, agreed interfaces, acceptance criteria and focused validation. No broad feature or multi-file refactor.' },
       targetFile: { type: 'string', maxLength: 4096, description: 'For code edits, the one assigned project file (relative to the parent workspace or absolute). Active duplicate ownership is rejected. Omit only for bounded read-only/non-file tasks. This is an ownership contract, not a permissions bypass or filesystem sandbox.' },
-      providerId: { type: 'string', description: 'Override only when the user explicitly requests a different provider for this task. Omission uses the saved subagent provider, otherwise the parent provider.' },
-      model: { type: 'string', description: 'Override only for an explicitly requested model. Omission uses the saved child model when its provider matches; otherwise inherit parent model or selected provider default.' }
+      providerId: { type: 'string', description: 'Override only for a user-requested provider. Omit to let the application select from the ordered child model sequence using its priority/spread policy and provider load.' },
+      model: { type: 'string', description: 'Override only for a user-requested model. Otherwise use the selected sequence model; with an explicit provider, its first sequence model, parent model or provider default.' }
     }, ['description', 'prompt'], 'normal', async (args, context) => serializeStartup(await scope(context).spawn(args as unknown as SubagentRequest))),
     tool('list_subagents', 'Inspect this parent run’s current task inventory: role, file, dependencies, status and settled. No full replies or credentials. Follow next_cursor pages when present; use wait_subagents for deliverables. Do not repeatedly poll.', {
       after_task_id: { type: 'string', description: 'Optional next_cursor returned by a prior list page. Omit for the first page.' }

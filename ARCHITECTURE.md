@@ -232,13 +232,15 @@ Bot 层禁止拥有：
 
 Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `list_subagents` / `send_subagent_message` / `wait_subagents` / `continue_subagent` / `cancel_subagent` 委托独立任务。工具由 `composition.ts` 构造并注入 Session API，不直接 import/call runner，不使用对外 MCP 传输，也不创建第二套 Agent runtime。
 
-设置 → 通用 → Agent 行为提供 `subagentsEnabled` 开关（默认 true，保存后生效）和独立的子模型下拉（`subagentModel: {providerId, model} | null`，null 表示继承主模型）。settings JSON schema v12 在 `store/settingsNormalization.ts` 的唯一 normalizeSettings 边界补齐旧配置；开关缺失保留原开启行为，非布尔非法值关闭，旧配置的子模型缺失则继承主模型。db.ts 仍是 settings cache/保存/刷新 owner，不创建第二份配置缓存。关闭后不新建、不继续子运行，但已启动任务可完成、等待和取消；旧子会话历史保留，用户仍可单独打开。SubagentScope 的容量入口和 SessionService 的权限检查均现读权威设置，批准前后重查；启动准备结束、持久化输入前也重查，关闭不能被缓存 scope、迟到批准或在途准备绕过。完整工具注册表不变，新主运行的提示词明确说明委托关闭。
+设置 → 通用 → Agent 行为提供 `subagentsEnabled` 开关（默认 true）和有序 `subagentModels: {providerId, model}[]`、`subagentDispatch: priority | spread`，保存后生效。settings JSON schema v16 在唯一 normalizeSettings 边界将旧 subagentModel 转为单项列表并移除旧字段；旧 null/缺失保持空列表继承主模型。新列表严格校验、精确模型对去重并保留顺序，停用或删除的选择不从保存值自动删除。db.ts 仍是 settings cache/保存/刷新 owner。关闭后不新建、不继续子运行，已启动任务可完成、等待和取消，完整工具注册表不变。SubagentScope、权限与准备结束/持久化输入前均现读权威开关，迟到批准或在途准备不能绕过。
 
-子模型菜单按启用的 provider 分组，使用已有 provider.listModels IPC 懒加载/刷新；主 Agent 的 activeProviderId、提供商 defaultModel 和聊天模型选择均不改动。列表只在视图实例缓存，以草稿 provider 列表身份为 key（配置变化即失效），卸载时释放，过期请求结果不进入新列表；保存选择在接口失败/模型未列出时仍展示，删除或停用 provider 则标为不可用，运行时明确报错而非回退。新增子任务现读已保存子模型偏好；优先级为显式任务 provider/model → 匹配 provider 的独立子默认模型 → 父运行实际模型/所选 provider 默认模型。显式切换 provider 不套用另一个 provider 的子模型。continue 保留创建时选定的 provider/model，不受后续下拉修改影响。用户仍可在聊天中显式要求个别子任务用不同模型，主 Agent 经工具参数覆盖默认值。
+子模型序列支持拖拽/按钮排序、添加模型、添加各供应商默认模型、移除；候选按允许子 Agent 的启用 provider 分组，通过已有 provider.listModels IPC 懒加载/刷新。目录只在视图实例缓存，草稿 provider 身份变化失效、卸载释放、忽略迟到结果；已选模型即使目录失败/未列出也保留，删除/停用/禁止 provider 则显示不可用。主 activeProviderId、provider defaultModel 和聊天模型偏好不变。新任务默认省略模型参数，由应用按已保存序列分配；空列表继承父实际模型。显式任务 provider/model 仅供用户指定，未给 model 时使用该 provider 首个序列模型、匹配父模型或其默认模型。continue 保留创建配置，不因排序、策略或可用性改变而静默换模型；原配置不可用明确失败。
+
+`SessionService.childModels` 是子模型轮转游标的 owner，SubagentModelRouter 只持有有效序列/策略签名和上次 provider，不维护第二份 run 表；配置改变时重置。组合根注入 ProviderRequestConcurrency.snapshot 的只读计数副本，活动/准备中的子任务数量从 SessionService.active 的 subagentProviderId 现投影。选择负载为 max(实际请求 active+waiting, 子运行分配数)，工具/权限等待可能使选择保守；它仅用于派工，不是额外子任务数量门禁。priority 取首个有余量 provider；spread 跨主会话按有效序列轮转可用 provider，同 provider 多模型共用一个位置并优先使用首个模型。null 上限始终表示不限制；全部繁忙仍可创建选定子会话，其 HTTP 请求进入原可取消 FIFO，不另建待启动任务、定时 scheduler 或容量缓存。实际并发硬限制仍只有网络额度适配器。
 
 - **运行 owner 不变**：`SessionService.active` 按 sessionId 独占运行、AbortController 和批准模式。父 run 持有一个 `SubagentScope`（`subagentScope.ts`），只保存子会话引用与 `taskProtocol.McpTaskSession` 状态投影，不拥有控制器、执行器或全局事件总线。工具必须用当前 run 的 `sessionId + AbortSignal` 取得该 scope；跨会话、上一轮的句柄和子 Agent 嵌套创建均拒绝。
 - **独立历史**：每个子 Agent 是持久化 session，主进程分配消息 ID，经标准 `sendMessage(inputSource='external')` 写消息并广播。子上下文默认仅含委托任务、通用系统提示词和父输入适配器的 sourcePrompt，不复制父对话、不注入父工具调用片段。完整历史、权限、压缩和 MCP 工具均复用正常流程。
-- **provider/model**：spawn 显式 provider 优先，否则继承父运行已解析的 provider；显式 model 优先，同 provider 未指定则继承父运行实际 model，切换 provider 未指定则使用所选 provider 默认 model。只允许启用的 settings provider，未知/停用配置明确失败，不静默回退。API key/baseUrl 不出现在模型可见的 provider 清单。只有 provider 和 model 都与父运行相同时继承 reasoning effort。继续任务保留原子会话及其创建配置。手动压缩子会话也使用其创建 provider/model。
+- **provider/model**：spawn 按上述序列/策略分配，显式请求优先。自动派工只在配置序列中跳过未知/停用/禁止 provider，无可用项明确失败；显式请求、继承及 continue 仍统一校验，不静默改换端点。API key/baseUrl 不进入模型可见清单。只有 provider/model 均与父运行相同时继承 reasoning effort。继续任务和手动压缩保留子会话创建模型。
 - **持久化边界**：migration v6 为 sessions 增加 `subagent_parent_id / subagent_provider_id / subagent_model`，投影到 `Session.subagent`。父关系是审计来源，不使用级联删除：删除父会话会先停止并等待它的子运行，但子历史保留，可独立查看；删除单个子会话仍按原规则先 abort/settle。活动 task_id 不落库，应用重启不自动恢复任务，子历史和来源配置仍可查询。
 - **真实并行**：spawn 等待子运行启动后立即返回 task_id（不等待最终回答）；父工具仍按顺序执行，多次 spawn 的子运行可以重叠。wait 复用 taskProtocol 的终态/权限等待，无定时轮询；返回完整状态与最多 12000 字符的回复，截断显式标记，原始完整回复仍在子历史。continue 仅允许最近一轮已 settle 的任务，复用 session 但返回新的 task_id，旧 task_id 不能停止或继续新一轮。通知只在当前 run 的安全检查点消费，没有后台自动启动或唤醒已结束父 run 的流程。
 - **并发来源**：只由对应 provider 的 `maxConcurrency` 控制实际 LLM 请求，留空不限制；不再另设固定子 Agent 数量或累计子任务次数限制。父提示词和 `list_subagent_providers` 提供已配置并发值，不泄漏凭据，供主 Agent 规划批次；不同 provider 分别计数，名额与其他会话/辅助补全共享。待发 LLM 请求由 provider 队列等待，子会话仍是活动任务，不能当成失败或反复补建。wait 接受非空唯一的当前 run 任务 ID 列表，不暗中限制任务数量；每个返回文本仍受原有长度边界保护。委托输入文本最多 24000 字符，嵌套深度固定为 1。子 Agent 每轮仍拿完整工具注册表快照，委托工具不筛选/禁用其他工具。浏览器/物理桌面共享，DesktopControlCoordinator 原有独占策略不变，父会话持有桌面控制时由当前 owner 操作。
@@ -265,7 +267,7 @@ Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `list
 
 终态发布边界：runner 的 onComplete 只完成回答持久化，`sessionRunCallbacks.ts` 把 complete/error 暂存到 SessionService 持有的 ActiveSessionRun.outcome。SessionService 等待子运行清理并从 active 表移除父 run 后，才向 SessionEventHub 和 local sink 发布 complete/error，然后 settle；清理期间用户中止不得再发布成功。aborted 仍立即报告取消意图，实际释放由 running=false/settled 表示。handle.completion 必须保留普通错误的原始 reject，不能因 cleanup 的 settled 竞速而被转换成成功。持久化轮次状态封装为 `persistedCallbacks.ts` 内的 PersistedAgentMessages 实例，callbacks 只做带过期 run 防护的适配，不建立反向契约依赖；手动压缩编排抽到 `sessionCompaction.ts`，仍由 SessionService 调用并注入存储/上下文依赖。
 
-`subagentPolicy.ts` 保存参数/模型解析与模型工作流指导，`sessionContracts.ts` 保存会话应用接口；测试覆盖跨 provider 并行、上下文隔离、权威消息和工具结果顺序、容量预留、续跑、权限拒绝、权限等待、中止、卡死 settle、迟到写入与 fresh/v5 数据迁移。
+`subagentPolicy.ts` 保存参数校验与模型工作流指导，`subagentRouting.ts` 保存模型选择和轮转游标，`sessionContracts.ts` 保存会话应用接口；测试覆盖序列迁移/排序、跨 provider/主会话分配、准备期负载、满额排队、无限额度、设置变化、上下文隔离、权威消息和工具结果顺序、续跑、权限拒绝/等待、中止、卡死 settle、迟到写入与 fresh/v5 数据迁移。
 
 ```mermaid
 stateDiagram-v2
@@ -342,9 +344,24 @@ stateDiagram-v2
 - 自动和手动压缩都必须复用相同的历史清洗和安全边界规则。
 - assistant `tool_calls` 与全部对应 tool results 是不可拆分的原子组。
 
+发送前预算检查由 `AutoCompactor.applyIfOverThreshold` 统一编排：普通轮次传本轮完整工具快照，`finalizeRun` 在追加收尾指令后传空工具表，均计算 system、有效消息、工具 schema、调用/结果 ID 和图片估算，乘原有 1.2 余量。输入预算为窗口的 90%（为输出预留 10%）；压缩触发阈值仍为窗口的 81%。摘要请求独立按实际 800 输出 token 预留与输入总预算检查，不得只限制单条摘要输入。
+
+- `history.planCompactByTokens` 按最近消息的 token 预算选择连续后缀，不因消息只有两到四条而跳过；至少保留最后一条，并将边界回退到完整工具组。最近一组独自超预算时保留其调用和全部结果关联，不能拆组或丢结果来获得合规序列。
+- `compaction.ts` 只规划摘要与安全边界，`summaryInput.ts` 对整个摘要源采用有界首尾摘录，并保留单条限制；摘要输入仍必须经过 `assertContextFits` 才能发送。摘要失败/空摘要时仅允许当前工作上下文降级截断，不覆盖旧压缩记录。用户中止须传播，不能当成摘要失败继续。
+- 自动压缩最多一次摘要规划，再由 `toolResultProjection.ts` 做至多九次纯文本预览收缩，随后重新计算完整请求。仅工具结果正文可投影；用户输入、system、工具表、工具调用参数、消息 ID、tool_call_id、消息次序和图片附件不变。JSON 结果按长字符串字段缩减，保留结构、类型和关联/路径等字段；无法安全缩减的结构必须由预算检查拒绝，不能粗切 JSON。
+- 自动压缩的摘要成功且最终请求预算检查通过、未中止时，才持久化 `{upToMessageId, summary}`；边界取被折叠前缀内最后一个真实 ID，跳过虚拟消息。结果预览仅在 run 的 WorkingConversation 中，绝不写回原消息或持久化成另一份历史。手动压缩复用同一摘要规划和摘要请求预算，保存成功摘要后，下次运行仍须根据实际 system/工具快照执行完整请求检查。重载后从完整历史构建，发送前重新执行同一预算策略。
+- `assertContextFits` 拒绝仍超输入预算的请求并报告估算、预算、窗口与输出预留，不发已知超预算 HTTP，也不无限重复压缩。收尾不得吞掉预算错误/用户中止并发布成功。这里是近似估算保护，不宣称等同服务端 tokenizer；尚未增加 context-limit 400 自动恢复或真实 usage 校准。现有 compact 通知仍为 effective 消息估算，完整请求检查数字记录在 Context check/recheck 日志中。
+
 不要为 Bot、UI 或恢复逻辑各复制一份历史映射/压缩实现。
 
 ## 10. 依赖与文件边界
+
+### 内置工具文本输出边界
+
+- 限制放在产生文本的工具适配器，由 `tools/outputLimits.ts` 提供纯预览策略。每次命令独立创建 `BoundedToolOutput`，有界保留开头和滚动结尾；stdout/stderr 独立 UTF-8 decoder，达到预览上限仍继续排空输出，不因此终止命令。命令正文最多 500 行、48,000 字符、单行 2,000 字符，退出码和超时状态另附。
+- `grep`、`glob`、`ls` 及搜索错误诊断受 48,000 字符 / 2,000 行 / 单行 2,000 字符限制，仍保留各自匹配条数上限。文件 `read` 保留原有 2,000 行 / 50 KiB / 单行 2,000 字符与 offset/limit；目录 `read` 另受 48,000 字符限制，续读 offset 按实际返回条目推进，不能跳过截断内容。`edit` 仅限制返回的修改预览，不裁剪实际写入。
+- 浏览器正文/HTML 默认预览 5,000 字符，`max_length` 可缩小但不能超过 48,000 字符硬上限，另受行数与单行长度限制。截断必须显式标记，并提示缩小查询、分页或选择更窄 selector。命令不会自动保存完整日志，需要完整输出时由 Agent 显式重定向到文件后分页读取。
+- 这是工具返回前的文本边界，不是 token 计数或整个请求预算，也不删除/重写已持久化历史。不得将字符串截断器无差别用于子 Agent / MCP 的结构化协议或二进制附件。权限、消息 ID、tool_call_id、中止和 Agent 工具快照规则不变。
 
 ### LLM Provider 请求配置
 

@@ -212,13 +212,28 @@ exclusive ownership of Agent runs, cancellation and permissions.
 `allowSubagents` defaults to true for new and legacy providers (settings schema v15).
 False keeps the provider available to main sessions but excludes it from child-model
 choices, child catalog requests, provider discovery and eligible-capacity guidance.
-An unavailable saved child model remains visible. Explicit routing, saved defaults
-and inheritance all reject disallowed providers without automatic fallback.
+Unavailable saved sequence entries remain visible. New automatic dispatch skips
+disabled/disallowed providers within that sequence; an entirely unavailable sequence
+fails. Explicit routing, continuations and inheritance reject disallowed providers.
 SessionService checks every child start/continuation before and after asynchronous
 preparation, before persisting input, including direct child-session input. Manual
 child compaction also checks eligibility. Saving false does not abort an already
 started child; waiting and cancellation remain available. No new runtime, permission
 owner or concurrency limit is introduced.
+
+Settings schema v16 replaces the single `subagentModel` field with ordered
+`subagentModels` and `subagentDispatch` (`priority` / `spread`). Only normalizeSettings
+converts the legacy object to one entry and drops the old key; new lists validate
+strictly and deduplicate exact pairs while preserving order. Empty lists inherit the
+parent. SessionService owns SubagentModelRouter's cursor, reset when the effective
+sequence/strategy changes. The router consumes injected request-load snapshots from
+ProviderRequestConcurrency and child assignments projected from the existing active
+map, including asynchronous preparation. Max(network active+waiting, child placements)
+is conservative placement advice, never a second capacity gate. Priority selects the
+first available provider; spread rotates by provider, with the first model of each
+provider preferred. All occupied still permits child creation: actual HTTP waits in
+the existing cancellable FIFO. Continuations bypass routing and retain creation
+configuration. No cross-run recovery or automatic failure/model switching is added.
 
 A provider stores:
 
@@ -453,6 +468,10 @@ Built-in local tools currently include:
 
 File operations are relative to the configured workspace path.
 
+Text output is bounded at the producing tool. Shell previews retain the beginning and end within 500 lines / 48,000 characters / 2,000 characters per line, with exit and timeout metadata appended separately. Both streams are drained to completion using independent UTF-8 decoders; truncation does not stop the command. Verbose logs should be explicitly redirected to a file and inspected with `read` offset/limit; full command logs are not automatically archived.
+
+Search, glob, listing and search error text are bounded to 48,000 characters / 2,000 lines, with a 2,000-character line cap and explicit omission notices. File reads retain their existing 2,000-line / 50-KiB / 2,000-character-per-line limits. Directory reads also enforce a 48,000-character page budget and calculate the next offset from the entries actually returned. Edit previews are bounded without altering the file replacement. Browser text/HTML previews default to 5,000 characters and cannot request more than 48,000; line limits also apply. These limits do not change existing stored history or replace whole-request context budgeting, and are not applied blindly to structured subagent/MCP payloads or attachments.
+
 ### 6.2 Browser automation
 
 Playwright Chromium is bundled with the application.
@@ -637,12 +656,18 @@ When compaction runs:
    (`min(20,000, 30% of context window)`)
 3. older messages are summarized by the LLM
 4. the old message range is replaced with the summary in the effective context
-5. execution continues with the compacted history
+5. recent oversized tool text is projected into bounded previews if needed, then the complete request is checked again before sending
 
 The split point is aligned to complete tool-call rounds so an assistant
 `tool_calls` message is not separated from its tool results. If the summary
 call fails, the current run degrades to truncation and no compaction state is
 persisted (the old summary is never lost).
+
+`contextBudget.ts` measures system/messages, tool definitions, tool-call/result IDs and image estimates with the existing 1.2 safety factor. The input budget is 90% of the context window, reserving 10% for output. Normal rounds and finalization (including its appended instruction) both use `AutoCompactor`; known-overbudget requests fail locally. No two-to-four-message exemption remains. Summaries have a bounded aggregate head/tail source and are checked with their actual 800-token output reservation before HTTP.
+
+When the newest atomic tool group alone is too large, `toolResultProjection.ts` shortens only result text with explicit omissions, using at most nine shrinking passes. It keeps calls, arguments, IDs, order and images. JSON retains its structure/types and correlation/path fields; an irreducible result is rejected rather than cut into malformed JSON. Projection never mutates stored messages, and automatic compaction persists a new summary/boundary only after the final budget check passes and cancellation is checked. On reload the request view is rebuilt from full history. `context.ts` owns window detection, `compaction.ts` owns summary planning, and `finalizeRun.ts` owns the guarded final call.
+
+Token estimates remain approximate; the compact notification retains its effective-message count semantics while Context check/recheck logs report the full request estimate. Context-limit HTTP recovery and usage calibration are not implemented by this change.
 
 Current token estimation is an approximate, CJK-aware character-based
 calculation that also accounts for tool-call payloads and base64 images.

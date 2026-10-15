@@ -1,12 +1,13 @@
 import { AgentAbortedError, type Session } from '../../shared/types.ts'
 import type { SessionStore, SessionRunRequest, SessionRunHandle } from './sessionContracts.ts'
 import type { SubagentHost } from './subagentScope.ts'
-import { assertSubagentsEnabled, resolveSubagentModel } from './subagentPolicy.ts'
+import { assertSubagentsEnabled } from './subagentPolicy.ts'
 
 interface HostDependencies {
   store: Pick<SessionStore, 'getSettings' | 'getSession' | 'createSession'>
   session: Session
   parentModel: { providerId: string; model: string }
+  resolveModel: SubagentHost['resolveModel']
   signal: AbortSignal
   request: SessionRunRequest
   send: (request: SessionRunRequest) => Promise<SessionRunHandle>
@@ -22,10 +23,7 @@ export function createSessionSubagentHost(deps: HostDependencies): SubagentHost 
   return {
     workspacePath: session.workspacePath || store.getSettings().workspacePath,
     assertEnabled: () => assertSubagentsEnabled(store.getSettings().subagentsEnabled),
-    resolveModel: input => {
-      const settings = store.getSettings()
-      return resolveSubagentModel(settings.providers, parentModel, input, settings.subagentModel)
-    },
+    resolveModel: deps.resolveModel,
     createSession: (description, model) => {
       if (signal.aborted) throw new AgentAbortedError()
       return store.createSession(description, session.workspacePath || store.getSettings().workspacePath,

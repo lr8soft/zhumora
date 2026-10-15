@@ -7,6 +7,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright'
 import { app } from 'electron'
 import * as path from 'node:path'
 import type { ToolHandler, ToolContext } from './registry'
+import { browserTextPreview } from './outputLimits.ts'
 import { log } from '../llm/logger'
 import { getSettings } from '../store/db'
 import { browserConfigurationKey, resolveBrowserCandidates } from './browserSelection'
@@ -282,7 +283,7 @@ export const browserGetTextTool: ToolHandler = {
         type: 'object',
         properties: {
           selector: { type: 'string', description: 'CSS 选择器，不填则获取整个页面 body 文本' },
-          max_length: { type: 'number', description: '返回文本的最大字符数，默认 5000' }
+          max_length: { type: 'integer', minimum: 1, maximum: 48000, description: '返回文本的最大字符数，默认 5000，最多 48000；用 selector 缩小范围' }
         }
       }
     }
@@ -290,7 +291,6 @@ export const browserGetTextTool: ToolHandler = {
   permission: 'safe' as const,
   async execute(args) {
     const selector = args.selector as string
-    const maxLength = (args.max_length as number) || 5000
     try {
       const page = await ensureBrowser()
       let text: string
@@ -299,8 +299,7 @@ export const browserGetTextTool: ToolHandler = {
       } else {
         text = await page.locator('body').innerText()
       }
-      if (text.length > maxLength) text = text.slice(0, maxLength) + '\n... (truncated)'
-      return text || '(no text found)'
+      return browserTextPreview(text || '(no text found)', args.max_length)
     } catch (err) {
       return `Error getting text: ${(err as Error).message}`
     }
@@ -360,7 +359,7 @@ export const browserGetHtmlTool: ToolHandler = {
         type: 'object',
         properties: {
           selector: { type: 'string', description: 'CSS 选择器，不填则获取 body HTML' },
-          max_length: { type: 'number', description: '返回 HTML 的最大字符数，默认 5000' }
+          max_length: { type: 'integer', minimum: 1, maximum: 48000, description: '返回 HTML 的最大字符数，默认 5000，最多 48000；用 selector 缩小范围' }
         }
       }
     }
@@ -368,13 +367,10 @@ export const browserGetHtmlTool: ToolHandler = {
   permission: 'safe' as const,
   async execute(args) {
     const selector = args.selector as string
-    const maxLength = (args.max_length as number) || 5000
     try {
       const page = await ensureBrowser()
       const html = await page.locator(selector || 'body').first().innerHTML()
-      let result = html || '(no html)'
-      if (result.length > maxLength) result = result.slice(0, maxLength) + '\n... (truncated)'
-      return result
+      return browserTextPreview(html || '(no html)', args.max_length)
     } catch (err) {
       return `Error getting HTML: ${(err as Error).message}`
     }

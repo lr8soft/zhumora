@@ -3,7 +3,10 @@ import './subagentProviderAccess.test.ts'
 import assert from 'node:assert/strict'
 import { AgentAbortedError, type ToolCall } from '../src/shared/types.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
-import { resolveSubagentModel, validateSubagentRequest } from '../src/main/agent/subagentPolicy.ts'
+import { validateSubagentRequest } from '../src/main/agent/subagentPolicy.ts'
+import { SubagentModelRouter } from '../src/main/agent/subagentRouting.ts'
+import type { ProviderConfig } from '../src/shared/types.ts'
+import type { SubagentModelSelection } from '../src/shared/subagents.ts'
 import { resolveSubagentTargetFile, subagentFileKey } from '../src/main/agent/subagentWorkOrder.ts'
 import { executeToolCall } from '../src/main/agent/toolExecutor.ts'
 import { runToolCallPhase } from '../src/main/agent/turnEffects.ts'
@@ -11,6 +14,9 @@ import { WorkingConversation } from '../src/main/agent/workingConversation.ts'
 import { LoopDetector, DEFAULT_LOOP_CONFIG } from '../src/main/agent/loopDetector.ts'
 
 const providers = createSubagentTestProviders()
+const resolveSubagentModel = (providers: ProviderConfig[], parent: SubagentModelSelection,
+  input: Partial<SubagentModelSelection>, selection: SubagentModelSelection | null = null) =>
+  new SubagentModelRouter().select({ providers, subagentModels: selection ? [selection] : [], subagentDispatch: 'priority' }, parent, input)
 const request = { description: 'research', prompt: 'inspect module' }
 assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'custom-a' }, request), { providerId: 'a', model: 'custom-a' })
 assert.deepEqual(resolveSubagentModel(providers, { providerId: 'a', model: 'custom-a' }, { ...request, providerId: 'b' }), { providerId: 'b', model: 'b-default' })

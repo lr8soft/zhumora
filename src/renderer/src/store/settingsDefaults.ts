@@ -7,7 +7,7 @@ import { DEFAULT_SUBAGENTS_ENABLED } from '@shared/subagents'
 /** Initial UI projection before main settings load; each draft gets fresh collections. */
 export function initialSettingsProjection(): AppSettings {
   return {
-    subagentsEnabled: DEFAULT_SUBAGENTS_ENABLED, subagentModel: null,
+    subagentsEnabled: DEFAULT_SUBAGENTS_ENABLED, subagentModels: [], subagentDispatch: 'priority',
     providers: [], mcpServers: [], mcpServer: { ...DEFAULT_MCP_SERVER_SETTINGS },
     telegramBot: { enabled: false, token: '', allowedUserIds: [], approveMode: 'manual' },
     qqBot: { enabled: false, appId: '', appSecret: '', allowedUserIds: [], approveMode: 'manual' },

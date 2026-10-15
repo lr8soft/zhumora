@@ -1,5 +1,6 @@
 import { createReadStream, promises as fs } from 'node:fs'
 import * as path from 'node:path'
+import { limitToolOutput, MAX_TOOL_OUTPUT_CHARS } from './outputLimits.ts'
 
 const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf])
 const MAX_READ_LINES = 2_000
@@ -164,10 +165,14 @@ async function readDirectory(directoryPath: string, offset: number, limit: numbe
   if (start >= entries.length && entries.length > 0) {
     throw new Error(`Offset ${offset} is beyond the directory listing (${entries.length} entries)`)
   }
-  const selected = entries.slice(start, start + limit)
-  const result = selected.map(entry => `${entry.isDirectory() ? 'd' : entry.isFile() ? 'f' : 'l'} ${entry.name}${entry.isDirectory() ? '/' : ''}`)
-  if (start + selected.length < entries.length) {
-    result.push(`... (${entries.length - start - selected.length} more entries; continue with offset=${start + selected.length + 1})`)
+  const result: string[] = []; let chars = 0
+  for (const entry of entries.slice(start, start + limit)) {
+    const line = `${entry.isDirectory() ? 'd' : entry.isFile() ? 'f' : 'l'} ${entry.name}${entry.isDirectory() ? '/' : ''}`
+    if (result.length && chars + line.length + 1 > MAX_TOOL_OUTPUT_CHARS - 256) break
+    result.push(line); chars += line.length + 1
+  }
+  if (start + result.length < entries.length) {
+    result.push(`... (${entries.length - start - result.length} more entries; continue with offset=${start + result.length + 1})`)
   }
   return result.join('\n') || '(empty directory)'
 }
@@ -214,7 +219,7 @@ function previewReplacement(oldText: string, newText: string): string {
   const oldLines = normalizeLf(oldText).split('\n').slice(0, 4).map(line => `- ${line}`)
   const newLines = normalizeLf(newText).split('\n').slice(0, 4).map(line => `+ ${line}`)
   const clipped = normalizeLf(oldText).split('\n').length > 4 || normalizeLf(newText).split('\n').length > 4
-  return [...oldLines, ...newLines, ...(clipped ? ['  ...'] : [])].join('\n')
+  return limitToolOutput([...oldLines, ...newLines, ...(clipped ? ['  ...'] : [])].join('\n'), 'Read the edited file with offset/limit to inspect the changes.')
 }
 
 export async function editFileExact(

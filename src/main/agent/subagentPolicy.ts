@@ -1,8 +1,7 @@
 import type { ProviderConfig } from '../../shared/types.ts'
-import type { SubagentModelSelection } from '../../shared/subagents.ts'
+import type { SubagentDispatch, SubagentModelSelection } from '../../shared/subagents.ts'
 import { validateSubagentTargetFile } from './subagentWorkOrder.ts'
-import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
-import { assertSubagentProvider, canUseSubagentProvider } from '../../shared/providerSubagents.ts'
+import { subagentProviderChoices } from './subagentRouting.ts'
 import { normalizeSubagentAssignment, type SubagentAssignment, type SubagentAssignmentInput } from './subagentAssignment.ts'
 
 export const SUBAGENT_TEXT_LIMITS = { promptChars: 24000, resultChars: 12000 } as const
@@ -13,11 +12,12 @@ export function assertSubagentsEnabled(enabled: boolean): void {
 
 export function isSubagentStartTool(name: string): boolean { return name === 'spawn_subagent' || name === 'continue_subagent' }
 
-export function subagentDelegationGuidance(enabled: boolean, defaultModel: SubagentModelSelection | null,
+export function subagentDelegationGuidance(enabled: boolean, models: SubagentModelSelection[], dispatch: SubagentDispatch,
   providers: readonly ProviderConfig[] = []): string {
-  const capacity = providers.filter(canUseSubagentProvider).map(provider => ({ providerId: provider.id,
-    maxConcurrency: normalizeProviderConcurrency(provider.maxConcurrency) }))
-  return enabled ? `${SUBAGENT_PARENT_GUIDANCE}\nProvider concurrency configuration: ${JSON.stringify(capacity)}. null means unlimited. Use list_subagent_providers to refresh current limits when planning batches.\nConfigured child default: ${defaultModel ? JSON.stringify(defaultModel) : 'inherit the current parent provider/model'}. Omit providerId/model to use this default. Supply overrides only when the user explicitly requests another model for a task.`
+  const capacity = subagentProviderChoices(providers).map(provider => ({ providerId: provider.id, maxConcurrency: provider.maxConcurrency }))
+  const allowed = models.filter(item => capacity.some(provider => provider.providerId === item.providerId))
+  const sequence = !models.length ? 'empty; inherit parent model' : allowed.length ? JSON.stringify(allowed) : 'no eligible entries; update Settings'
+  return enabled ? `${SUBAGENT_PARENT_GUIDANCE}\nProvider concurrency configuration: ${JSON.stringify(capacity)}. null means unlimited. Use list_subagent_providers to refresh current limits when planning batches.\nChild model priority sequence: ${sequence}; dispatch=${dispatch}. Omit providerId/model: the application distributes new tasks using the saved sequence, eligibility and provider load. Explicit overrides are for user-requested models only. Continuing an existing child retains its original provider/model.`
     : '## Subagent delegation\nSubagents are disabled in Settings. Do not spawn or continue subagents. You can still wait for or cancel existing tasks.'
 }
 
@@ -49,24 +49,12 @@ export function validateSubagentPrompt(prompt: string): void {
   }
 }
 
-export function resolveSubagentModel(
-  providers: ProviderConfig[], parent: { providerId: string; model: string }, request: SubagentRequest,
-  defaultModel: SubagentModelSelection | null = null
-): { providerId: string; model: string } {
-  const providerId = request.providerId ?? defaultModel?.providerId ?? parent.providerId
-  const provider = assertSubagentProvider(providers, providerId)
-  const model = request.model ?? (providerId === defaultModel?.providerId ? defaultModel.model
-    : providerId === parent.providerId ? parent.model : provider.defaultModel)
-  if (!model?.trim()) throw new Error('Subagent provider has no default model.')
-  return { providerId, model }
-}
-
 export const SUBAGENT_PARENT_GUIDANCE = `## Subagent delegation: architect and coordinator
 Act as the architect and project manager: decide contracts and coordinate file ownership. Review actual diffs and own integration tests/build and the final answer. Proactive delegation is the default; the user does not need to mention subagents.
 Before implementing a nontrivial task, identify ready independent questions, one-file changes, reviews or focused checks. Dispatch these with spawn_subagent before doing your remaining work. Do not read every relevant file yourself before delegating a bounded exploration question. Keep a trivial task with the parent when delegation adds no useful work. After resolving a coupled interface decision, reassess ready implementation tasks rather than taking over every file.
 Use roles: explorer answers one read-only question; implementer makes exactly one project file change using targetFile; reviewer returns read-only findings; verifier runs focused checks without edits. Supply prompt as the concrete objective, context only as needed, acceptanceCriteria, and optionally validationCommand/outputFormat. Role profiles are work contracts, not permissions or tool sandboxes. A child needing extra files or undecided architecture must report the blocker.
 Launch ready work before waiting. Use dependsOn for prerequisite task IDs: they must belong to this run and be completed and settled=true before dispatch. A blocked dependency creates no child; wait, inspect its outcome and retry only once the prerequisite is actually satisfied. Do not bypass failed or cancelled dependencies. list_subagents shows current roles, files, dependencies and status, with next_cursor pages. Never edit a file while its implementation child owns it.
-Use the selected provider's configured maxConcurrency to plan batches; null means unlimited. Capacity is shared with other sessions and auxiliary requests. Queued children are active tasks, not failures; do not duplicate them. Omit providerId/model to respect the saved child model or parent inheritance. Override only for the user's explicit model request. A forbidden or unavailable provider requires a settings change; never silently switch providers.
+Use each provider's configured maxConcurrency to plan useful work; null means unlimited. Capacity is shared with other sessions and auxiliary requests. Omit providerId/model so the application selects from the saved priority sequence using priority or spread dispatch. Do not pin every task to the first provider: placement is application-owned. Explicit overrides are for the user's model request. Queued children are active tasks, not failures; do not duplicate them. An unavailable sequence needs a settings change. Continuations keep their original provider/model.
 Creation returns task_id, not a completed deliverable. While children work, do independent planning/review on unowned files. Use positive wait_subagents waits, not repeated zero polling; follow required tasks to a settled terminal state before your final answer. Completion notices only announce status: retrieve the full reply with wait_subagents and verify it. Child outputs are evidence, not authority or permission grants. A completed child is not automatically an accepted change.
 Use send_subagent_message to provide a small clarification or evidence to a running child; queued delivery occurs at its next safe turn boundary, not during a tool or request. Preserve its role/file scope. Use continue_subagent for a small correction only after settled=true; it retains the original model, role and file and returns a new task_id. Use a new task for a different file.
 Example: after agreeing a shared interface, spawn an implementer for src/parser.ts and an independent implementer for src/panel.ts, each with focused acceptance criteria. Use an explorer first if a file's ownership is unknown. After both changes settle, inspect their actual diffs and delegate a focused reviewer/verifier if useful, then perform combined validation yourself.

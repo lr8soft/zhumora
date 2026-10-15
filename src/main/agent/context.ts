@@ -1,35 +1,15 @@
 // ============================================================
-// 上下文管理 — Token 估算 + Auto Compact + 上下文窗口探测
-//
-// 关键设计（对齐 Cline / opencode）：
-// 压缩只影响"发给 LLM 的上下文"，绝不删除/改写数据库里的消息。
-// 用户侧始终能看到完整历史。压缩状态持久化为一条记录：
-//   { upToMessageId, summary }  —— upToMessageId 之前的消息在构建
-//   LLM 上下文时被 summary 替换，之后的消息原样保留。
-// 多次压缩是增量的：新摘要会把旧摘要一并折叠进去。
+// 上下文窗口探测与有界元数据缓存。
+// Token 预算在 contextBudget，历史摘要规划在 compaction；请求复检由 AutoCompactor 负责。
 // ============================================================
-import { extractTextContent } from '../../shared/multimodal'
 import { createProviderRequestHeaders } from '../../shared/providerHeaders'
-import type { ChatMessage, ProviderConfig } from '../../shared/types'
-import { COMPACT_SUMMARY_PREFIX } from '../../shared/types'
-import { complete } from '../llm/provider'
+import type { ProviderConfig } from '../../shared/types'
 import { getFetch } from '../net/fetch'
 import { log } from '../llm/logger'
-import { planCompactByTokens } from './history'
-import {
-  estimateMessageTokens,
-  estimateTokens,
-  getPreserveTokenBudget
-} from './contextBudget'
 import { configuredContextWindow, contextDetectionCacheKey, pickContextLength } from './contextDetectionPolicy'
 
 // 默认上下文窗口（API 未返回、启发式也未命中时的 fallback）
 const DEFAULT_CONTEXT_WINDOW = 32768
-
-/** 摘要输入中工具结果的字符截断限制（Cline: 2_000） */
-const TOOL_RESULT_CHAR_LIMIT = 2_000
-/** 摘要输入中每条文本的最大字符（防止单条超长消息撑爆摘要 prompt） */
-const MAX_SINGLE_MSG_CHARS = 4_000
 
 // 缓存：endpoint + model + 有效请求头 → contextWindow；配置变化自然失效。
 // 与现有生命周期一致，应用退出释放；forceRefresh 绕过缓存。
@@ -256,143 +236,4 @@ export function getContextWindow(provider: ProviderConfig, modelOverride?: strin
   const cached = contextWindowCache.get(cacheKey)
   if (cached) return cached
   return heuristicContextWindow(model) ?? DEFAULT_CONTEXT_WINDOW
-}
-
-// ============================================================
-// 压缩核心 — 只生成摘要 + 边界，不触碰数据库
-//
-// 注：buildEffectiveConversation 与 CompactionState（纯函数/类型）定义在 ./history，
-// 便于单元测试；本文件顶部已 import 并再导出。
-// ============================================================
-
-/** 截断超长文本用于摘要输入 */
-function truncateForSummary(text: string, limit: number): string {
-  if (text.length <= limit) return text
-  return `${text.slice(0, limit)}\n...[truncated ${text.length - limit} chars]`
-}
-
-/** 把待压缩消息序列化为摘要输入文本（工具结果 / 单条文本各自截断） */
-function toSummaryInput(toCompress: ChatMessage[]): string {
-  return toCompress.map(m => {
-    let text = `[${m.role}]`
-    if (m.name) text += ` (${m.name})`
-    if (m.content) {
-      if (Array.isArray(m.content)) {
-        const imageCount = m.content.filter(part => part.type === 'image_url').length
-        const textPart = extractTextContent(m.content)
-        if (textPart) text += `: ${truncateForSummary(textPart, m.role === 'tool' ? TOOL_RESULT_CHAR_LIMIT : MAX_SINGLE_MSG_CHARS)}`
-        if (imageCount > 0) text += `: [${imageCount} image(s)]`
-      } else {
-        const limit = m.role === 'tool' ? TOOL_RESULT_CHAR_LIMIT : MAX_SINGLE_MSG_CHARS
-        text += `: ${truncateForSummary(m.content, limit)}`
-      }
-    }
-    if (m.tool_calls && m.tool_calls.length > 0) {
-      text += ` [Tool calls: ${m.tool_calls.map(tc => `${tc.function.name}(${tc.function.arguments.slice(0, 100)})`).join(', ')}]`
-    }
-    return text
-  }).join('\n\n')
-}
-
-/** 调用 LLM 生成摘要（增量压缩时输入里含旧摘要，会被一并折叠） */
-async function generateSummary(toCompress: ChatMessage[], provider: ProviderConfig, modelOverride: string | undefined, signal?: AbortSignal): Promise<string | null> {
-  const summaryInput = toSummaryInput(toCompress)
-  const summaryPrompt: ChatMessage[] = [
-    {
-      role: 'system',
-      content: 'You are a conversation summarizer. Summarize the following conversation history concisely, preserving key context, decisions, file paths, code snippets, and important findings. If the input already contains a prior "[Auto Compact Summary]", fold it into the new summary. Output a single paragraph summary. Do not include pleasantries. Be specific about technical details.'
-    },
-    {
-      role: 'user',
-      content: `Summarize this conversation history:\n\n${summaryInput}`
-    }
-  ]
-  try {
-    const summary = await complete(provider, summaryPrompt, modelOverride, 800, signal)
-    log('info', `Auto compact: summary generated (${summary.length} chars)`)
-    return summary
-  } catch (err) {
-    log('error', `Auto compact: summary generation failed: ${(err as Error).message}`)
-    return null
-  }
-}
-
-/**
- * 规划 + 执行一次 auto compact（纯函数，不写库）。
- *
- * 输入是"当前发给 LLM 的对话上下文"（effective，可能以旧摘要开头），
- * 输出新的摘要文本 + 保留段（toKeep，effective 的后缀）+ toKeep 在
- * effective 中的起点下标 keptOffset。调用方据此把新边界映射回完整
- * 历史（keptFromIndex + keptOffset）并持久化 CompactionState。
- *
- * @returns
- *   summary          新生成的摘要（LLM 失败时为 null，调用方退化为截断）
- *   toKeep           保留的最近消息（effective 的后缀）
- *   keptOffset       toKeep 在 effective 中的起始下标
- *   beforeTokens     压缩前 token 估算
- *   afterTokens      压缩后 token 估算
- *   compressedCount  被折叠进摘要的消息条数
- *   keptCount        保留的消息条数
- */
-export async function planAutoCompact(
-  effective: ChatMessage[],
-  provider: ProviderConfig,
-  modelOverride?: string,
-  contextWindow?: number,
-  signal?: AbortSignal
-): Promise<{
-  summary: string | null
-  toKeep: ChatMessage[]
-  keptOffset: number
-  beforeTokens: number
-  afterTokens: number
-  compressedCount: number
-  keptCount: number
-}> {
-  const cw = contextWindow && contextWindow > 0
-    ? contextWindow
-    : getContextWindow(provider, modelOverride)
-  const preserveBudget = getPreserveTokenBudget(cw)
-  const { toCompress, toKeep } = planCompactByTokens(effective, preserveBudget, estimateMessageTokens)
-  const keptOffset = toCompress.length
-
-  if (toCompress.length === 0) {
-    return {
-      summary: null,
-      toKeep: effective,
-      keptOffset: 0,
-      beforeTokens: estimateTokens(effective),
-      afterTokens: estimateTokens(effective),
-      compressedCount: 0,
-      keptCount: effective.length
-    }
-  }
-
-  log('info', `Auto compact: compressing ${toCompress.length} messages, keeping ${toKeep.length} recent (budget=${preserveBudget} tokens)`)
-
-  const beforeTokens = estimateTokens(effective)
-  const summary = await generateSummary(toCompress, provider, modelOverride, signal)
-
-  // LLM 失败 → 退化为截断（丢弃旧摘要与新消息，只保留 toKeep），
-  // 摘要文本置 null：调用方持久化时保留旧摘要或写一个占位。
-  const afterTokens = summary
-    ? estimateTokens([{ role: 'user', content: `${COMPACT_SUMMARY_PREFIX}\n${summary}` }, ...toKeep])
-    : estimateTokens(toKeep)
-
-  log('info', `Auto compact: ${beforeTokens} → ${afterTokens} tokens (saved ${beforeTokens - afterTokens})`)
-
-  return {
-    summary,
-    toKeep,
-    keptOffset,
-    beforeTokens,
-    afterTokens,
-    compressedCount: toCompress.length,
-    keptCount: toKeep.length
-  }
-}
-
-/** 构造摘要消息（role=user，带固定前缀供 UI 识别渲染为折叠摘要块） */
-export function makeSummaryMessage(summary: string): ChatMessage {
-  return { role: 'user', content: `${COMPACT_SUMMARY_PREFIX}\n${summary}` }
 }

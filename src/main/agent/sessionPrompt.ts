@@ -23,7 +23,7 @@ export function sessionPromptOptions(
       mcpTools: tools.definitionsBySource(source => source.startsWith('mcp:')), mcpServers },
     systemPromptRole,
     systemPromptExtra: [sourcePrompt, commonPrompt, session.subagent ? SUBAGENT_CHILD_GUIDANCE
-      : canDelegate ? subagentDelegationGuidance(settings.subagentsEnabled, settings.subagentModel, settings.providers) : undefined]
+      : canDelegate ? subagentDelegationGuidance(settings.subagentsEnabled, settings.subagentModels, settings.subagentDispatch, settings.providers) : undefined]
       .filter(Boolean).join('\n\n')
   }
 }
