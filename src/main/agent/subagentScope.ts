@@ -8,6 +8,8 @@ import { awaitWithSignal, waitUntilDeadline } from './runWait.ts'
 import { resolveSubagentTargetFile, subagentFileKey, subagentWorkOrder } from './subagentWorkOrder.ts'
 import { assignmentOwnsFile, type SubagentAssignment, type SubagentRole } from './subagentAssignment.ts'
 import type { CoordinationMessage } from './runInbox.ts'
+import { SubagentRunDiagnostics, type SubagentDiagnosticsSnapshot } from './subagentDiagnostics.ts'
+import { continuationPrompt, type SubagentRecovery } from './subagentRecovery.ts'
 
 export interface SubagentHost {
   workspacePath: string
@@ -28,6 +30,8 @@ interface ChildTask {
   targetFile?: string
   assignment?: SubagentAssignment
   noticeDelivered?: boolean
+  diagnostics: SubagentRunDiagnostics
+  originalPrompt: string
 }
 
 export interface SubagentTaskResult {
@@ -38,6 +42,8 @@ export interface SubagentTaskResult {
   model?: string
   status: McpTaskStatus['status']
   settled: boolean
+  diagnostics: SubagentDiagnosticsSnapshot
+  recovery: SubagentRecovery
   targetFile?: string
   role?: SubagentRole
   dependsOn?: string[]
@@ -78,7 +84,9 @@ export class SubagentScope {
     if (!isTerminalMcpTaskStatus(child.task.status())) throw new Error('Subagent has not finished its previous turn.')
     this.assertOpen()
     if (assignmentOwnsFile(child.assignment)) this.checkFileOwner(child.targetFile)
-    return this.start(child.session, prompt, child.targetFile, child.assignment)
+    const status = child.task.status().status
+    const objective = child.diagnostics.snapshot(status, true, true).diagnostics.failure?.stage === 'startup' ? child.originalPrompt : undefined
+    return this.start(child.session, continuationPrompt(prompt, status, objective), child.targetFile, child.assignment, child)
   }
 
   async wait(taskIds: string[], waitMs = 30000): Promise<SubagentTaskResult[]> {
@@ -137,7 +145,8 @@ export class SubagentScope {
       const result = this.result(child)
       if (!result.settled || !isTerminalMcpTaskStatus(child.task.status())) continue
       const content = `[Subagent completion notice]\n${JSON.stringify({ task_id: result.task_id, session_id: result.session_id,
-        status: result.status, role: result.role, targetFile: result.targetFile, settled: true })}\nUse wait_subagents to retrieve the deliverable and verify it before accepting the task.`
+        status: result.status, role: result.role, targetFile: result.targetFile, settled: true,
+        recovery: result.recovery, run_number: result.diagnostics.run_number, failure: result.diagnostics.failure })}\nUse wait_subagents to retrieve the result and diagnostics. Review completed work against acceptance criteria. For failed work, follow recovery.next_action; prefer continuing the same settled child rather than duplicating its file assignment.`
       if (size + content.length > 12000) break
       notices.push({ message: { role: 'user', content }, id: null })
       size += content.length; child.noticeDelivered = true
@@ -208,35 +217,45 @@ export class SubagentScope {
     return this.latest.get(child.session.id) === child
   }
 
-  private async start(session: Session, prompt: string, targetFile?: string, assignment?: SubagentAssignment): Promise<SubagentTaskResult> {
+  private async start(session: Session, prompt: string, targetFile?: string, assignment?: SubagentAssignment, previous?: ChildTask): Promise<SubagentTaskResult> {
     const task = createMcpTaskSession(generateId())
-    const child: ChildTask = { session, task, starting: true, targetFile, assignment }
+    const diagnostics = new SubagentRunDiagnostics(previous ? { runNumber: previous.diagnostics.runNumber,
+      taskId: previous.task.taskId, failure: previous.diagnostics.failureKind() } : undefined)
+    const child: ChildTask = { session, task, starting: true, targetFile, assignment, diagnostics,
+      originalPrompt: previous?.originalPrompt ?? prompt }
     this.tasks.set(task.taskId, child)
     this.latest.set(session.id, child)
     try {
-      const startup = this.host.start(session.id, subagentWorkOrder(prompt, targetFile, assignment), task.sink, new DelegatePermissionPresenter(task), assignment)
+      const startup = this.host.start(session.id, subagentWorkOrder(prompt, targetFile, assignment), diagnostics.events(task), new DelegatePermissionPresenter(task), assignment)
       // The observer survives the wait: any late handle is drained rather than becoming an orphan.
       void startup.then(async handle => {
         void handle.completion.then(() => {
-          if (!isTerminalMcpTaskStatus(task.status())) task.settle({ status: 'failed', error: 'Subagent ended without a final deliverable.' })
-        }, error => task.settle(error instanceof AgentAbortedError
-          ? { status: 'aborted' } : { status: 'failed', error: String(error) }))
+          if (!isTerminalMcpTaskStatus(task.status())) {
+            diagnostics.noDeliverable(); task.settle({ status: 'failed', error: 'Subagent ended without a final deliverable.' })
+          }
+        }, error => this.fail(child, error, 'runtime'))
         if (this.closed || this.signal?.aborted) await this.host.stop(session.id)
-      }).catch(error => task.settle(error instanceof AgentAbortedError
-        ? { status: 'aborted' } : { status: 'failed', error: String(error) }))
+      }).catch(error => this.fail(child, error, 'startup'))
       await awaitWithSignal(startup, this.signal)
       if (this.closed) {
         await this.host.stop(session.id)
         throw new AgentAbortedError()
       }
       child.starting = false
+      diagnostics.started()
       return this.result(child)
     } catch (error) {
       child.starting = false
-      task.settle(error instanceof AgentAbortedError ? { status: 'aborted' } : { status: 'failed', error: String(error) })
+      this.fail(child, error, 'startup')
       if (error instanceof AgentAbortedError) throw error
       return this.result(child)
     } finally { child.starting = false }
+  }
+
+  private fail(child: ChildTask, error: unknown, stage: 'startup' | 'runtime'): void {
+    if (isTerminalMcpTaskStatus(child.task.status())) return
+    if (error instanceof AgentAbortedError) child.task.settle({ status: 'aborted' })
+    else { child.diagnostics.fail(error, stage); child.task.settle({ status: 'failed', error: String(error) }) }
   }
 
   private result(child: ChildTask): SubagentTaskResult {
@@ -248,6 +267,7 @@ export class SubagentScope {
         : status.status === 'failed' ? { ...status, error: status.error.slice(0, 1000) } : status
     const settled = !child.starting && (!this.isLatest(child) || !this.host.isRunning(child.session.id))
     return { task_id: child.task.taskId, session_id: child.session.id, ...child.session.subagent, ...bounded, settled,
+      ...child.diagnostics.snapshot(status.status, settled, this.isLatest(child)),
       ...(child.assignment?.role ? { role: child.assignment.role } : {}),
       ...(child.assignment?.dependsOn.length ? { dependsOn: [...child.assignment.dependsOn] } : {}),
       ...(child.targetFile ? { targetFile: child.targetFile } : {}) }

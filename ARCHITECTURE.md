@@ -250,6 +250,16 @@ Agent 可主动调用内置 `list_subagent_providers` / `spawn_subagent` / `list
 - **生命周期**：子 signal 连接父 run signal，用户中止父任务会立即中止所属子运行；正常结束、错误、删除和退出也会停止未结束子任务并等待有界 settle。单独取消子任务不影响兄弟/无关会话。父 completion 在子清理完成后才 settle，父 scope 随 run 清理释放。强制 cleanup 后迟到的 callback 不再持久化/广播，过期 run 也不能取消新 run 的权限请求。模型必须等待所需子结果才给最终回答；提前结束时遗留子任务被取消。
 - **展示**：renderer 根据 Session.subagent 在侧栏纯投影中隐藏子会话；启动默认选择及删除后回退只选非子会话。完整会话缓存与数据库历史不筛除，流程图节点详情可打开子会话，查看子历史时侧栏高亮所属主会话。可打开独立历史、查看创建 provider/model、跳回主会话和停止子任务。主 run 活动时子会话只供查看/停止，不接受额外 UI 输入；main 同时校验父 signal，不能只靠按钮禁用保护。会话和事件继续用既有 shared Session/preload/IPC 契约，无新增通用 IPC 入口。
 
+### 子任务异常诊断与原会话续跑
+
+- `SubagentScope` 的每个 ChildTask 持有一个 `SubagentRunDiagnostics` 有界事件投影与原始工作目标；启动准备失败时将原目标补回继续指令，避免空子会话只收到一句“继续”。不新增运行表、控制器、scheduler、自动重启循环或数据库状态。scope 关闭后随原 task 引用释放。
+- `subagentRecovery.ts` 是纯失败分类与恢复建议策略。优先根据 HTTP status、错误名称和网络 cause code 区分网络、超时、限流、供应商不可用、配置、上下文超限、无交付与未知故障；文本规则仅作有限兜底，分类是建议，不是保证可恢复。正常流中的重试、权限等待或暂时没有 token 均不等于死亡，不按静默时长自动取消/续跑。
+- list/wait/start/continue 的原 JSON 结果增加 `diagnostics` 与 `recovery`：当前 run_number、continued_from_task_id、观测 phase/last_activity_at、完成工具数/错误数、最后工具、最近重试/不完整输出次数和失败类别/阶段；不复制正文/思考历史、错误凭据或 provider 配置。快照返回副本，既有结果文本与分页预算继续生效。
+- `continuation_ready` 只表示本父 run 拥有的最新任务已终态且释放，不代表批准或 provider 可用。运行中/重试中、权限挂起、清理未结束及旧 task_id 都不能继续；实际 continue 仍重查全局开关、provider allowSubagents、同会话互斥、文件归属和 PermissionBroker。用户取消显示 respect_cancellation，不能被恢复建议当成自动重启信号。
+- `continue_subagent` 复用同 session、完整历史、创建 provider/model、角色、文件及验收条件；新一轮返回新 task_id，run_number 递增，旧 ID 不得作用于新一轮。继续指令要求先查看历史和文件/产物现状，保留已成功改动，避免重复已成功的命令或外部副作用。对不同文件仍需新建任务，不在续跑时静默切换供应商。
+- 缺少最终 complete 事件或最终正文为空的内部子任务投影为 failed/no_deliverable；非空报告即使说明尚未完成，仍按 completed 表示“本轮结束”，由主 Agent 按真实 diff/检查结果验收，必要时继续。此检查只包装内部子任务事件，不改 MCP 入站任务协议、SessionService 运行权威或全局消息持久化。
+- 一次性终态通知带恢复建议，主 Agent 仍通过 wait_subagents 取回结果。瞬时失败建议在原因消除后继续原任务；配置/上下文问题先修复。连续两轮同类失败标记 repeated_failure_kind 并建议先排查，属于指导，不增加固定重试/子任务数量上限。没有自动执行续跑，父 run 结束、应用重启后也不会自动唤醒或恢复。
+
 ### 通用协作工作单、依赖与运行中消息
 
 - `spawn_subagent.role` 可选 explorer / implementer / reviewer / verifier，分别聚焦一个只读问题、单文件实现、只读审查与指定验证。显式 implementer 必须提供 targetFile；其他角色的 targetFile 只是阅读/验证目标，不持有排他写归属。旧自由文本调用只在 `normalizeSubagentAssignment` 边界兼容，保留原行为；完整工具快照与 PermissionBroker 不变，角色是职责契约，不是文件系统/命令沙箱。

@@ -34,6 +34,9 @@ assert.doesNotMatch(buildSystemPrompt('D:/workspace', '', '', { tools: [], built
 assert.doesNotMatch(subagentDelegationGuidance(false, [], 'priority'), /Launch as many/)
 assert.match(coordinated, /application distributes new tasks/)
 assert.match(coordinated, /priority sequence/)
+assert.match(coordinated, /SAME settled child session/)
+assert.match(coordinated, /recovery.continuation_ready/)
+assert.match(coordinated, /repeated_failure_kind/)
 
 console.log('system prompt visual-output guidance tests passed')
 

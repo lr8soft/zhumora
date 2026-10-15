@@ -186,6 +186,12 @@ Avatar presentation state belongs to each window. Its event adapter subscribes t
 
 TTS is another isolated presentation adapter. A session-persisted opt-in flag lets the TTS event sink consume only the final `complete` event. `TtsManager` owns cancellation and output ordering, `SherpaOnnxTtsProvider` owns the native model lifecycle, and the renderer owns Web Audio playback. Model paths are normalized in settings and validated to remain inside the selected directory before the native runtime sees them. TTS does not register a tool, change the Agent prompt, or write audio into conversation history.
 
+### Child failure diagnosis and continuation
+
+Internal child failure diagnosis is a bounded projection owned by each `SubagentScope` task (`subagentDiagnostics.ts`); pure classification/recovery advice lives in `subagentRecovery.ts`. Results add `diagnostics` and `recovery` fields: turn lineage, observed phase/activity timestamp, tool counts, latest retry/incomplete-output counters and failure kind/stage. No reasoning/content history or credentials are copied. Lifecycle readiness is separate from permission/provider eligibility, which remain enforced by the existing start path. Silence, backoff and pending permission never trigger automatic restart.
+
+`continue_subagent` resumes the same session/model/role/file/history, with a new task ID and incremented run number. Startup failures carry the original bounded task objective into the continuation. Missing/empty final deliverables become internal failed task projections; a nonempty report remains completed and requires acceptance review. Consecutive same-kind failures recommend inspection rather than repeated restarting, without a fixed task/retry cap. No scheduler, new runtime table, automatic model switching or cross-parent/restart recovery is introduced. Tests: `npm run test:subagent-recovery` (also part of `npm test`).
+
 ## 4. LLM providers
 
 The provider settings UI uses a directory and one selected editor. Selecting an
