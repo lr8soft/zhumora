@@ -84,7 +84,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
         <button aria-pressed={foldHistory} aria-label={t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')} title={t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}
           onClick={() => { setFoldHistory(value => !value); setExpandedTurns(new Set()); stopFollowing() }}>
           <Layers size={13} /><span>{t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}</span></button>
-        <button aria-pressed={showChildren} aria-label={t('flow.children')} title={t('flow.children')}
+        <button aria-pressed={showChildren} aria-label={t('flow.children')} title={t('flow.childrenHint')}
           onClick={() => { setShowChildren(value => !value); stopFollowing() }}><GitBranch size={13} /><span>{t('flow.children')}</span></button>
         <button className={follow ? 'active' : ''} aria-pressed={follow} aria-label={t('flow.follow')} title={t('flow.followHint')}
           onClick={camera.toggleFollow}>

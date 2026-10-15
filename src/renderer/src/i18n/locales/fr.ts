@@ -29,7 +29,7 @@ export default {
   },
   chat: {
     parallel: "Travail parallèle",
-    parallelHint: "Privilégie des tâches ciblées en parallèle pour cette entrée. Réinitialisé à l’envoi ; modèles, permissions et limites restent applicables.",
+    parallelHint: "Privilégie les tâches parallèles ciblées pour les prochains messages de cette conversation. Reste activé après l’envoi jusqu’à sa désactivation ; changer de conversation le réinitialise. Modèles, permissions et limites restent applicables. La délégation automatique reste disponible quand il est désactivé.",
     parallelDisabledHint: "Activez les sous-agents. Les sessions déléguées ne peuvent pas déléguer.",
     createSessionToStart: 'Créez une session pour commencer à discuter',
     newSession: 'Nouvelle Session',

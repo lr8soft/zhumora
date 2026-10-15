@@ -40,7 +40,7 @@ function ChatComposer({ sessionId }: Props) {
       void ttsPlayback.unlock().catch(error => setImageError(String(error)))
     }
     void sendMessage(text, pendingImages.length > 0 ? [...pendingImages] : undefined, draft.preferParallel && current.settings.subagentsEnabled && !parent)
-    setDraft(previous => ({ ...previous, input: '', images: [], error: null, preferParallel: false }))
+    setDraft(previous => ({ ...previous, input: '', images: [], error: null }))
   }
 
   return (

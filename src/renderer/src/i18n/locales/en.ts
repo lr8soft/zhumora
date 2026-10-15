@@ -30,7 +30,7 @@ export default {
   },
   chat: {
     parallel: "Parallel work",
-    parallelHint: "Prefer scoped parallel delegation for this input. Resets after sending; model, permissions and provider limits stay in effect.",
+    parallelHint: "Prefer scoped parallel work for subsequent messages in this chat. Stays on after sending until switched off; changing chats resets it. Model, permissions and provider limits stay in effect. Automatic delegation remains available when off.",
     parallelDisabledHint: "Enable subagents first. Child sessions cannot delegate.",
     subagentModel: 'Subagent · {{provider}} / {{model}}',
     subagentParent: 'Open parent chat',

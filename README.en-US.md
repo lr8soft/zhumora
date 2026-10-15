@@ -139,6 +139,8 @@ Set the limit under **Settings → LLM Providers** and save. All models, main ag
 
 ## Subagent collaboration
 
+The composer’s **Parallel work** toggle prefers scoped parallel delegation and stays selected across sends in the current chat workspace until switched off. Changing chats resets it. Off restores the default automatic delegation policy; disabling subagents is a separate Settings option. The canvas **Task branches** button only shows/hides branches and never starts or stops children.
+
 Child results and inventory include observed progress, failure categories and recovery advice. After a failed run has settled and its cause is resolved, the parent can use `continue_subagent` to resume the same session with its history, creation model, role, file and completed changes. A new task ID identifies each continuation. Startup failures retain the original objective even if the first input was never persisted. Retrying or awaiting permission does not mean a dead worker; cancellation is respected, and repeated failure categories prompt diagnosis. There is no background restart loop or idle-timeout guess. A nonempty final reply still requires the parent's acceptance review.
 
 Enable subagents under **Settings → General → Agent behavior** and edit **Subagent model priority**. Add provider/model pairs, drag or use arrow buttons to reorder, or add provider defaults in one action. Save to apply to new tasks. Legacy single selections migrate to one-entry lists; an empty list inherits the parent model. Explicit user-requested models override dispatch. Continuing a child keeps its original session/history/model. Disabling subagents blocks new or continued tasks, while existing tasks can finish, be awaited, or be cancelled.

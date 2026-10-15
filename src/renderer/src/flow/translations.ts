@@ -1,7 +1,8 @@
 const en = {
+  childrenHint: 'Show or hide task branches on the canvas. This does not enable, disable or stop subagents.',
   folded: 'Folded', expandTurn: 'Expand · {{count}} messages',
   title: 'Conversation flow', turnCount: '{{count}} turns', stepCount: '{{count}} steps', messageCount: '{{count}} messages', receivedCount: 'Received {{received}} / {{total}} task results',
-  fit: 'Fit canvas', expandHistory: 'Expand history', foldHistory: 'Fold history', children: 'Subagents', follow: "Auto-follow", followHint: "Keep active nodes visible without repeatedly centering them. Panning pauses; zooming keeps following.",
+  fit: 'Fit canvas', expandHistory: 'Expand history', foldHistory: 'Fold history', children: 'Task branches', follow: "Auto-follow", followHint: "Keep active nodes visible without repeatedly centering them. Panning pauses; zooming keeps following.",
   hiddenActive: "{{count}} active nodes outside the view", showActive: "Show active nodes", showActiveHint: "Adjust zoom to show active progress",
   details: 'Node details', close: 'Close details', copy: 'Copy', copied: 'Copied', copyError: 'Copy failed. Select the text to copy it.',
   branch: 'Delegation', receive: 'Receive results', inspect: 'Details', waitingOutput: 'Waiting for model output…', noContent: 'No text content',
@@ -15,9 +16,10 @@ const en = {
   tab: { content: 'Content', reasoning: 'Reasoning', args: 'Arguments', result: 'Result' }
 }
 const zh = {
+  childrenHint: '仅显示或隐藏子任务，不影响任务运行。',
   folded: '已折叠', expandTurn: '点击展开 · {{count}} 条消息',
   title: '对话流程', turnCount: '{{count}} 轮对话', stepCount: '{{count}} 个节点', messageCount: '{{count}} 条消息', receivedCount: '已接收 {{received}} / {{total}} 个任务结果',
-  fit: '适应画布', expandHistory: '展开历史', foldHistory: '折叠历史', children: '子 Agent', follow: "自动跟随", followHint: "保持活跃节点可见，不反复居中；拖动画布暂停，缩放保留跟随。",
+  fit: '适应画布', expandHistory: '展开历史', foldHistory: '折叠历史', children: '展开子任务', follow: "自动跟随", followHint: "保持活跃节点可见，不反复居中；拖动画布暂停，缩放保留跟随。",
   hiddenActive: "{{count}} 个活跃节点在视野外", showActive: "显示活跃节点", showActiveHint: "重新调整缩放，尽量显示活跃节点",
   details: '节点详情', close: '关闭详情', copy: '复制', copied: '已复制', copyError: '复制失败，请选中文字复制。',
   branch: '委托分支', receive: '接收结果', inspect: '查看详情', waitingOutput: '等待模型输出…', noContent: '暂无文本内容',
@@ -32,8 +34,9 @@ const zh = {
 }
 const ja = {
   ...en, title: '会話フロー', turnCount: '{{count}} ターン', stepCount: '{{count}} ノード', messageCount: '{{count}} メッセージ', receivedCount: '{{received}} / {{total}} 件の結果を受信',
+  childrenHint: 'キャンバスの子タスク分岐のみを表示・非表示にします。サブエージェントの作成・実行・停止には影響しません。',
   folded: '折りたたみ', expandTurn: '展開 · {{count}} メッセージ',
-  fit: '全体を表示', expandHistory: '履歴を展開', foldHistory: '履歴を折りたたむ', children: 'サブエージェント', follow: "自動追従", followHint: "実行中のノードを表示し、繰り返し中央配置しません。ドラッグで一時停止、ズームでは継続。",
+  fit: '全体を表示', expandHistory: '履歴を展開', foldHistory: '履歴を折りたたむ', children: '子タスク分岐', follow: "自動追従", followHint: "実行中のノードを表示し、繰り返し中央配置しません。ドラッグで一時停止、ズームでは継続。",
   hiddenActive: "{{count}} 個の実行中ノードが画面外", showActive: "実行中ノードを表示", showActiveHint: "ズームを調整して進行状況を表示",
   details: 'ノードの詳細', close: '詳細を閉じる', copy: 'コピー', copied: 'コピー済み', copyError: 'コピーに失敗しました。テキストを選択してください。',
   branch: '委任', receive: '結果を受信', inspect: '詳細', waitingOutput: 'モデルの出力を待機中…', noContent: 'テキストなし',
@@ -47,8 +50,9 @@ const ja = {
 }
 const es = {
   ...en, title: 'Flujo de conversación', turnCount: '{{count}} turnos', stepCount: '{{count}} nodos', messageCount: '{{count}} mensajes', receivedCount: '{{received}} / {{total}} resultados recibidos',
+  childrenHint: 'Muestra u oculta las ramas de tareas en el lienzo. No activa, desactiva ni detiene subagentes.',
   folded: 'Plegado', expandTurn: 'Expandir · {{count}} mensajes',
-  fit: 'Ajustar lienzo', expandHistory: 'Expandir historial', foldHistory: 'Plegar historial', children: 'Subagentes', follow: "Seguimiento automático", followHint: "Mantiene visibles los nodos activos sin centrarlos continuamente. Arrastrar pausa; el zoom mantiene el seguimiento.",
+  fit: 'Ajustar lienzo', expandHistory: 'Expandir historial', foldHistory: 'Plegar historial', children: 'Ramas de tareas', follow: "Seguimiento automático", followHint: "Mantiene visibles los nodos activos sin centrarlos continuamente. Arrastrar pausa; el zoom mantiene el seguimiento.",
   hiddenActive: "{{count}} nodos activos fuera de la vista", showActive: "Mostrar nodos activos", showActiveHint: "Ajustar el zoom para mostrar el progreso activo",
   details: 'Detalles del nodo', close: 'Cerrar detalles', copy: 'Copiar', copied: 'Copiado', copyError: 'No se pudo copiar. Seleccione el texto.',
   branch: 'Delegación', receive: 'Recibir resultados', inspect: 'Detalles', waitingOutput: 'Esperando al modelo…', noContent: 'Sin texto',
@@ -62,8 +66,9 @@ const es = {
 }
 const fr = {
   ...en, title: 'Flux de conversation', turnCount: '{{count}} tours', stepCount: '{{count}} nœuds', messageCount: '{{count}} messages', receivedCount: '{{received}} / {{total}} résultats reçus',
+  childrenHint: 'Affiche ou masque les branches de tâches sur le canevas. Aucun effet sur la création, l’exécution ou l’arrêt des sous-agents.',
   folded: 'Replié', expandTurn: 'Déplier · {{count}} messages',
-  fit: 'Ajuster la vue', expandHistory: 'Déplier l’historique', foldHistory: 'Replier l’historique', children: 'Sous-agents', follow: "Suivi automatique", followHint: "Garde les nœuds actifs visibles sans les recentrer constamment. Le déplacement suspend, le zoom conserve le suivi.",
+  fit: 'Ajuster la vue', expandHistory: 'Déplier l’historique', foldHistory: 'Replier l’historique', children: 'Branches de tâches', follow: "Suivi automatique", followHint: "Garde les nœuds actifs visibles sans les recentrer constamment. Le déplacement suspend, le zoom conserve le suivi.",
   hiddenActive: "{{count}} nœuds actifs hors de la vue", showActive: "Afficher les nœuds actifs", showActiveHint: "Ajuster le zoom pour afficher la progression",
   details: 'Détails du nœud', close: 'Fermer les détails', copy: 'Copier', copied: 'Copié', copyError: 'Échec de la copie. Sélectionnez le texte.',
   branch: 'Délégation', receive: 'Recevoir les résultats', inspect: 'Détails', waitingOutput: 'En attente du modèle…', noContent: 'Aucun texte',
@@ -77,8 +82,9 @@ const fr = {
 }
 const de = {
   ...en, title: 'Gesprächsablauf', turnCount: '{{count}} Runden', stepCount: '{{count}} Knoten', messageCount: '{{count}} Nachrichten', receivedCount: '{{received}} / {{total}} Ergebnisse empfangen',
+  childrenHint: 'Zeigt oder verbirgt Aufgabenäste auf der Arbeitsfläche. Startet, deaktiviert oder stoppt keine Unteragenten.',
   folded: 'Eingeklappt', expandTurn: 'Aufklappen · {{count}} Nachrichten',
-  fit: 'Ansicht einpassen', expandHistory: 'Verlauf aufklappen', foldHistory: 'Verlauf einklappen', children: 'Unteragenten', follow: "Automatisch folgen", followHint: "Hält aktive Knoten sichtbar, ohne ständig zu zentrieren. Verschieben pausiert, Zoom behält die Verfolgung.",
+  fit: 'Ansicht einpassen', expandHistory: 'Verlauf aufklappen', foldHistory: 'Verlauf einklappen', children: 'Aufgabenäste', follow: "Automatisch folgen", followHint: "Hält aktive Knoten sichtbar, ohne ständig zu zentrieren. Verschieben pausiert, Zoom behält die Verfolgung.",
   hiddenActive: "{{count}} aktive Knoten außerhalb der Ansicht", showActive: "Aktive Knoten anzeigen", showActiveHint: "Zoom anpassen, um aktive Fortschritte zu zeigen",
   details: 'Knotendetails', close: 'Details schließen', copy: 'Kopieren', copied: 'Kopiert', copyError: 'Kopieren fehlgeschlagen. Bitte Text auswählen.',
   branch: 'Delegation', receive: 'Ergebnisse empfangen', inspect: 'Details', waitingOutput: 'Warten auf Modellausgabe…', noContent: 'Kein Text',
