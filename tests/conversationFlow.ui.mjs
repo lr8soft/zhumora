@@ -248,12 +248,19 @@ try {
   await page.locator('.flow-step-list button').last().click()
   await page.waitForFunction(() => document.querySelector('.flow-detail-tabs button.active')?.textContent === '结果')
   assert.match(await page.locator('.flow-detail-body').innerText(), /步骤 10 的配置与文档已核对/, 'reused call IDs still select their exact result')
+  // Display preferences now persist across session switches (previously a per-mount default).
+  // Restore the defaults this scenario asserts before returning to the parent session.
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/index.ts')
+    useAppStore.getState().setFlowFoldHistory(true)
+    useAppStore.getState().setFlowShowChildren(true)
+  })
   // Dispatch and silent wait in one utterance retain distinct, drawable inner ports.
   await page.evaluate(async () => {
     const { useAppStore } = await import('/src/store/index.ts')
     const parent = flowUiFixture.histories.parent.map(message => message.id === 'w' ? { ...message, content: '' } : message)
     useAppStore.setState(state => ({ activeSessionId: 'parent', runningIds: new Set(), retryStatus: {},
-      messages: { ...state.messages, parent } }))
+      messages: { ...state.messages, parent }, flowExpandedTurns: { ...state.flowExpandedTurns, parent: [] } }))
   })
   await page.waitForFunction(() => document.querySelector('.flow-count')?.textContent === '10 个节点')
   await page.getByRole('button', { name: '适应画布', exact: true }).first().click()
@@ -283,6 +290,37 @@ try {
   await assertProviderWorkspace(page, output)
   await page.locator('.sidebar').getByText('项目架构分析', { exact: true }).click()
   await assertInnerDetailFollow(page)
+  // Canvas display preferences persist across session switches and restarts, while auto-follow stays runtime-only.
+  const branchesButton = page.getByRole('button', { name: '展开子任务', exact: true })
+  assert.equal(await branchesButton.getAttribute('aria-pressed'), 'true', 'branches are visible before the persistence check')
+  await branchesButton.click()
+  await page.getByRole('button', { name: '展开历史', exact: true }).click()
+  assert.equal(await branchesButton.getAttribute('aria-pressed'), 'false', 'branch visibility toggles off')
+  assert.equal(await page.getByRole('button', { name: '折叠历史', exact: true }).getAttribute('aria-pressed'), 'false', 'history toggles to fully expanded')
+  assert.equal(await page.evaluate(() => localStorage.getItem('zhumora.flowShowChildren')), '0')
+  assert.equal(await page.evaluate(() => localStorage.getItem('zhumora.flowFoldHistory')), '0')
+  const followButton = page.getByRole('button', { name: '自动跟随', exact: true })
+  if (await followButton.getAttribute('aria-pressed') === 'true') await followButton.click()
+  assert.equal(await followButton.getAttribute('aria-pressed'), 'false', 'follow is turned off for the persistence check')
+  await page.locator('.sidebar').getByText('浏览器任务', { exact: true }).click()
+  await page.locator('.sidebar').getByText('项目架构分析', { exact: true }).click()
+  assert.equal(await branchesButton.getAttribute('aria-pressed'), 'false', 'branch visibility follows the stored choice after switching sessions')
+  assert.equal(await page.getByRole('button', { name: '折叠历史', exact: true }).getAttribute('aria-pressed'), 'false', 'history stays expanded across the session switch')
+  assert.equal(await followButton.getAttribute('aria-pressed'), 'true', 'auto-follow is runtime state and resets on remount')
+  await page.evaluate(async () => {
+    const { useAppStore } = await import('/src/store/index.ts')
+    useAppStore.getState().setFlowShowChildren(true)
+    useAppStore.getState().setFlowFoldHistory(true)
+  })
+  await page.reload()
+  await page.locator('.conversation-flow').waitFor()
+  await page.waitForFunction(() => document.querySelector('.flow-count')?.textContent === '11 个节点')
+  assert.equal(await branchesButton.getAttribute('aria-pressed'), 'true', 'branch visibility restores from storage after a restart')
+  assert.equal(await page.getByRole('button', { name: '展开历史', exact: true }).getAttribute('aria-pressed'), 'true', 'history fold restores from storage after a restart')
+  assert.equal(await followButton.getAttribute('aria-pressed'), 'true', 'auto-follow resets to its default on reload')
+  await page.locator('.sidebar').getByText('浏览器任务', { exact: true }).click()
+  await page.locator('.sidebar').getByText('项目架构分析', { exact: true }).click()
+  assert.equal(await branchesButton.getAttribute('aria-pressed'), 'true', 'the restored branch visibility follows the user back to the session')
   assert.deepEqual(errors, [], 'renderer should have no uncaught errors')
   console.log(`Flow UI passed: responsive speech height/width, latest text, bounded tool scrolling/ports, light/dark, folding, live details, ID routing and camera stability. Screenshots: ${output}`)
 } catch (error) {

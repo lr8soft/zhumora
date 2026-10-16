@@ -1,4 +1,4 @@
-import { memo, useCallback, useMemo, useState, type ReactNode } from 'react'
+import { memo, useCallback, useMemo, type ReactNode } from 'react'
 import { useTranslation } from 'react-i18next'
 import { Background, BackgroundVariant, MarkerType, MiniMap, ReactFlow, ReactFlowProvider,
   type Edge, type OnNodesChange } from '@xyflow/react'
@@ -31,9 +31,16 @@ export default memo(function ConversationFlow({ sessionId, composer }: { session
 
 function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: ReactNode }) {
   const { t } = useTranslation()
-  const [foldHistory, setFoldHistory] = useState(true)
-  const [expandedTurns, setExpandedTurns] = useState<ReadonlySet<string>>(new Set())
-  const [showChildren, setShowChildren] = useState(true)
+  // 画布显示偏好是全局 UI 偏好（localStorage 持久化）：切会话重挂载按存储值恢复，
+  // 而不是回到默认。自动跟随是运行时相机状态，仍留在 useFlowCamera 内不持久化。
+  const foldHistory = useAppStore(state => state.flowFoldHistory)
+  const setFoldHistory = useAppStore(state => state.setFlowFoldHistory)
+  const showChildren = useAppStore(state => state.flowShowChildren)
+  const setShowChildren = useAppStore(state => state.setFlowShowChildren)
+  const expandFlowTurn = useAppStore(state => state.expandFlowTurn)
+  const clearFlowExpandedTurns = useAppStore(state => state.clearFlowExpandedTurns)
+  const expandedTurnIds = useAppStore(state => state.flowExpandedTurns[sessionId])
+  const expandedTurns = useMemo(() => new Set(expandedTurnIds ?? []), [expandedTurnIds])
   const sizing = useFlowSizing()
   const { graph: source, running, permissions, loadError, retryLoad, loading } = useFlowGraph(sessionId, foldHistory, expandedTurns, showChildren, sizing.sizing)
   const geometry = useMeasuredFlowGraph(source, sizing.sizing.fontSize)
@@ -68,7 +75,7 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   const selectNode = (node: ConversationNode) => {
     if (node.data.kind === 'lane') return
     if (node.data.kind === 'turn' && node.data.turnId) {
-      setExpandedTurns(previous => new Set([...previous, node.data.turnId!]))
+      expandFlowTurn(sessionId, node.data.turnId)
       selection.close()
       stopFollowing()
     } else selection.select(node.id, { stepId: primaryStep(node).id })
@@ -82,10 +89,15 @@ function FlowWorkspace({ sessionId, composer }: { sessionId: string; composer: R
   const toolbar = <div className="flow-toolbar-actions">
         <button onClick={fitAll} title={t('flow.fit')}><Maximize2 size={13} /><span>{t('flow.fit')}</span></button>
         <button aria-pressed={foldHistory} aria-label={t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')} title={t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}
-          onClick={() => { setFoldHistory(value => !value); setExpandedTurns(new Set()); stopFollowing() }}>
+          onClick={() => {
+            setFoldHistory(!foldHistory)
+            // 与原局部状态语义一致：每次切换折叠总开关都重置该会话已单独展开的轮次
+            clearFlowExpandedTurns(sessionId)
+            stopFollowing()
+          }}>
           <Layers size={13} /><span>{t(foldHistory ? 'flow.expandHistory' : 'flow.foldHistory')}</span></button>
         <button aria-pressed={showChildren} aria-label={t('flow.children')} title={t('flow.childrenHint')}
-          onClick={() => { setShowChildren(value => !value); stopFollowing() }}><GitBranch size={13} /><span>{t('flow.children')}</span></button>
+          onClick={() => { setShowChildren(!showChildren); stopFollowing() }}><GitBranch size={13} /><span>{t('flow.children')}</span></button>
         <button className={follow ? 'active' : ''} aria-pressed={follow} aria-label={t('flow.follow')} title={t('flow.followHint')}
           onClick={camera.toggleFollow}>
           <LocateFixed size={13} /><span>{t('flow.follow')}</span></button>

@@ -15,6 +15,7 @@ export type { ReasoningEffort }
 import { initialSettingsProjection } from './settingsDefaults'
 import { isListedSession } from '../sessionGroups'
 import { createSessionModelSlice, sessionModelSelection, type SessionModelSlice } from './sessionModelSlice'
+import { createFlowUiSlice, type FlowUiSlice } from './flowUiSlice'
 import { applyHistorySnapshot, applyAuthoritativeUserMessage } from '../agentEvents'
 import i18n, { getEffectiveLanguage, storeLanguage, type AppLanguage } from '../i18n'
 
@@ -151,7 +152,7 @@ const loadingMessages = new Map<string, Promise<void>>()
 
 export type SettingsTab = 'providers' | 'mcp' | 'mcpServer' | 'bots' | 'bbs' | 'avatar' | 'tts' | 'skills' | 'memory' | 'usage' | 'general'
 
-interface AppState extends SessionModelSlice {
+interface AppState extends SessionModelSlice, FlowUiSlice {
   // 视图
   view: 'chat' | 'settings'
   setView: (v: 'chat' | 'settings') => void
@@ -344,6 +345,8 @@ export const useAppStore = create<AppState>((set, get) => ({
       delete ttsErrors[id]
       return { sessions: newSessions, activeSessionId: newActiveId, messages, compactionMarkers, ttsErrors }
     })
+    // 画布“已展开轮次”按会话记忆，随会话删除一起清理，避免 localStorage 残留失效 id
+    get().clearFlowExpandedTurns(id)
     if (newActiveId) void get().loadMessages(newActiveId)
   },
   setSessionAvatar: async (modelId) => {
@@ -431,6 +434,9 @@ export const useAppStore = create<AppState>((set, get) => ({
 
   // ---- 模型选择 ----
   ...createSessionModelSlice(set, api.session.updateModelSelection),
+
+  // ---- 画布视图偏好（localStorage 持久化，跨会话/重启保留；自动跟随不持久化）----
+  ...createFlowUiSlice(set, get),
 
   // ---- 批准模式（三档）----
   approveMode: getStoredApproveMode(),
