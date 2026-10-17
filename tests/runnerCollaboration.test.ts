@@ -4,7 +4,7 @@ import { ToolRegistry } from '../src/main/tools/registry.ts'
 import { AgentAbortedError, type ChatMessage } from '../src/shared/types.ts'
 import { appendCoordinationMessages } from '../src/main/agent/runInbox.ts'
 import { WorkingConversation } from '../src/main/agent/workingConversation.ts'
-import { completeTurn } from '../src/main/agent/completeTurn.ts'
+import { failTurn } from '../src/main/agent/completeTurn.ts'
 
 register('./helpers/runnerCollaborationLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
@@ -67,12 +67,12 @@ try {
   assert.equal(calls, 1); assert.equal(executed, 1); assert.equal(takes, 1)
 } finally { globalThis.fetch = originalFetch }
 
-// A hard stop never consumes guidance or triggers an extra collaboration retry.
+// An exhausted recovery never publishes success or consumes a final coordination checkpoint.
 const conversation = new WorkingConversation('system')
 let drained = false
-assert.equal(completeTurn({ kind: 'complete', truncatedNotice: true, cause: 'length' },
-  { content: 'partial', toolCalls: [], reasoning: '', usage: null, finishReason: 'length' }, 1,
-  { conversation, allAssistantMessages: [], cb: {}, takeCoordinationMessages: () => { drained = true; return [] } }), true)
+assert.throws(() => failTurn('length',
+  { content: 'partial', toolCalls: [], reasoning: '', usage: null, finishReason: 'length' }, [],
+  { onComplete: () => { drained = true } }), { name: 'AgentCompletionError', reason: 'length' })
 assert.equal(drained, false)
 appendCoordinationMessages(conversation, [])
 assert.deepEqual(conversation.ids, [null])

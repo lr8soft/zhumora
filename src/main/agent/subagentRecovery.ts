@@ -16,7 +16,8 @@ export function classifySubagentFailure(error: unknown, stage: SubagentFailure['
   const code = `${value.code ?? ''} ${value.cause?.code ?? ''}`
   const status = typeof value.status === 'number' ? value.status : undefined
   let kind: SubagentFailureKind = 'unknown'
-  if (status !== undefined && [401, 403, 404].includes(status)) kind = 'configuration'
+  if (value.name === 'AgentCompletionError') kind = 'no_deliverable'
+  else if (status !== undefined && [401, 403, 404].includes(status)) kind = 'configuration'
   else if (value.name === 'ContextBudgetExceededError' || /context[_ -]?(?:length|window|limit)|maximum context|too many tokens|input.*longer.*context/i.test(message)) kind = 'context_limit'
   else if (status === 429) kind = 'rate_limit'
   else if (status === 408 || status === 504 || value.name === 'TimeoutError' || /TIMEOUT|TIMEDOUT/i.test(code) || /timed? ?out|stream idle timeout/i.test(message)) kind = 'timeout'

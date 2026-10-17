@@ -46,7 +46,7 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 function createWindow(): BrowserWindow {
-  mainWindow = new BrowserWindow({
+  const win = new BrowserWindow({
     width: 1280,
     height: 800,
     minWidth: 900,
@@ -67,17 +67,18 @@ function createWindow(): BrowserWindow {
     }
   })
 
-  mainWindow.on('ready-to-show', () => {
-    mainWindow!.show()
+  mainWindow = win
+  win.on('ready-to-show', () => {
+    win.show()
     // dev 模式自动打开 DevTools
     if (is.dev) {
-      mainWindow!.webContents.openDevTools({ mode: 'right' })
+      win.webContents.openDevTools({ mode: 'right' })
     }
   })
 
   // 关窗 → 收进后台（默认）：拦截 close 事件，仅隐藏不销毁。
   // 窗口销毁（真退出）只发生在 before-quit 置位 quitting 之后，或后台模式被显式关闭时。
-  mainWindow.on('close', (event) => {
+  win.on('close', (event) => {
     const close = shouldCloseInsteadOfHide({
       quitting,
       platform: process.platform,
@@ -86,13 +87,13 @@ function createWindow(): BrowserWindow {
     })
     if (!close) {
       event.preventDefault()
-      mainWindow.hide()
+      win.hide()
     }
   })
 
   // 仅真销毁时触发（退出中 / dev / 用户关闭后台模式 / darwin 红点）。后台 hide 不会走到这里。
-  mainWindow.on('closed', () => {
-    mainWindow = null
+  win.on('closed', () => {
+    if (mainWindow === win) mainWindow = null
     if (quitting || process.platform === 'darwin') return
     // 真销毁（dev 或显式关闭后台模式）保留原"关主窗即退出"语义：
     // 即使 Avatar 辅助窗口还开着也不能让进程残留。
@@ -105,12 +106,12 @@ function createWindow(): BrowserWindow {
   // 当前文档 origin 在事件时刻解析（创建窗口时 loadURL/loadFile 尚未执行，getURL 还是 about:blank）。
   const currentAppOrigin = (): string => {
     try {
-      return new URL(mainWindow!.webContents.getURL()).origin
+      return new URL(win.webContents.getURL()).origin
     } catch {
       return ''
     }
   }
-  mainWindow.webContents.on('will-navigate', (event, url) => {
+  win.webContents.on('will-navigate', (event, url) => {
     const decision = decideNavigation(url, currentAppOrigin())
     if (decision !== 'allow') {
       // 非同源一律拦下，主窗口绝不被导航走；http(s) 额外交给系统浏览器打开
@@ -118,22 +119,22 @@ function createWindow(): BrowserWindow {
       if (decision === 'external') void shell.openExternal(url)
     }
   })
-  mainWindow.webContents.setWindowOpenHandler((details) => {
-    const panel = panelWindows.allow(mainWindow!.webContents, details)
+  win.webContents.setWindowOpenHandler((details) => {
+    const panel = panelWindows.allow(win.webContents, details)
     if (panel) return panel
     if (decideNavigation(details.url, currentAppOrigin()) === 'external') void shell.openExternal(details.url)
     return { action: 'deny' }
   })
-  panelWindows.attach(mainWindow)
+  panelWindows.attach(win)
 
   // 开发环境加载 dev server，生产环境加载打包文件
   if (is.dev && process.env['ELECTRON_RENDERER_URL']) {
-    mainWindow.loadURL(process.env['ELECTRON_RENDERER_URL'])
+    win.loadURL(process.env['ELECTRON_RENDERER_URL'])
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../renderer/index.html'))
+    win.loadFile(path.join(__dirname, '../renderer/index.html'))
   }
 
-  return mainWindow
+  return win
 }
 
 app.whenReady().then(async () => {
@@ -203,12 +204,13 @@ app.whenReady().then(async () => {
   })
 
   app.on('activate', () => {
-    if (!mainWindow || mainWindow.isDestroyed()) createWindow()
-    else if (!mainWindow.isVisible()) {
-      if (mainWindow.isMinimized()) mainWindow.restore()
-      mainWindow.show()
+    let win = mainWindow
+    if (!win || win.isDestroyed()) win = createWindow()
+    else if (!win.isVisible()) {
+      if (win.isMinimized()) win.restore()
+      win.show()
     }
-    mainWindow.focus()
+    win.focus()
   })
 })
 

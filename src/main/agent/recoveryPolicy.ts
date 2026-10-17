@@ -1,5 +1,6 @@
 export const MAX_TRUNCATION_CONTINUATIONS = 2
 export const MAX_EMPTY_CONTINUATIONS = 2
+export const MAX_RECOVERY_CONTINUATIONS = MAX_EMPTY_CONTINUATIONS + MAX_TRUNCATION_CONTINUATIONS
 
 export const TRUNCATION_TOOL_ERROR =
   '[Output truncated] Your previous response hit the per-response token limit and was cut off: the tool call arguments are incomplete. Re-issue the call with smaller output — e.g. split file writes into multiple smaller chunks — or take the next smaller step.'
@@ -22,10 +23,10 @@ export const STREAM_INTERRUPTED_CONTINUE_PROMPT =
   '[System notice] The connection to the model dropped mid-response, so your previous output is incomplete. Continue exactly from where you stopped. Do not repeat what you already wrote. If you were about to call a tool, call it now with a smaller output (split large file writes into chunks).'
 
 export const MALFORMED_TOOL_ERROR =
-  '[Invalid tool call] The model returned tool arguments that were not a complete JSON object. The call was not executed. Re-issue it with valid JSON and use a smaller call if the arguments are large.'
+  '[Invalid tool call] The model returned invalid tool identity or arguments. No calls in this group were executed. Re-issue with nonempty tool names, unique nonempty call IDs and arguments that are complete JSON objects. Use smaller calls if the arguments are large.'
 
 export const MALFORMED_TOOL_CONTINUE_PROMPT =
-  '[System notice] Your previous tool call was not executed because its arguments were not a complete JSON object. Re-issue the call with valid JSON. If the arguments are large, split the work into smaller tool calls.'
+  '[System notice] Your previous tool group was not executed because its call identity or arguments were invalid. Re-issue with nonempty tool names, unique nonempty call IDs and arguments that are complete JSON objects. If the arguments are large, split the work into smaller tool calls.'
 
 /** 流空闲超时（120s 无任何数据，后端疑似挂起）耗尽重试后的续写提示。
  *  与流中断区分：这里连接没有断，是模型侧长时间无响应。 */
@@ -39,20 +40,23 @@ export const STREAM_STALLED_CONTINUE_PROMPT =
 export class RecoveryBudget {
   private truncations = 0
   private emptyResponses = 0
+  private total = 0
 
   canRecoverTruncation(): boolean {
-    return this.truncations < MAX_TRUNCATION_CONTINUATIONS
+    return this.truncations < MAX_TRUNCATION_CONTINUATIONS && this.total < MAX_RECOVERY_CONTINUATIONS
   }
 
   recordTruncation(): number {
+    this.total++
     return ++this.truncations
   }
 
   canRecoverEmptyResponse(): boolean {
-    return this.emptyResponses < MAX_EMPTY_CONTINUATIONS
+    return this.emptyResponses < MAX_EMPTY_CONTINUATIONS && this.total < MAX_RECOVERY_CONTINUATIONS
   }
 
   recordEmptyResponse(): number {
+    this.total++
     return ++this.emptyResponses
   }
 

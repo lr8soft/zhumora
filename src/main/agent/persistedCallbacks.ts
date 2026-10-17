@@ -97,14 +97,16 @@ class PersistedAgentMessages {
   constructor(context: MessageContext) { this.context = context }
 
   token(token: string): void {
+    const id = this.ensureRoundId()
     this.streamingContent += token
-    this.context.events.token?.(this.context.sessionId, this.ensureRoundId(), token)
+    this.context.events.token?.(this.context.sessionId, id, token)
   }
 
   reasoning(token: string): void {
+    const id = this.ensureRoundId()
     this.roundReasoning += token
     this.streamingReasoning = this.roundReasoning
-    this.context.events.reasoning?.(this.context.sessionId, this.ensureRoundId(), token)
+    this.context.events.reasoning?.(this.context.sessionId, id, token)
   }
 
   toolResult(toolCallId: string, toolName: string, content: string, isError: boolean, durationMs: number): string {
@@ -158,7 +160,7 @@ class PersistedAgentMessages {
         content: this.streamingContent ? `${this.streamingContent}\n\n${errorText}` : errorText,
         reasoning: this.roundReasoning || undefined, timestamp: Date.now(), status: 'error'
       })
-    } else if (!this.streamingMsgId) {
+    } else {
       this.context.persistence.addMessage({
         id: this.context.generateId(), sessionId: this.context.sessionId, role: 'assistant', content: errorText,
         timestamp: Date.now(), status: 'error'
@@ -169,6 +171,9 @@ class PersistedAgentMessages {
 
   private ensureRoundId(): string {
     if (!this.roundMsgId) {
+      this.streamingContent = ''
+      this.streamingReasoning = ''
+      this.roundReasoning = ''
       this.roundMsgId = this.context.generateId()
       this.context.events.assistantStart?.(this.context.sessionId, this.roundMsgId)
     }

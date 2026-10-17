@@ -48,7 +48,7 @@ export function applyRecoveryDecision(
     const label = decision.cause === 'stream'
       ? 'stream interrupted mid-response'
       : decision.cause === 'malformed'
-        ? 'malformed JSON tool arguments'
+        ? 'invalid tool identity or JSON arguments'
         : 'output truncated at token limit (finish_reason=length)'
     log('warn', `Round ${round}: incomplete tool round (${label}) — tool call(s) not executed, asking model to retry with smaller valid arguments (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
     conversation.appendSyntheticUser(toolContinuationPrompt(decision.cause || 'length'))
@@ -68,16 +68,14 @@ export function applyRecoveryDecision(
     } else {
       cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
     }
-    cb.onTruncated?.('text', decision.cause || 'length')
+    cb.onTruncated?.('text', isStream ? 'stream' : 'length')
     const continuation = recovery.recordTruncation()
     log('warn', `Round ${round}: incomplete text round (${isStream ? 'stream interrupted mid-response' : 'text output truncated at token limit (finish_reason=length)'}) — continuing (continuation ${continuation}/${MAX_TRUNCATION_CONTINUATIONS})`)
     conversation.appendSyntheticUser(continuePrompt)
     return
   }
 
-  // recover_empty_response：空 assistant 消息不落库也不进上下文（部分严格后端
-  // 拒绝空 content），只追加 user 继续指令。仍调用 onAssistantMessage 收尾本轮
-  // （回调内部不落库，但重置轮次 id、通知前端把本轮流式气泡归位）。
+  // 无正文 assistant 不进工作上下文；真实 reasoning 仍可持久化，完全空的轮次只收尾。
   cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined)
   const continuation = recovery.recordEmptyResponse()
   log('warn', `Round ${round}: empty response (no content, no tool call, finish_reason=${result.finishReason || 'stop'}) — injecting continue prompt (continuation ${continuation}/${MAX_EMPTY_CONTINUATIONS})`)
@@ -94,6 +92,15 @@ export function persistIncompleteToolRound(
   allAssistantMessages: ChatMessage[],
   cb: AgentEventCallbacks
 ): void {
+  const toolError = cause === 'stream'
+    ? STREAM_INTERRUPTED_TOOL_ERROR
+    : cause === 'malformed' ? MALFORMED_TOOL_ERROR : TRUNCATION_TOOL_ERROR
+  persistUnexecutedToolRound(result, toolError, allAssistantMessages, cb)
+  cb.onTruncated?.('tool', cause === 'stream' ? 'stream' : 'length')
+}
+
+export function persistUnexecutedToolRound(result: RoundResult, toolError: string,
+  allAssistantMessages: ChatMessage[], cb: AgentEventCallbacks): void {
   const assistantMsg: ChatMessage = {
     role: 'assistant',
     content: result.content || null,
@@ -106,12 +113,6 @@ export function persistIncompleteToolRound(
   ) ?? null
   allAssistantMessages.push(assistantMsg)
 
-  const toolError = cause === 'stream'
-    ? STREAM_INTERRUPTED_TOOL_ERROR
-    : cause === 'malformed'
-      ? MALFORMED_TOOL_ERROR
-      : TRUNCATION_TOOL_ERROR
-  cb.onTruncated?.('tool', cause === 'stream' ? 'stream' : 'length')
   for (const tc of result.toolCalls) {
     cb.onToolCall?.(tc, assistantId)
     cb.onToolResult?.(tc.id, tc.function.name, toolError, true, 0)

@@ -1,14 +1,13 @@
-import { dialog, ipcMain, type BrowserWindow } from 'electron'
+import { ipcMain, type BrowserWindow } from 'electron'
+import { showOpenDialogForWindow } from './dialogs'
 import type { AvatarCapabilities, AvatarSessionUpdate } from '../../shared/avatar'
 import type { AppSettings } from '../../shared/types'
 import * as db from '../store/db'
 import type { AvatarWindowManager } from '../avatar/windowManager'
 
 export function registerAvatarIpc(win: BrowserWindow, avatar: AvatarWindowManager): void {
-  // 主窗口隐藏（后台运行）时不用它当对话框父窗口，避免对话框挂起（见 registerGeneralIpc）
-  const dialogParent = () => (win.isDestroyed() || !win.isVisible() ? undefined : win)
   ipcMain.handle('avatar:import-model', async () => {
-    const result = await dialog.showOpenDialog(dialogParent(), {
+    const result = await showOpenDialogForWindow(win, {
       properties: ['openFile'],
       filters: [{ name: 'VRM Avatar', extensions: ['vrm'] }]
     })
@@ -17,7 +16,7 @@ export function registerAvatarIpc(win: BrowserWindow, avatar: AvatarWindowManage
   })
 
   ipcMain.handle('avatar:import-animation', async () => {
-    const result = await dialog.showOpenDialog(dialogParent(), {
+    const result = await showOpenDialogForWindow(win, {
       properties: ['openFile', 'multiSelections'],
       filters: [{ name: 'VRM Animation', extensions: ['vrma'] }]
     })

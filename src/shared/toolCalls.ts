@@ -7,7 +7,8 @@ import type { ChatMessage, ToolCall } from './types'
  */
 export function isValidToolCall(call: ToolCall): boolean {
   if (!call || typeof call !== 'object') return false
-  if (!call.id || call.type !== 'function' || !call.function?.name) return false
+  if (typeof call.id !== 'string' || !call.id.trim() || call.type !== 'function') return false
+  if (typeof call.function?.name !== 'string' || !call.function.name.trim()) return false
   if (typeof call.function.arguments !== 'string') return false
   try {
     const value = JSON.parse(call.function.arguments)
@@ -19,5 +20,13 @@ export function isValidToolCall(call: ToolCall): boolean {
 
 /** True when every assistant tool call is safe to replay to a provider. */
 export function hasValidToolCalls(message: ChatMessage): boolean {
-  return !message.tool_calls?.length || message.tool_calls.every(isValidToolCall)
+  const calls = message.tool_calls
+  if (calls == null) return true
+  if (!Array.isArray(calls)) return false
+  const ids = new Set<string>()
+  for (const call of calls) {
+    if (!isValidToolCall(call) || ids.has(call.id)) return false
+    ids.add(call.id)
+  }
+  return true
 }

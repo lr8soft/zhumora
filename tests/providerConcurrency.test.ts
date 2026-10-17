@@ -121,9 +121,22 @@ try {
   const normal = streamChat(limited, { messages })
   await turn()
   const afterEof = complete(limited, messages, 'after-eof')
-  streamController!.enqueue(new TextEncoder().encode('data: [DONE]\n\n'))
+  streamController!.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'))
   streamController!.close()
-  await normal
+  assert.equal((await normal).streamInterrupted, undefined, 'the normal EOF fixture must include a valid terminal choice')
   assert.equal(await afterEof, 'ok', 'normal stream completion releases its permit')
+  globalThis.fetch = async (_url, init) => JSON.parse(String(init?.body)).stream
+    ? new Response(new ReadableStream({ start(controller) {
+      controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'))
+    }, cancel: () => new Promise<void>(() => {}) }))
+    : Response.json({ choices: [{ message: { content: 'after stuck cancellation' } }] })
+  let deadline: ReturnType<typeof setTimeout> | undefined
+  try {
+    const work = Promise.all([streamChat(limited, { messages }), complete(limited, messages)])
+    const [done, next] = await Promise.race([work, new Promise<never>((_resolve, reject) => {
+      deadline = setTimeout(() => reject(new Error('cancel blocked provider permit release')), 1000)
+    })])
+    assert.equal(done.content, 'done'); assert.equal(next, 'after stuck cancellation')
+  } finally { clearTimeout(deadline) }
 } finally { globalThis.fetch = originalFetch }
 console.log('Provider concurrency: settings migration, FIFO, isolation, unlimited, live limits, cancellation, disposal and stream/complete integration passed')

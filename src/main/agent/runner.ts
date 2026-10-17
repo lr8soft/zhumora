@@ -23,7 +23,7 @@ import { buildEffectiveConversation, sanitizeHistoryWithIds, type CompactionStat
 import { extractTextContent } from '../../shared/multimodal'
 import { LoopDetector, DEFAULT_LOOP_CONFIG, type LoopDetectionConfig } from './loopDetector'
 import { AgentAbortedError } from '../../shared/types'
-import { isValidToolCall } from '../../shared/toolCalls'
+import { hasValidToolCalls } from '../../shared/toolCalls'
 import { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS, RecoveryBudget } from './recoveryPolicy'
 import { WorkingConversation } from './workingConversation'
 import { AutoCompactor } from './autoCompact'
@@ -32,7 +32,7 @@ import { decideTurnOutcome } from './turnDecision'
 import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
 import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
-import { completeTurn } from './completeTurn.ts'
+import { completeTurn, failTurn } from './completeTurn.ts'
 import { appendCoordinationMessages, type CoordinationMessage } from './runInbox.ts'
 
 export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
@@ -126,7 +126,7 @@ export async function runAgent(
   }
 
   let round = 0
-  while (maxRounds <= 0 || round < maxRounds) {
+  while (!hardStop && (maxRounds <= 0 || round < maxRounds)) {
     round++
     log('info', `Agent round ${round} — sending ${conversation.messages.length} messages to LLM`)
 
@@ -147,21 +147,22 @@ export async function runAgent(
     // 若不在此拦截，agent 会把部分回复当完整结果、继续执行工具调用。
     // 先落盘已生成的部分文本，再抛中止错误（IPC 层据此通知前端该会话已停止）。
     if (signal?.aborted) {
-      if (result.content) cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
+      if (result.content || result.reasoning) cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
       throw new AgentAbortedError()
     }
 
-    // finish_reason=length / 流中断 / 空响应 / 工具轮 / 正常完成的分支决策是纯状态机
-    // （turnDecision），这里只执行决策的副作用。
+    // 纯状态机先裁决响应；失败不进入任何完成或协作续跑分支。
     const decision = decideTurnOutcome({
       finishReason: result.finishReason,
       toolCallCount: result.toolCalls.length,
-      toolCallsValid: result.toolCalls.every(isValidToolCall),
+      toolCallsValid: hasValidToolCalls({ role: 'assistant', content: result.content, tool_calls: result.toolCalls }),
       contentEmpty: !result.content.trim(),
       streamInterrupted: result.streamInterrupted,
       canRecoverTruncation: recovery.canRecoverTruncation(),
       canRecoverEmptyResponse: recovery.canRecoverEmptyResponse()
     })
+
+    if (decision.kind === 'fail') failTurn(decision.cause, result, allAssistantMessages, cb)
 
     // 恢复类决策（截断工具轮 / 截断文本轮 / 空响应轮）执行完即进入下一轮
     if (decision.kind !== 'complete' && decision.kind !== 'execute_tools') {
@@ -170,12 +171,11 @@ export async function runAgent(
     }
 
     if (decision.kind === 'complete') {
-      if (!completeTurn(decision, result, round, { conversation, allAssistantMessages, cb,
+      if (!completeTurn(result, round, { conversation, allAssistantMessages, cb,
         takeCoordinationMessages: opts.takeCoordinationMessages })) continue
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 
-    // decision.kind === 'execute_tools'
     // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
     const assistantPersistId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined) ?? null
     // 新的原始工具轮 → 重置截断恢复计数（上一轮截断已被正常消化）

@@ -9,8 +9,10 @@ import { log } from './logger'
 import { getFetch } from '../net/fetch'
 import { HttpError, getMaxRetries, isRetriableError, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
 import {
-  createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer, type TokenUsage
+  createStreamAccumulator, accumulateResult, type TokenUsage
 } from './sseAccumulator'
+import { readChatStream } from './streamResponse'
+import { IncompleteStreamError, ProviderStreamError } from './streamErrors'
 import { isMalformedToolArgumentsError, isReasoningParamRejected } from './errors'
 import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
 import { withProviderRequest } from './requestRuntime'
@@ -77,6 +79,8 @@ interface AttemptResult {
  * - 已输出过 → 不重发（UI 会重复），不抛错 —— 按部分内容正常返回并置
  *   streamInterrupted，由 agent 循环走续写恢复（对齐截断恢复通路），
  *   离线类错误（明确无网络）则仍抛错让 run 收尾。
+ * EOF/DONE 缺失 finish_reason 即使没有输出也按 streamInterrupted 返回，
+ * 交给 runner 有界恢复；协议错误则明确失败，不走无限网络重试。
  */
 export async function streamChat(
   provider: ProviderConfig,
@@ -149,7 +153,8 @@ export async function streamChat(
         // 最长 30s 的退避里无法 settle，会话永久 busy，见 retryCore 注释）
         signal: params.signal,
         // 仅在尚未向 UI 输出任何内容时才重试（否则聊天区会收到重复内容）
-        shouldRetry: (err) => !state.emitted && !isMalformedToolArgumentsError(err) && isRetriableError(err),
+        shouldRetry: (err) => !state.emitted && !(err instanceof IncompleteStreamError)
+          && !(err instanceof ProviderStreamError) && !isMalformedToolArgumentsError(err) && isRetriableError(err),
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
       }
     )
@@ -161,9 +166,10 @@ export async function streamChat(
     // 走与截断恢复同构的续写通路（保留部分文本 + 注入续写指令）。
     // 流空闲超时（模型侧长时间无数据）同理。
     // 离线类错误（明确无网络）重连无意义，仍抛错让 run 收尾告知用户。
-    if (state.emitted && (isStreamableNetworkError(err) || isStreamIdleTimeoutError(err))) {
+    if (err instanceof IncompleteStreamError
+      || (state.emitted && (isStreamableNetworkError(err) || isStreamIdleTimeoutError(err)))) {
       const error = err as Error
-      log('warn', `LLM stream interrupted after partial output (${String(error?.message || err).slice(0, 120)}) — returning partial content for agent-level continuation`)
+      log('warn', `LLM stream incomplete (${String(error?.message || err).slice(0, 120)}) — returning partial content for agent-level continuation`)
       if (state.partial) {
         cb?.onComplete?.(state.partial.content, state.partial.toolCalls)
         return { ...state.partial, streamInterrupted: true }
@@ -226,34 +232,16 @@ async function executeStreamChat(
       throw new HttpError(resp.status, `LLM API ${resp.status}: ${errText.slice(0, 500)}`)
     }
 
-    const reader = resp.body?.getReader()
-    if (!reader) throw new Error('No response body')
-    const decoder = new TextDecoder()
-    const sse = new SseLineBuffer()
-    // 每收到一条完整 SSE 行：解析 data 载荷 → 更新聚合状态 → 推送流式回调
-    const handleLine = (line: string) => {
-      const trimmed = line.trim()
-      if (!trimmed.startsWith('data:')) return
-      const applied = applySseData(acc, trimmed.slice(5).trim())
+    await readChatStream(resp, acc, applied => {
       if (applied.emitted) state.emitted = true
       if (applied.reasoning) cb?.onReasoningToken?.(applied.reasoning)
       if (applied.token) cb?.onToken?.(applied.token)
-    }
-
-    while (true) {
-      const { done, value } = await reader.read()
-      if (done) break
-      resetIdleTimer()
-      sse.feed(decoder.decode(value, { stream: true }), handleLine)
-    }
-    // 流结束：flush 剩余缓冲（末块常不带换行，且携带 finish_reason / usage）
-    sse.flush(handleLine)
+    }, resetIdleTimer)
 
     return accumulateResult(acc)
   } catch (err) {
-    // 失败前记录已聚合的部分内容（仅当已向 UI 输出过；未输出时 acc 必为空，
-    // 且该次失败会走透明重试，partial 不会被读取）
-    if (state.emitted) state.partial = accumulateResult(acc)
+    // 缺失结束信号即使完全空白也交给 Agent 恢复；其他异常仅保留已推流的内容。
+    if (state.emitted || err instanceof IncompleteStreamError) state.partial = accumulateResult(acc)
     if (ctrl.signal.aborted) {
       if (params.signal?.aborted) {
         // 用户中止 → 部分内容按正常完成返回（不重试）

@@ -4,6 +4,7 @@
 // 覆盖"单轮输出被 max_tokens 截断"修复的核心数据通路：
 //   网络块 → SseLineBuffer 行切分 → applySseData 聚合 → finishReason 信号
 // ============================================================
+import strict from 'node:assert/strict'
 import { createStreamAccumulator, applySseData, accumulateResult, SseLineBuffer } from '../src/main/llm/sseAccumulator.ts'
 
 let passed = 0
@@ -83,18 +84,39 @@ test('usage 捕获（末块携带、choices 为空数组）', () => {
   assertEq(u!.total_tokens, 13, 'total_tokens')
 })
 
-test('[DONE]、非 JSON 行、keep-alive 注释行被安全忽略', () => {
+test('DONE 标记终结，忽略其后输出；心跳为空 data', () => {
   const acc = createStreamAccumulator()
   runStream(acc, [
-    '[DONE]',
-    'not-json-at-all',
     '',
     '{"choices":[{"delta":{"content":"ok"},"index":0}]}',
-    '{"choices":[{"delta":{},"finish_reason":"stop"}]}'
+    '{"choices":[{"delta":{},"finish_reason":"stop"}]}',
+    '[DONE]',
+    '{"choices":[{"delta":{"content":"late"}}]}'
   ])
   const r = accumulateResult(acc)
   assertEq(r.content, 'ok', 'content')
   assertEq(r.finishReason, 'stop', 'finishReason')
+  assertEq(acc.done, true, 'DONE observed')
+})
+
+test('损坏 JSON、错误载荷与非流式正文必须明确失败且不泄漏载荷', () => {
+  for (const payload of ['not-json', 'null', '{}', '{"error":{"message":"private-key"}}',
+    '{"choices":[{"message":{"content":"wrong protocol"},"finish_reason":"stop"}]}',
+    '{"choices":[{"delta":"not an object","finish_reason":"stop"}]}']) {
+    strict.throws(() => applySseData(createStreamAccumulator(), payload),
+      e => e instanceof Error && e.name === 'ProviderStreamError' && !e.message.includes('private-key'))
+  }
+})
+
+test('结束后的新输出/冲突结束原因不是有效的 usage 尾块', () => {
+  for (const delta of [{ content: 'late' }, { reasoning: 'late' }, { tool_calls: [{ index: 0 }] }]) {
+    const acc = createStreamAccumulator()
+    applySseData(acc, '{"choices":[{"delta":{},"finish_reason":"stop"}]}')
+    strict.throws(() => applySseData(acc, JSON.stringify({ choices: [{ delta }] })), { name: 'ProviderStreamError' })
+  }
+  const acc = createStreamAccumulator()
+  applySseData(acc, '{"choices":[{"delta":{},"finish_reason":"stop"}]}')
+  strict.throws(() => applySseData(acc, '{"choices":[{"delta":{},"finish_reason":"length"}]}'), { name: 'ProviderStreamError' })
 })
 
 // ============================================================
@@ -150,7 +172,7 @@ test('emitted 标记：文本/工具调用块为 true，纯 usage 块为 false',
   assertEq(applySseData(acc, '{"choices":[{"delta":{"tool_calls":[{"index":0,"id":"i","function":{"name":"n","arguments":"{}"}}]}}]}').emitted, true, '工具调用')
   assertEq(applySseData(acc, '{"choices":[],"usage":{"prompt_tokens":1,"completion_tokens":1,"total_tokens":2}}').emitted, false, 'usage')
   assertEq(applySseData(acc, '[DONE]').emitted, false, 'DONE')
-  assertEq(applySseData(acc, 'garbage').emitted, false, '非法 JSON')
+  strict.throws(() => applySseData(createStreamAccumulator(), 'garbage'), { name: 'ProviderStreamError' })
 })
 
 // ============================================================

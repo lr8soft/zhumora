@@ -132,10 +132,9 @@ export class BackgroundManager {
 
   private buildNotification(body: string): Notification | null {
     if (!Notification.isSupported()) return null
-    const n = new Notification({ title: 'Zhumora', body })
-    try { n.icon = this.opts.trayIconPath } catch { /* 图标失败不影响通知 */ }
+    const n = new Notification({ title: 'Zhumora', body, icon: this.opts.trayIconPath })
     n.on('click', () => this.showWindow())
-    n.on('error', err => log('warn', `Background notification failed: ${String(err)}`))
+    n.on('failed', (_event, error) => log('warn', `Background notification failed: ${error}`))
     return n
   }
 }

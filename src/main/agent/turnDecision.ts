@@ -10,6 +10,8 @@
 // 动作；副作用由 runner 执行。恢复预算（RecoveryBudget）在调用方推进。
 // ============================================================
 
+import type { CompletionFailure } from './completionError.ts'
+
 export interface TurnSignals {
   /** provider 返回的 finish_reason（'stop' | 'length' | 'tool_calls' | ... | 缺失） */
   finishReason: string | undefined
@@ -36,12 +38,12 @@ export type TurnDecision =
   | { kind: 'recover_truncated_tool'; cause?: IncompleteCause }
   /** 不完整且为纯文本：追加续写指令继续 */
   | { kind: 'recover_truncated_text'; cause?: IncompleteCause }
-  /** 不完整但恢复预算耗尽：告知前端后按最终结果收尾 */
-  | { kind: 'complete'; truncatedNotice: true; cause?: IncompleteCause }
+  /** 异常响应或恢复耗尽：保存真实输出/占位结果后抛错。 */
+  | { kind: 'fail'; cause: CompletionFailure }
   /** 空响应（无正文无工具、非截断）：注入继续指令 */
   | { kind: 'recover_empty_response' }
   /** 正常终止：本轮即最终回答 */
-  | { kind: 'complete'; truncatedNotice?: undefined; cause?: undefined }
+  | { kind: 'complete' }
   /** 有工具调用且未截断：进入工具执行阶段 */
   | { kind: 'execute_tools' }
 
@@ -54,13 +56,18 @@ export type RecoveryDecision =
 /**
  * 决定 streamChat 返回后的下一步。纯函数：相同的信号必得相同的决策。
  * 决策优先级（不可随意调整，逐条对应已知失败模式）：
- *  1. 不完整本轮（length 截断 / 流中途断开 / 参数 JSON 损坏）优先于一切 —— 带工具时工具
+ *  1. 显式异常结束原因直接失败，不通过恢复指令重新请求；
+ *  2. 不完整本轮（length 截断 / 流中途断开 / 参数 JSON 损坏）—— 带工具时工具
  *     参数不可信（可能是残缺 JSON），绝不能执行（否则用残缺 JSON 落库）；
- *  2. 不完整但预算耗尽 → 收尾，不再重试（防截断死循环烧 token）；
- *  3. 空响应仅在完整轮时恢复（不完整轮已在上文处理）；
- *  4. 其余有工具调用 → 执行工具；无工具 → 完成。
+ *  3. 不完整但预算耗尽 → 失败，不再重试；
+ *  4. 空响应仅在完整轮时恢复（不完整轮已在上文处理）；
+ *  5. 明确的正常结束原因下，有工具调用 → 执行工具；stop 且有正文 → 完成候选。
  */
 export function decideTurnOutcome(signals: TurnSignals): TurnDecision {
+  if (signals.finishReason !== undefined
+    && !['stop', 'tool_calls', 'length'].includes(signals.finishReason)) {
+    return { kind: 'fail', cause: 'finish_reason' }
+  }
   // "不完整的本轮"两种成因共享恢复通路（cause 透传给日志 / 提示文案 / UI 通知）
   const incomplete: IncompleteCause | null =
     signals.finishReason === 'length' ? 'length'
@@ -74,15 +81,30 @@ export function decideTurnOutcome(signals: TurnSignals): TurnDecision {
         ? { kind: 'recover_truncated_tool', cause: incomplete }
         : { kind: 'recover_truncated_text', cause: incomplete }
     }
-    return { kind: 'complete', truncatedNotice: true, cause: incomplete }
+    return { kind: 'fail', cause: incomplete }
   }
 
+  if (signals.finishReason !== 'stop' && signals.finishReason !== 'tool_calls') {
+    return { kind: 'fail', cause: 'finish_reason' }
+  }
   if (signals.toolCallCount === 0) {
-    if (signals.contentEmpty && signals.canRecoverEmptyResponse) {
-      return { kind: 'recover_empty_response' }
+    if (signals.contentEmpty) {
+      return signals.canRecoverEmptyResponse
+        ? { kind: 'recover_empty_response' }
+        : { kind: 'fail', cause: 'empty' }
     }
-    return { kind: 'complete' }
+    return signals.finishReason === 'stop' ? { kind: 'complete' } : { kind: 'fail', cause: 'finish_reason' }
   }
 
   return { kind: 'execute_tools' }
+}
+
+/** Finalization is a single text-only attempt; its output never starts another tool/recovery loop. */
+export function finalizationFailure(signals: Pick<TurnSignals,
+  'finishReason' | 'streamInterrupted' | 'toolCallCount' | 'contentEmpty'>): CompletionFailure | null {
+  if (signals.streamInterrupted) return 'stream'
+  if (signals.finishReason === 'length') return 'length'
+  if (signals.toolCallCount) return 'unexpected_tools'
+  if (signals.contentEmpty) return 'empty'
+  return signals.finishReason === 'stop' ? null : 'finish_reason'
 }

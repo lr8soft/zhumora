@@ -312,6 +312,9 @@ stateDiagram-v2
 - **隐藏期 TTS 音频丢弃**：TTS 输出是 renderer 投影（§3），窗口不可见时合成继续、音频事件无人消费；无持久化损失，不为此新增 main 侧 playback。
 - **主窗口导航守卫**：`will-navigate` 与 `setWindowOpenHandler` 两个入口共用 `navigationPolicy.decideNavigation` 纯函数判定（同源放行 / http(s) 交 `shell.openExternal` / 其余拒绝）。消息里的 markdown 超链接若走 Chromium 默认行为会把整个应用窗口导航走，renderer 的 `MarkdownView` 已把链接统一改为 `openExternal`（`mailto:` 交系统邮件客户端），main 守卫是兜底；生产 `file://` 文档 origin 为 `"null"`（opaque），与目标 `file:` URL 的 origin 相等即同源。
 - `BackgroundManager`（`src/main/background.ts`）只拥有托盘与通知两个展示投影：订阅 `SessionEventHub`、`PermissionBroker` 观察器，**不拥有**会话、运行或权限状态；策略判断（何时提醒、hide vs close）是 `src/main/backgroundPolicy.ts` 纯函数。新增"后台提醒"类功能只能扩展这两个投影，不得让展示层反向持有 Agent 状态。
+- 主窗口的就绪、关闭和导航回调捕获各自的 BrowserWindow 实例；只有仍为当前主窗口的实例销毁时才清空 `mainWindow`，避免迟到事件读空引用或误作用于新窗口。activate 对本次取得/创建的窗口聚焦，安全 webPreferences、导航策略和 hide/quit 时序保持不变。
+- 原生文件对话框由 `ipc/dialogs.ts` 统一选择 Electron 重载：存活且可见的主窗口作为父窗口；隐藏或已销毁时只传 options，不传 undefined 父窗口。过滤器、用户取消/选择结果与错误原样传递，不新增 IPC 或文件访问能力。
+- 系统通知图标通过 Notification 构造选项设置，显示失败通过 Electron 的 `failed(event, error)` 只记日志；失败不能批准、拒绝或清理挂起权限请求。通知的点击回窗、按会话去重与取消订阅/关闭清理仍由 BackgroundManager 持有。
 - 流程/详情/输入区独立窗口仅作为当前 renderer React 树的同源 portal 容器：`panels:prepare` 只接受主窗口 owner 与固定 panelId（conversation/details/composer），生成 30 秒、一次性的具名票据；`setWindowOpenHandler` 只额外放行匹配 owner/票据的 `about:blank`，任意 URL、重复票据及子窗口新开窗一律拒绝。辅助窗口保持 contextIsolation=true、nodeIntegration=false；about:blank 按 Electron 契约继承主窗口 webPreferences，sandbox 与既有主窗口一致，不接受 renderer 指定 preload 或特权参数。
 - 辅助窗口不加载第二个 App、不增加 Agent/权限/TTS 事件订阅，React portal 共享既有 Zustand 投影与上下文，实时消息、选中详情、主题和字号一致。其导航一律拦截，http(s) 仍走系统浏览器。窗口控制仅接受原 owner + 有效窗口 key + 固定 minimize/maximize/close action；不能指向任意 BrowserWindow。关辅助窗口只恢复面板停靠，不中止会话、不 hide 主窗口、不调用 app.quit。owner 销毁或整页重载/renderer 卸载/真退出时清理辅助窗口与票据；关主窗口 hide 的原策略保持。
 - 辅助窗口存活时，`PanelWindowManager` 暂时关闭 owner webContents 的后台节流，保证主窗隐藏后的既有 token 批量刷新仍服务可见辅助界面；最后一个辅助窗关闭时恢复先前节流值。画布镜头更新的 animation frame 使用当前 canvas 的 ownerDocument/defaultView，不依赖已隐藏主文档的帧回调。这些是展示窗口调度，不改变会话、权限或后台通知策略。
@@ -363,6 +366,22 @@ stateDiagram-v2
 - `assertContextFits` 拒绝仍超输入预算的请求并报告估算、预算、窗口与输出预留，不发已知超预算 HTTP，也不无限重复压缩。收尾不得吞掉预算错误/用户中止并发布成功。这里是近似估算保护，不宣称等同服务端 tokenizer；尚未增加 context-limit 400 自动恢复或真实 usage 校准。现有 compact 通知仍为 effective 消息估算，完整请求检查数字记录在 Context check/recheck 日志中。
 
 不要为 Bot、UI 或恢复逻辑各复制一份历史映射/压缩实现。
+
+### LLM 响应完整性与运行终态
+
+- `finish_reason` 只描述一次模型生成的结束，不是用户目标完成的证明。`turnDecision.ts` 统一裁决响应：有效完整工具轮继续执行；`stop` 且有正文、无工具时才是正常最终回复候选；空正文且无工具（包括 reasoning-only）最多追加两次合成继续指令，仍为空则抛 `AgentCompletionError`，禁止回落到 complete。length、流不完整、工具参数损坏的恢复耗尽同样明确失败，部分输出和不可执行工具组的占位结果保留。
+- `RecoveryBudget` 由单次 runner 持有，空响应与不完整响应各有独立连续预算（各两次），工具轮可重置连续计数；全 run 恢复总上限为四次，永不随工具轮重置，防止 maxRounds=0 时异常响应与工具轮交替造成无限恢复。网络错误仍按既有可取消 maxRetries 策略处理；新增的无 finish_reason EOF 不进入网络透明重试，即使没有任何输出也交给 runner 的有界流恢复。
+- `llm/streamResponse.ts` 只负责单次 HTTP 响应读取，SSE 聚合与格式验证仍在纯模块 `sseAccumulator.ts`；取消、超时、并发额度和重试归 provider 适配器。完整流须有有效的选定 choice finish_reason；仅 EOF 或仅 `[DONE]` 不算完整。兼容 finish_reason 后直接 EOF、不带末尾换行、usage-only 尾块，以及缺失 MIME / text/plain 代理（仍须是合法 SSE chat 数据）。`[DONE]` 后取消 reader 并释放网络名额，不等待长连接关闭。显式非 SSE MIME、错误 JSON/SSE error 和损坏 chat 数据明确失败，不记录原始错误载荷。
+- `finalizeRun` 仍只有一次无工具收尾请求，不新建运行或再次启动工具循环。只有完整流、finish_reason=stop、非空正文、无 tool_calls 的结果可作为收尾交付；空/仅思考、length、流中断、意外工具、异常结束原因以及 HTTP/协议错误均传播到原错误链。意外工具不执行，并持久化真实调用与全部占位结果；正常收尾追加上下文时使用 main 回调返回的权威消息 ID。
+- 异常继续只发生在当前 WorkingConversation；合成 user 指令的 ID=null，不进入 messages 表，不重放已执行工具，不删除/改写历史或压缩记录。真实 reasoning 可以独立落库，但不作为正文或交付。失败若发生在已落库的轮次之后，持久化回调追加独立 error 记录而不覆盖已有记录；重复 onError 幂等。
+- `AgentCompletionError` 经过既有 SessionService catch/cleanup/outcome 链发布 error，清理后才发布失败终态，handle.completion 保持 reject。UI/Bot/MCP 入站不拥有额外恢复或完成判断；MCP 得到 failed，内部子 Agent 诊断将此错误归为 no_deliverable，原有空交付投影仍作为防御检查。正常 complete 只表示本轮有有效交付且已结束，用户目标仍须按实际工具结果和验收条件判断。
+- 本次未改变 reasoning 回传、辅助非流式 complete 的字符串契约、Provider 自动切换或网络无限重试设置；这些能力需独立的 Provider 兼容变更，不能借恢复绕过权限或裁剪工具注册表。
+
+复查补充约束：SSE 先由 `sseEventBuffer.ts` 按事件组装多行 data，再解析 JSON；单请求只接受一个 choice，显式 index 必须为 0，禁止混合其他 choice 的结束信号。reader 的 cancel 为尽力清理，不等待可能永不 settle 的 Promise，锁与请求名额及时释放。显式异常结束原因（如 content_filter）优先失败，不因同时出现损坏工具参数而触发续写。
+
+- 工具调用 ID 在同一 assistant 组内必须唯一；重复 ID 的整组不执行，真实调用和逐条占位结果仍保留在持久化历史，发送前只在有效上下文中原子排除该组，消息与 ID 同步清洗。
+- hard stop 关闭当前组全部未执行工具后，立即退出普通循环，只允许一次无工具收尾；maxRounds=0 也不能绕过它。普通最终回复和有效收尾都以权威 ID 追加到工作上下文及本次返回消息；收尾取消保留已收到的正文/思考后传播中止，不发布成功。
+- 持久化回调的新轮 ID 在首个正文或思考 token 前创建，并重置本轮流式缓存；上一轮正文不能混入下一轮失败记录。start 仍先于 token，失败记录不覆盖先前真实消息。
 
 ## 10. 依赖与文件边界
 

@@ -47,7 +47,7 @@ export interface RoundResult {
   finishReason: string | undefined
   reasoning: string
   /**
-   * 流式响应中途被网络断开（已输出部分内容后连接失败）。
+   * 网络中断，或 EOF/DONE 时未收到 finish_reason（可以没有任何输出）。
    * 与 finish_reason=length 的"输出上限截断"是两种不同的中断，
    * 但恢复策略同构：保留部分文本、引导模型续写/重发工具调用。
    * 详见 provider.streamChat 与 turnDecision。

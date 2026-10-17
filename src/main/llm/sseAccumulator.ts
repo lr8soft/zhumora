@@ -10,13 +10,12 @@
 // - 最后一个含内容的 chunk 里 choices[0].finish_reason 是停止原因：
 //   stop / tool_calls / length / content_filter …
 //
-// finish_reason 是区分"模型真正完成本轮"与"响应被单次输出上限
-// （max_tokens）中途静默截断（length）"的关键信号 ——
-// 这是"工作没做完却无报错停止"的根因（消费方见 runner.ts）。
+// finish_reason 描述生成如何停止；是否有正文/工具交付由 agent 状态机判断。
 //
 // 本模块不依赖 electron，可直接用 node 运行单元测试（tests/truncation.test.ts）。
 // ============================================================
 import type { ToolCall } from '../../shared/types'
+import { ProviderStreamError } from './streamErrors.ts'
 
 /** 单次 LLM 调用的 token 用量 */
 export interface TokenUsage {
@@ -33,8 +32,9 @@ export interface StreamAccumulator {
   toolCalls: Map<number, ToolCall>
   /** 用量（末块携带） */
   usage?: TokenUsage
-  /** 停止原因（以最后一个非空 finish_reason 为准） */
+  /** 选定 choice 的停止原因；其后只允许 usage 等无输出尾块。 */
   finishReason?: string
+  done: boolean
 }
 
 /**
@@ -57,7 +57,7 @@ export function extractReasoningDelta(delta: any): string {
 
 /** 创建空聚合器 */
 export function createStreamAccumulator(): StreamAccumulator {
-  return { content: '', toolCalls: new Map() }
+  return { content: '', toolCalls: new Map(), done: false }
 }
 
 /** 应用单个 chunk 的结果 */
@@ -73,17 +73,25 @@ export interface SseApplyResult {
 
 /**
  * 把一条 SSE data 载荷（"data:" 之后的 JSON 字符串）应用到聚合器。
- * '[DONE]'、无法解析的载荷、空载荷一律忽略（部分后端会发 keep-alive 或非 JSON 行）。
+ * 空 data 是心跳；DONE 只终结传输。错误/损坏 data 不能被忽略后当作成功。
  */
 export function applySseData(acc: StreamAccumulator, data: string): SseApplyResult {
   const result: SseApplyResult = { token: '', reasoning: '', emitted: false }
-  if (data === '[DONE]') return result
+  if (acc.done || !data) return result
+  if (data === '[DONE]') { acc.done = true; return result }
 
   let json: any
   try {
     json = JSON.parse(data)
   } catch {
-    return result
+    throw new ProviderStreamError('payload')
+  }
+  if (!json || typeof json !== 'object' || Array.isArray(json)) throw new ProviderStreamError('payload')
+  if (json.error) throw new ProviderStreamError('provider')
+  if (!Array.isArray(json.choices)) throw new ProviderStreamError('payload')
+  // Requests select one completion (n=1). Never merge a different choice into its terminal state.
+  if (json.choices.length > 1 || (json.choices[0]?.index != null && json.choices[0].index !== 0)) {
+    throw new ProviderStreamError('payload')
   }
 
   // 用量（include_usage 开启时由末块携带，该块 choices 常为空数组）
@@ -96,8 +104,23 @@ export function applySseData(acc: StreamAccumulator, data: string): SseApplyResu
   }
 
   const choice = json.choices?.[0]
+  if (json.choices.length && (!choice || typeof choice !== 'object' || Array.isArray(choice))) {
+    throw new ProviderStreamError('payload')
+  }
+  if (choice && !choice.delta && !choice.finish_reason) throw new ProviderStreamError('payload')
+  if (choice && ('message' in choice || (choice.delta != null
+    && (typeof choice.delta !== 'object' || Array.isArray(choice.delta))))) throw new ProviderStreamError('payload')
+  if (choice?.finish_reason != null && (typeof choice.finish_reason !== 'string' || !choice.finish_reason.trim())) {
+    throw new ProviderStreamError('payload')
+  }
+  if (choice?.delta?.content != null && typeof choice.delta.content !== 'string') throw new ProviderStreamError('payload')
+  if (choice?.delta?.tool_calls != null && !Array.isArray(choice.delta.tool_calls)) throw new ProviderStreamError('payload')
+  if (acc.finishReason && (choice?.delta?.content || extractReasoningDelta(choice?.delta)
+    || choice?.delta?.tool_calls?.length || (choice?.finish_reason && choice.finish_reason !== acc.finishReason))) {
+    throw new ProviderStreamError('payload')
+  }
   if (choice?.finish_reason) {
-    acc.finishReason = String(choice.finish_reason)
+    acc.finishReason = choice.finish_reason
   }
 
   const delta = choice?.delta

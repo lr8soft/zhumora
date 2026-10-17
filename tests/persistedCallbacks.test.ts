@@ -52,4 +52,14 @@ assert.equal(events.at(-1), 'complete:m1')
   round.onComplete?.(); assert.equal(saved.length, 1)
 }
 
+{
+  const saved: UIMessage[] = []; let id = 0; let errors = 0
+  const cb = createPersistedAgentCallbacks('failed', { addMessage: m => saved.push(m), addTokenUsage() {} },
+    () => `f${++id}`, { error: () => { errors++ } })
+  cb.onAssistantMessage?.('partial finalization', [])
+  cb.onError?.(new Error('incomplete output')); cb.onError?.(new Error('duplicate'))
+  assert.equal(saved.length, 2, 'failure after a persisted round must leave a separate error record')
+  assert.equal(saved[0].content, 'partial finalization'); assert.equal(saved[0].status, 'done')
+  assert.equal(saved[1].status, 'error'); assert.equal(errors, 1)
+}
 console.log('persisted Agent callback tests passed')
