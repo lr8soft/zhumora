@@ -45,7 +45,7 @@ export async function finalizeRun(
       },
       // 错误由 SessionService 统一发布，不在此处重复触发。
       onError: undefined,
-      onRetry: undefined
+      onRetry: cb.onRetry
     })
     const { content, usage } = result
     if (usage) cb.onTokenUsage?.(usage, model)

@@ -3,6 +3,7 @@ import { useTranslation } from 'react-i18next'
 import { Handle, Position, type Node, type NodeProps } from '@xyflow/react'
 import { Archive, Brain, Check, ChevronRight, GitBranch, GitMerge, Layers, LoaderCircle, MessageSquare, UserRound, Wrench, XCircle } from 'lucide-react'
 import type { FlowData } from '../flow/types'
+import { retryMessageKey } from '../../../shared/agentRetry'
 import SpeechFlowNode, { type SpeechNodeData } from './SpeechFlowNode'
 
 export type ConversationNode = Node<SpeechNodeData, 'conversation'>
@@ -21,13 +22,13 @@ function ConversationFlowNode({ id, data, selected }: NodeProps<ConversationNode
     return <div className="flow-lane">
       <div className="flow-lane-label"><GitBranch size={12} /><strong>{data.title}</strong><span>{data.preview}</span>
         <small className={data.awaitingPermission ? 'permission' : ''}>{data.awaitingPermission ? t('flow.awaitingPermission')
-          : data.retry && data.status === 'running' ? t('chat.retrying', { attempt: data.retry.failedAttempt, max: data.retry.maxRetries < 0 ? '∞' : data.retry.maxRetries })
+          : data.retry && data.status === 'running' ? t(retryMessageKey(data.retry), { attempt: data.retry.failedAttempt, max: data.retry.maxRetries < 0 ? '∞' : data.retry.maxRetries })
             : t(`flow.status.${data.status}`)}</small>
       </div>
     </div>
   }
   const StatusIcon = data.status === 'done' ? Check : data.status === 'error' ? XCircle : data.status === 'running' ? LoaderCircle : null
-  const preview = data.retry && data.status === 'running' ? t('chat.retrying', { attempt: data.retry.failedAttempt, max: data.retry.maxRetries < 0 ? '∞' : data.retry.maxRetries })
+  const preview = data.retry && data.status === 'running' ? t(retryMessageKey(data.retry), { attempt: data.retry.failedAttempt, max: data.retry.maxRetries < 0 ? '∞' : data.retry.maxRetries })
     : data.totalTaskCount ? t('flow.receivedCount', { received: data.returnedTaskCount, total: data.totalTaskCount })
     : data.call && !data.result ? data.call.function.arguments : data.preview
   return <div className={`flow-card flow-${data.kind}${selected ? ' is-selected' : ''}`}>

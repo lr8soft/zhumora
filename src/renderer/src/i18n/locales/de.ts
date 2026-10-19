@@ -49,6 +49,7 @@ export default {
     thinkingBlock: 'Tiefes Denken',
     tool: { running: 'Läuft', done: 'Fertig', error: 'Fehler', args: 'Argumente', result: 'Ergebnis' },
     retrying: 'Netzwerk instabil, erneuter Versuch ({{attempt}}/{{max}})…',
+    providerBusy: 'LLM Provider ausgelastet, erneuter Versuch ({{attempt}}/{{max}})…',
     scrollToBottom: 'Zur neuesten Nachricht scrollen',
     stop: 'Stopp',
     send: 'Senden',

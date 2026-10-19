@@ -10,6 +10,7 @@
 // ============================================================
 import { create } from 'zustand'
 import type { Session, UIMessage, AppSettings, AutoApproveMode, ReasoningEffort } from '@shared/types'
+import type { AgentRetryStatus as RetryStatus } from '@shared/agentRetry'
 
 export type { ReasoningEffort }
 import { initialSettingsProjection } from './settingsDefaults'
@@ -117,11 +118,6 @@ export interface PermissionRequest {
   args: Record<string, unknown>
   /** 工具权限等级（用于 UI 展示不同警告强度） */
   level?: string
-}
-
-interface RetryStatus {
-  failedAttempt: number
-  maxRetries: number
 }
 
 interface CompactNotice {

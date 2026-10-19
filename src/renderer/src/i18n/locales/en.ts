@@ -53,6 +53,7 @@ export default {
     thinkingBlock: 'Deep thinking',
     tool: { running: 'Running', done: 'Done', error: 'Error', args: 'Arguments', result: 'Result' },
     retrying: 'Network unstable, retrying ({{attempt}}/{{max}})…',
+    providerBusy: 'LLM Provider busy, retrying ({{attempt}}/{{max}})…',
     scrollToBottom: 'Scroll to latest message',
     stop: 'Stop',
     send: 'Send',

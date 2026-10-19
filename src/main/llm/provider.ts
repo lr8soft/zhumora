@@ -7,15 +7,16 @@ import { hasValidToolCalls } from '../../shared/toolCalls'
 import { createProviderRequestHeaders } from '../../shared/providerHeaders'
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
-import { HttpError, getMaxRetries, isRetriableError, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
+import { HttpError, getMaxRetries, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
 import {
   createStreamAccumulator, accumulateResult, type TokenUsage
 } from './sseAccumulator'
 import { readChatStream } from './streamResponse'
 import { IncompleteStreamError, ProviderStreamError } from './streamErrors'
-import { isMalformedToolArgumentsError, isReasoningParamRejected } from './errors'
+import { isReasoningParamRejected } from './errors'
 import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
 import { withProviderRequest } from './requestRuntime'
+import { shouldRetryProviderError } from './providerRetry'
 
 export type { TokenUsage }
 
@@ -153,8 +154,7 @@ export async function streamChat(
         // 最长 30s 的退避里无法 settle，会话永久 busy，见 retryCore 注释）
         signal: params.signal,
         // 仅在尚未向 UI 输出任何内容时才重试（否则聊天区会收到重复内容）
-        shouldRetry: (err) => !state.emitted && !(err instanceof IncompleteStreamError)
-          && !(err instanceof ProviderStreamError) && !isMalformedToolArgumentsError(err) && isRetriableError(err),
+        shouldRetry: (err) => !state.emitted && shouldRetryProviderError(err),
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
       }
     )
@@ -167,7 +167,7 @@ export async function streamChat(
     // 流空闲超时（模型侧长时间无数据）同理。
     // 离线类错误（明确无网络）重连无意义，仍抛错让 run 收尾告知用户。
     if (err instanceof IncompleteStreamError
-      || (state.emitted && (isStreamableNetworkError(err) || isStreamIdleTimeoutError(err)))) {
+      || (!(err instanceof ProviderStreamError) && state.emitted && (isStreamableNetworkError(err) || isStreamIdleTimeoutError(err)))) {
       const error = err as Error
       log('warn', `LLM stream incomplete (${String(error?.message || err).slice(0, 120)}) — returning partial content for agent-level continuation`)
       if (state.partial) {
@@ -308,7 +308,7 @@ export async function complete(
       // 会话中止时立即退出退避循环；不传 signal 的调用方（标题生成、
       // 记忆提取等运行外 fire-and-forget 调用）保持原行为
       signal,
-      shouldRetry: (err) => !isMalformedToolArgumentsError(err) && isRetriableError(err)
+      shouldRetry: shouldRetryProviderError
     }
   )
 }

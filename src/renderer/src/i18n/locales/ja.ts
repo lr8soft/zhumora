@@ -49,6 +49,7 @@ export default {
     thinkingBlock: '深く思考中',
     tool: { running: '実行中', done: '完了', error: 'エラー', args: '引数', result: '結果' },
     retrying: 'ネットワークが不安定です。再試行中（{{attempt}}/{{max}}）…',
+    providerBusy: 'LLM Provider が混雑しています。再試行中（{{attempt}}/{{max}}）…',
     scrollToBottom: '最新のメッセージへ移動',
     stop: '停止',
     send: '送信',

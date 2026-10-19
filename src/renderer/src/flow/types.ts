@@ -1,4 +1,5 @@
 import type { ToolCall, UIMessage } from '../../../shared/types.ts'
+import type { AgentRetryStatus } from '../../../shared/agentRetry.ts'
 
 export type FlowKind = 'user' | 'llm' | 'tool' | 'speech' | 'delegate' | 'join' | 'summary' | 'turn' | 'compaction' | 'lane'
 export type FlowStatus = 'done' | 'running' | 'queued' | 'error' | 'unresolved'
@@ -19,7 +20,7 @@ export interface FlowData extends Record<string, unknown> {
   returnedTaskCount?: number
   totalTaskCount?: number
   awaitingPermission?: boolean
-  retry?: { failedAttempt: number; maxRetries: number }
+  retry?: AgentRetryStatus
   steps?: FlowStep[]
   toolCount?: number
   llmCount?: number

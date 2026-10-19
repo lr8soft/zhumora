@@ -15,6 +15,7 @@ import ConversationFlowNode, { flowTitle, type ConversationNode } from './Conver
 import FlowInspector from './FlowInspector'
 import EmptyConversationHero from './EmptyConversationHero'
 import { useAppStore } from '../store'
+import { retryMessageKey } from '../../../shared/agentRetry'
 import '@xyflow/react/dist/style.css'
 import './conversationFlow.css'
 
@@ -141,10 +142,11 @@ function FlowStatusbar({ graph, latest, running, permissions, openLatest }: {
   graph: ConversationGraph; latest?: FlowNode; running: string[]; permissions: string[]; openLatest: () => void
 }) {
   const { t } = useTranslation()
+  const retry = graph.nodes.find(node => running.includes(node.data.sessionId) && node.data.retry)?.data.retry
   return <footer className="flow-statusbar"><div className="flow-legend"><span className="reply">{t('flow.kind.speech')}</span><span className="tool">{t('flow.stageSteps')}</span><span className="delegate">{t('flow.branch')}</span></div>
       <div className="flow-runtime-status">{permissions.length > 0 ? <span className="permission">{t('flow.awaitingPermission')}</span>
-        : running.length > 0 ? <><span className="pulse-dot" />{latest?.data.retry ? t('chat.retrying', {
-          attempt: latest.data.retry.failedAttempt, max: latest.data.retry.maxRetries < 0 ? '∞' : latest.data.retry.maxRetries
+        : running.length > 0 ? <><span className="pulse-dot" />{retry ? t(retryMessageKey(retry), {
+          attempt: retry.failedAttempt, max: retry.maxRetries < 0 ? '∞' : retry.maxRetries
         }) : t('flow.running')}</> : <span>{t('flow.ready')}</span>}
         <span className="flow-count">{t('flow.stepCount', { count: graph.nodes.filter(node => node.data.kind !== 'lane').length })}</span>
         {latest && <button onClick={openLatest}><span>{t('flow.latest')}</span><ArrowRight size={12} /></button>}

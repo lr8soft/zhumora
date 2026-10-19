@@ -49,6 +49,7 @@ export default {
     thinkingBlock: 'Razonamiento profundo',
     tool: { running: 'En ejecución', done: 'Completado', error: 'Error', args: 'Argumentos', result: 'Resultado' },
     retrying: 'Red inestable, reintentando ({{attempt}}/{{max}})…',
+    providerBusy: 'LLM Provider ocupado, reintentando ({{attempt}}/{{max}})…',
     scrollToBottom: 'Ir al mensaje más reciente',
     stop: 'Detener',
     send: 'Enviar',

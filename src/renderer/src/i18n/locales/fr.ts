@@ -49,6 +49,7 @@ export default {
     thinkingBlock: 'Raisonnement approfondi',
     tool: { running: 'En cours', done: 'Terminé', error: 'Erreur', args: 'Arguments', result: 'Résultat' },
     retrying: 'Réseau instable, nouvelle tentative ({{attempt}}/{{max}})…',
+    providerBusy: 'LLM Provider occupé, nouvelle tentative ({{attempt}}/{{max}})…',
     scrollToBottom: 'Aller au message le plus récent',
     stop: 'Arrêter',
     send: 'Envoyer',

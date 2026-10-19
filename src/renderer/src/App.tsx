@@ -221,6 +221,8 @@ export default function App() {
       // phase=end：本轮结束，把流式消息收尾为 done）。
       window.api.agent.onAssistantMessage(({ sessionId, messageId, content, toolCalls, phase, reasoning }) => {
         flushPending()
+        const state = useAppStore.getState()
+        if (state.retryStatus[sessionId]) state.setRetryStatus(sessionId, null)
         const now = Date.now()
         if (phase === 'start') {
           pushMessage(sessionId, (m) => applyAssistantStart(sessionId, messageId, m, now))
@@ -281,9 +283,9 @@ export default function App() {
         if (running) void st.loadSessions()
       }),
 
-      // 网络重试状态（按会话）
-      window.api.agent.onRetry(({ sessionId, failedAttempt, maxRetries }) => {
-        useAppStore.getState().setRetryStatus(sessionId, { failedAttempt, maxRetries })
+      // 重试原因与计数只作为按会话展示投影。
+      window.api.agent.onRetry(({ sessionId, ...status }) => {
+        useAppStore.getState().setRetryStatus(sessionId, status)
       }),
 
       // 单轮输出不完整（token 上限截断 / 流中途网络断开）→ 展示提示条，8 秒后自动消失

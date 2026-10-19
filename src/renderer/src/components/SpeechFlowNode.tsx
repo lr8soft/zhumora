@@ -7,6 +7,7 @@ import type { FlowData, FlowDetailTab } from '../flow/types'
 import { useDetailAutoScroll } from '../flow/useDetailAutoScroll'
 import { useSpeechMeasure, type SpeechMeasure } from '../flow/useSpeechMeasure'
 import SpeechSteps from './SpeechSteps'
+import { retryMessageKey } from '../../../shared/agentRetry'
 
 export type SpeechNodeData = FlowData & SpeechMeasure & { onStepSelect?: (ownerId: string, stepId: string, tab?: FlowDetailTab) => void }
 
@@ -25,6 +26,9 @@ export default function SpeechFlowNode({ id, data, selected }: { id: string; dat
     <Handle type="target" position={Position.Left} isConnectable={false} />
     <header><MessageSquare size={15} className="flow-card-icon" /><strong>{t('flow.kind.speech')}</strong>
       {Status && <Status size={13} className={`flow-node-status ${data.status}${data.status === 'running' ? ' spin' : ''}`} />}</header>
+    {data.retry && data.status === 'running' && <div className="flow-card-meta" role="status">
+      {t(retryMessageKey(data.retry), { attempt: data.retry.failedAttempt, max: data.retry.maxRetries < 0 ? '∞' : data.retry.maxRetries })}
+    </div>}
     <div ref={textRef} className={`flow-speech-text nowheel nopan${words ? '' : ' is-processing'}`}>
       <div>{words || t('flow.processing')}</div>
     </div>

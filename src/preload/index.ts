@@ -9,6 +9,7 @@ import type { SessionModelSelection } from '../shared/sessionModel'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 import type { PanelId, PanelWindowAction, PanelWindowTicket } from '../shared/panels'
+import type { AgentRetryEvent } from '../shared/agentRetry'
 
 const api = {
   /**
@@ -152,8 +153,8 @@ const api = {
       ipcRenderer.on('agent:error', handler)
       return () => ipcRenderer.removeListener('agent:error', handler)
     },
-    onRetry: (cb: (data: { sessionId: string; failedAttempt: number; maxRetries: number }) => void) => {
-      const handler = (_e: any, data: any) => cb(data)
+    onRetry: (cb: (data: AgentRetryEvent) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, data: AgentRetryEvent) => cb(data)
       ipcRenderer.on('agent:retry', handler)
       return () => ipcRenderer.removeListener('agent:retry', handler)
     },
