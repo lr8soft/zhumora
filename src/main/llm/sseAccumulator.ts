@@ -16,6 +16,7 @@
 // ============================================================
 import type { ToolCall } from '../../shared/types'
 import { ProviderStreamError } from './streamErrors.ts'
+import type { StreamErrorContext } from './providerErrorDetails.ts'
 
 /** 单次 LLM 调用的 token 用量 */
 export interface TokenUsage {
@@ -75,7 +76,7 @@ export interface SseApplyResult {
  * 把一条 SSE data 载荷（"data:" 之后的 JSON 字符串）应用到聚合器。
  * 空 data 是心跳；DONE 只终结传输。错误/损坏 data 不能被忽略后当作成功。
  */
-export function applySseData(acc: StreamAccumulator, data: string): SseApplyResult {
+export function applySseData(acc: StreamAccumulator, data: string, context?: StreamErrorContext): SseApplyResult {
   const result: SseApplyResult = { token: '', reasoning: '', emitted: false }
   if (acc.done || !data) return result
   if (data === '[DONE]') { acc.done = true; return result }
@@ -87,7 +88,9 @@ export function applySseData(acc: StreamAccumulator, data: string): SseApplyResu
     throw new ProviderStreamError('payload')
   }
   if (!json || typeof json !== 'object' || Array.isArray(json)) throw new ProviderStreamError('payload')
-  if (json.error) throw new ProviderStreamError('provider')
+  if (json.error) throw new ProviderStreamError('provider', json.error, {
+    ...context, requestId: json.request_id ?? context?.requestId
+  })
   if (!Array.isArray(json.choices)) throw new ProviderStreamError('payload')
   // Requests select one completion (n=1). Never merge a different choice into its terminal state.
   if (json.choices.length > 1 || (json.choices[0]?.index != null && json.choices[0].index !== 0)) {

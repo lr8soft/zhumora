@@ -236,7 +236,9 @@ async function executeStreamChat(
       if (applied.emitted) state.emitted = true
       if (applied.reasoning) cb?.onReasoningToken?.(applied.reasoning)
       if (applied.token) cb?.onToken?.(applied.token)
-    }, resetIdleTimer)
+    }, resetIdleTimer, {
+      provider: provider.name || provider.id, model: params.model || provider.defaultModel
+    })
 
     return accumulateResult(acc)
   } catch (err) {

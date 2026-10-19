@@ -1,15 +1,18 @@
 import { applySseData, type SseApplyResult, type StreamAccumulator } from './sseAccumulator.ts'
 import { SseEventBuffer } from './sseEventBuffer.ts'
 import { IncompleteStreamError, ProviderStreamError } from './streamErrors.ts'
+import type { StreamErrorContext } from './providerErrorDetails.ts'
 
 /** Read one HTTP attempt. The caller owns cancellation, retries, timers and partial-result policy. */
 export async function readChatStream(response: Response, acc: StreamAccumulator,
-  onDelta: (delta: SseApplyResult) => void, onActivity: () => void): Promise<void> {
+  onDelta: (delta: SseApplyResult) => void, onActivity: () => void, context?: StreamErrorContext): Promise<void> {
   const mime = response.headers.get('content-type')?.split(';')[0].trim().toLowerCase()
   const reader = response.body?.getReader()
   const decoder = new TextDecoder('utf-8', { fatal: true })
   const sse = new SseEventBuffer()
-  const handleData = (data: string) => onDelta(applySseData(acc, data))
+  const diagnostics = { ...context, requestId: response.headers.get('x-request-id')
+    ?? response.headers.get('request-id') ?? context?.requestId }
+  const handleData = (data: string) => onDelta(applySseData(acc, data, diagnostics))
   try {
     // Some compatible proxies omit the MIME or return text/plain; still require valid SSE chat frames.
     if (mime && mime !== 'text/event-stream' && mime !== 'text/plain') throw new ProviderStreamError('content_type')

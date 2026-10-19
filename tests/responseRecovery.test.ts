@@ -127,10 +127,30 @@ try {
     const r = await streamChat(provider, { messages: [] })
     assert.equal(r.streamInterrupted, true, 'EOF/DONE without finish_reason is incomplete even without visible output')
   }
-  for (const body of ['data: {broken}\n\n', 'data: {"error":{"message":"private-key"}}\n\n',
+  for (const body of ['data: {broken}\n\n',
     'data: {"choices":[{"message":{"content":"wrong protocol"}}]}\n\n']) {
     globalThis.fetch = async () => response(body)
-    await assert.rejects(streamChat(provider, { messages: [] }), e => e instanceof Error && !e.message.includes('private-key'))
+    await assert.rejects(streamChat(provider, { messages: [] }), { name: 'ProviderStreamError' })
+  }
+  for (const maxRounds of [20, 1]) {
+    const f = fixture()
+    const error = { message: '模型上下文超限，输入 33000 tokens，上限 32768',
+      type: 'invalid_request_error', code: 'context_length_exceeded', param: 'messages',
+      metadata: { upstream: 'original detail private-key', retry_after: 30 } }
+    f.fetches(i => i === 1 ? ended(tool('already-done'), 'tool_calls')
+      : new Response(`data: ${JSON.stringify({ error })}\n\n`, { headers: { 'x-request-id': 'request-42' } }))
+    await assert.rejects(f.run({ maxRounds }), e => {
+      assert.ok(e instanceof Error && e.name === 'ProviderStreamError')
+      assert.match(e.message, /模型上下文超限/)
+      assert.match(e.message, /Provider: test\nModel: test\nRequest ID: request-42/)
+      assert.ok(e.message.includes(JSON.stringify(error, null, 2)), 'complete upstream error survives without redaction/filtering')
+      assert.equal(f.saved.at(-1)!.content, `Error: ${e.message}`, 'node details receive the same persisted error')
+      return true
+    })
+    assert.equal(f.requests.length, 2, 'stream errors do not silently retry or restart tools')
+    assert.equal(f.executed(), 1); assert.equal(f.completed(), 0)
+    assert.equal(f.task.status().status, 'failed')
+    assert.equal(f.saved.filter(m => m.role === 'tool').length, 1)
   }
   for (const mime of ['application/json', 'text/html']) {
     let cancelled = false

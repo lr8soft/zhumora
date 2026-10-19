@@ -99,13 +99,24 @@ test('DONE 标记终结，忽略其后输出；心跳为空 data', () => {
   assertEq(acc.done, true, 'DONE observed')
 })
 
-test('损坏 JSON、错误载荷与非流式正文必须明确失败且不泄漏载荷', () => {
-  for (const payload of ['not-json', 'null', '{}', '{"error":{"message":"private-key"}}',
+test('损坏 JSON 与非流式正文必须明确失败', () => {
+  for (const payload of ['not-json', 'null', '{}',
     '{"choices":[{"message":{"content":"wrong protocol"},"finish_reason":"stop"}]}',
     '{"choices":[{"delta":"not an object","finish_reason":"stop"}]}']) {
     strict.throws(() => applySseData(createStreamAccumulator(), payload),
-      e => e instanceof Error && e.name === 'ProviderStreamError' && !e.message.includes('private-key'))
+      e => e instanceof Error && e.name === 'ProviderStreamError')
   }
+})
+
+test('Provider 流内错误必须保留原始诊断信息', () => {
+  const error = { message: 'context length exceeded', code: 'context_length_exceeded',
+    metadata: { raw: 'upstream error: private-key' } }
+  strict.throws(() => applySseData(createStreamAccumulator(), JSON.stringify({ error })), e => {
+    strict.ok(e instanceof Error && e.name === 'ProviderStreamError')
+    strict.ok(e.message.startsWith('LLM provider stream error: context length exceeded'))
+    strict.ok(e.message.includes(JSON.stringify(error, null, 2)))
+    return true
+  })
 })
 
 test('结束后的新输出/冲突结束原因不是有效的 usage 尾块', () => {
