@@ -7,6 +7,28 @@ const request = { description: 'Single-file task', prompt: 'ORIGINAL_GOAL: imple
 const networkFailure = () => Object.assign(new Error('fetch failed'), { cause: { code: 'ECONNRESET' } })
 const turn = () => new Promise<void>(resolve => setImmediate(resolve))
 
+// Tool execution failures are recoverable steps, never task terminal events.
+{
+  const f = createSubagentFixture()
+  try {
+    const parent = await f.root()
+    const child = await parent.scope.spawn(request)
+    const running = f.running.get(child.session_id)!
+    const call: ToolCall = { id: 'failed-bash', type: 'function', function: { name: 'bash', arguments: '{}' } }
+    const assistantId = running.callbacks.onAssistantMessage!('Checking build files', [call])
+    running.callbacks.onToolCall!(call, assistantId)
+    running.callbacks.onToolResult!(call.id, 'bash', 'exit code 1: path not found', true, 1)
+    const [working] = await parent.scope.wait([child.task_id], 0)
+    assert.equal(working.status, 'running'); assert.equal(working.diagnostics.tool_errors, 1)
+    assert.equal(working.diagnostics.failure, undefined)
+    f.finish(child.session_id, 'Used the correct path and completed validation')
+    const [done] = await parent.scope.wait([child.task_id], 100)
+    assert.equal(done.status, 'completed'); assert.equal(done.diagnostics.tool_errors, 1)
+    assert.equal(done.diagnostics.failure, undefined)
+    assert.ok(f.messages.get(child.session_id)!.some(message => message.role === 'tool' && message.status === 'error'))
+  } finally { await f.service.stopAll(); f.permissions.dispose() }
+}
+
 // Recovery reuses the original child, history, model and ownership; a broken sibling does not stop concurrency.
 {
   const f = createSubagentFixture()

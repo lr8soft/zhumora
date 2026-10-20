@@ -6,6 +6,7 @@ export interface TaskReference {
   session_id: string
   status: 'running' | 'awaiting_permission' | 'completed' | 'failed' | 'aborted'
   parentSessionId?: string
+  diagnostics?: { failure?: { stage?: string } }
 }
 export interface Delegation {
   callId: string
@@ -31,7 +32,8 @@ export function decodeTaskReferences(content: string): TaskReference[] {
   if (content.length > 150000) return []
   try {
     const value: unknown = JSON.parse(content)
-    return (Array.isArray(value) ? value : [value]).filter((item): item is TaskReference => {
+    const page = value && typeof value === 'object' && 'tasks' in value ? value.tasks : undefined
+    return (Array.isArray(value) ? value : Array.isArray(page) ? page : [value]).filter((item): item is TaskReference => {
       if (!item || typeof item !== 'object') return false
       const record = item as Record<string, unknown>
       return typeof record.task_id === 'string' && !!record.task_id
@@ -55,14 +57,16 @@ export function collectDelegations(
       if (!['spawn_subagent', 'continue_subagent'].includes(call.function.name)) continue
       const nodeId = toolNodeId(parentId, call.id, message.id)
       const result = results.get(nodeId)
-      if (!result || result.status === 'error') continue
+      if (!result) continue
       const task = decodeTaskReferences(result.content)[0]
       const session = task && children.get(task.session_id)
       if (!task || !session || (task.parentSessionId && task.parentSessionId !== parentId)) continue
+      if (result.status === 'error' && !['failed', 'aborted'].includes(task.status)) continue
       const index = ordinal.get(session.id) ?? 0
-      ordinal.set(session.id, index + 1)
+      const startupFailure = task.status === 'failed' && task.diagnostics?.failure?.stage === 'startup'
+      if (!startupFailure) ordinal.set(session.id, index + 1)
       // Each delegated continuation writes a new user input. Independent later UI turns are not attached to this task.
-      const turn = splitConversationTurns(histories[session.id] ?? [])[index]
+      const turn = startupFailure ? undefined : splitConversationTurns(histories[session.id] ?? [])[index]
       delegations.set(nodeId, { callId: call.id, nodeId, task, session, turn })
     }
   }

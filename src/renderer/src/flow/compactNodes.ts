@@ -1,7 +1,8 @@
 import { messageNodeId } from './history.ts'
 import { flowNode } from './projection.ts'
-import type { FlowNode, FlowStatus, FlowStep } from './types.ts'
+import type { FlowNode, FlowStep } from './types.ts'
 import { DEFAULT_SPEECH_SIZE, estimateSpeechHeight } from './speechSizing.ts'
+import { speechStatus } from './status.ts'
 
 /** Each actual utterance owns its reasoning/tools. Empty completed LLM rounds never create another speech node. */
 export function compactTurnNodes(nodes: readonly FlowNode[], boundary?: string, width = DEFAULT_SPEECH_SIZE.width): FlowNode[] {
@@ -51,11 +52,4 @@ function speechNode(members: readonly FlowNode[], width: number): FlowNode {
   node.width = width
   node.height = estimateSpeechHeight(node.data, width)
   return node
-}
-
-function speechStatus(steps: readonly FlowStep[]): FlowStatus {
-  for (const status of ['running', 'queued', 'unresolved', 'error'] as const) {
-    if (steps.some(step => step.data.status === status)) return status
-  }
-  return 'done'
 }

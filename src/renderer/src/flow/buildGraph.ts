@@ -5,6 +5,8 @@ import { FLOW_GAP, FLOW_SIZE, type ConversationGraph, type FlowEdge, type FlowNo
 import { compactTurnNodes, flowSteps, includesBoundary } from './compactNodes.ts'
 import { finishGraphLayout } from './graphLayout.ts'
 import type { SpeechSizing } from './speechSizing.ts'
+import { turnStatus } from './status.ts'
+import { withTaskSnapshots } from './taskSnapshots.ts'
 
 export interface GraphInput {
   sessionId: string
@@ -25,7 +27,8 @@ interface ReturnedBranch { branch: Branch; stepId: string }
 export function buildConversationGraph(input: GraphInput): ConversationGraph {
   const messages = input.messages[input.sessionId] ?? []
   const turns = splitConversationTurns(messages)
-  const delegations = collectDelegations(input.sessionId, messages, input.sessions, input.messages)
+  const delegations = withTaskSnapshots(input.sessionId, messages,
+    collectDelegations(input.sessionId, messages, input.sessions, input.messages))
   const graph: ConversationGraph = { nodes: [], edges: [], turnIds: turns.map(turn => turn.id), childCount: 0 }
   const branches = new Map<string, Branch>()
   const laneEnds: number[] = []
@@ -112,12 +115,14 @@ function addBranch(
   const { session, task, turn } = delegation
   const lastTurn = splitConversationTurns(input.messages[session.id] ?? []).at(-1)
   const running = input.runningIds.has(session.id) && (!turn || turn.id === lastTurn?.id)
+    && !['completed', 'failed', 'aborted'].includes(task.status)
+  const status = turnStatus(turn?.messages ?? [], running, task)
   const expanded = input.showChildren !== false && turn
   const raw = expanded ? buildTurnNodes(turn, session.id, running) : []
   const nodes = input.detailLevel === 'steps' ? raw : compactTurnNodes(raw, undefined, input.speechSizing?.width)
   if (!nodes.length) nodes.push(flowNode(graphNodeId('task', session.id, task.task_id), {
     kind: 'delegate', sessionId: session.id, title: session.title, preview: session.subagent?.model ?? '',
-    status: running ? 'running' : turn?.messages.some(message => message.status === 'error') ? 'error' : turn ? 'done' : 'unresolved', childSessionId: session.id,
+    status, childSessionId: session.id,
     taskId: task.task_id, messageCount: turn?.messages.length
   }))
   let lane = laneEnds.findIndex(end => end + FLOW_SIZE.column < source.position.x)
@@ -138,8 +143,7 @@ function addBranch(
   const group = flowNode(graphNodeId('lane', session.id, task.task_id), {
     kind: 'lane', sessionId: session.id, childSessionId: session.id, taskId: task.task_id,
     turnId: source.data.turnId, title: session.title, preview: session.subagent?.model ?? '', laneIndex: lane,
-    status: running ? 'running' : nodes.some(node => node.data.status === 'error') ? 'error'
-      : nodes.some(node => node.data.status === 'unresolved') ? 'unresolved' : 'done'
+    status
   })
   group.position = { x: x - 16, y: y - 40 }
   group.width = nodes.at(-1)!.position.x - x + nodes.at(-1)!.width + 32
