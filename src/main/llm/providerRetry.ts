@@ -10,6 +10,6 @@ export function isProviderBusyError(error: unknown): boolean {
 
 export function shouldRetryProviderError(error: unknown): boolean {
   if (error instanceof IncompleteStreamError || isMalformedToolArgumentsError(error)) return false
-  if (error instanceof ProviderStreamError) return isProviderBusyError(error)
+  if (error instanceof ProviderStreamError) return isProviderBusyError(error) || (error.status !== undefined && isRetriableError(error))
   return isProviderBusyError(error) || isRetriableError(error)
 }

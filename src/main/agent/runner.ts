@@ -12,8 +12,8 @@
 // - 恢复预算：recoveryPolicy.RecoveryBudget。
 // ============================================================
 import type { ChatMessage, ProviderConfig, ReasoningEffort } from '../../shared/types'
-import { streamChat } from '../llm/provider'
-import { toReasoningParam, type ReasoningEffortParam } from '../llm/reasoning'
+import { streamAgentRound } from './streamRound.ts'
+import { toReasoningParam } from '../llm/reasoning'
 import { log } from '../llm/logger'
 import { toolRegistry, type ToolRegistry } from '../tools/registry'
 import { buildMemoryPrompt, captureMemories } from '../memory/manager'
@@ -31,9 +31,13 @@ import { finalizeRun } from './finalizeRun'
 import { decideTurnOutcome } from './turnDecision'
 import { applyRecoveryDecision, runToolCallPhase, type ToolPhaseOptions } from './turnEffects'
 import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
-import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
+import type { AgentEventCallbacks } from './eventCallbacks'
 import { completeTurn, failTurn } from './completeTurn.ts'
 import { appendCoordinationMessages, type CoordinationMessage } from './runInbox.ts'
+import { roundAssistant, markGeneration } from './roundOutput.ts'
+import { checkFinalCandidate, shouldReviewCompletion } from './completionReview.ts'
+import { AgentCompletionError } from './completionError.ts'
+import { projectReasoningHistory } from '../llm/responseParsing.ts'
 
 export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
 // 回调契约定义在 eventCallbacks；runner 是其主要消费者，从这里再导出以兼容既有引用
@@ -140,19 +144,21 @@ export async function runAgent(
     // 工具 schema 同样占请求 token，必须纳入预算。
     await compactor.applyIfOverThreshold(conversation, `at round ${round}`, tools)
 
-    const result = await streamRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, signal, cb)
+    const result = await streamAgentRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, signal, cb)
     if (result.usage) cb.onTokenUsage?.(result.usage, opts.modelOverride || provider.defaultModel)
 
     // 中止检查：provider 层对"用户中止"按部分内容正常返回（不抛错）。
     // 若不在此拦截，agent 会把部分回复当完整结果、继续执行工具调用。
     // 先落盘已生成的部分文本，再抛中止错误（IPC 层据此通知前端该会话已停止）。
     if (signal?.aborted) {
-      if (result.content || result.reasoning) cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
+      if (result.content || result.reasoning) cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined,
+        { version: 1, ...result.generation, status: 'incomplete', termination: 'aborted' })
       throw new AgentAbortedError()
     }
 
     // 纯状态机先裁决响应；失败不进入任何完成或协作续跑分支。
     const decision = decideTurnOutcome({
+      refusal: result.refusal,
       finishReason: result.finishReason,
       toolCallCount: result.toolCalls.length,
       toolCallsValid: hasValidToolCalls({ role: 'assistant', content: result.content, tool_calls: result.toolCalls }),
@@ -171,19 +177,27 @@ export async function runAgent(
     }
 
     if (decision.kind === 'complete') {
+      if (shouldReviewCompletion(provider, tools.length > 0, conversation.messages)) {
+        result.generation = markGeneration(result, 'checking', 'Checking whether the final response is complete.')
+      }
       if (!completeTurn(result, round, { conversation, allAssistantMessages, cb,
         takeCoordinationMessages: opts.takeCoordinationMessages })) continue
+      if (!await checkFinalCandidate(result, { provider, model: opts.modelOverride || provider.defaultModel,
+        goal: extractTextContent(getLastUserMessage(messages)), contextWindow, signal, conversation,
+        cb, recovery, reasoningEffort, toolsAvailable: tools.length > 0, candidateId: conversation.ids.at(-1) ?? null })) continue
+      const lateGuidance = opts.takeCoordinationMessages?.(true) ?? []
+      if (lateGuidance.length) { appendCoordinationMessages(conversation, lateGuidance); continue }
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 
     // 落库并拿到持久化 id（IPC 回调内部写 DB；未落库返回 null）
-    const assistantPersistId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined) ?? null
+    const assistantPersistId = cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined, result.generation) ?? null
     // 新的原始工具轮 → 重置截断恢复计数（上一轮截断已被正常消化）
     recovery.resetAfterToolRound()
 
     // 记录 assistant 消息（含 tool_calls）到工作上下文。
     // 对应 id = 落库 id（无则 null），保证压缩边界定位正确。
-    const assistantMsg: ChatMessage = { role: 'assistant', content: result.content || null, tool_calls: result.toolCalls }
+    const assistantMsg = roundAssistant(result)
     conversation.append(assistantMsg, assistantPersistId)
     allAssistantMessages.push(assistantMsg)
 
@@ -205,7 +219,7 @@ export async function runAgent(
   // 优雅收尾：不带 tools 的最后一次调用，强制模型纯文本总结进度
   await finalizeRun(provider, opts.modelOverride, signal, hardStop, conversation, allAssistantMessages, cb, reasoningEffort, compactor)
 
-  return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
+  throw new AgentCompletionError('limit', 'response', hardStop)
 }
 
 /**
@@ -249,7 +263,8 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
     topParts.filter(Boolean).join('\n\n'), opts.memoryEnabled !== false
   )
 
-  const { messages: sanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)
+  const { messages: rawSanitized, ids: sanitizedIds } = sanitizeHistoryWithIds(messages, messageIds)
+  const sanitized = projectReasoningHistory(rawSanitized, opts.provider, opts.modelOverride || opts.provider.defaultModel)
   if (sanitized.length !== messages.length) {
     log('info', `Sanitized history: excluded ${messages.length - sanitized.length} dangling or malformed message(s) from the LLM context`)
   }
@@ -261,38 +276,6 @@ function buildWorkingConversation(opts: AgentRunOptions): WorkingConversation {
   const conversation = new WorkingConversation(systemPrompt)
   built.effective.forEach((message, i) => conversation.append(message, conversationIds[i] ?? null))
   return conversation
-}
-
-/** 发起一轮 LLM 流式调用，聚合 token 回调与本轮思考内容 */
-async function streamRound(
-  conversation: WorkingConversation,
-  provider: ProviderConfig,
-  modelOverride: string | undefined,
-  reasoningEffort: ReasoningEffortParam | undefined,
-  tools: ReturnType<ToolRegistry['definitions']>,
-  signal: AbortSignal | undefined,
-  cb: AgentEventCallbacks
-): Promise<RoundResult> {
-  let roundReasoning = ''
-  const model = modelOverride || provider.defaultModel
-  const { content, toolCalls, usage, finishReason, streamInterrupted } = await streamChat(provider, {
-    messages: conversation.messages,
-    tools: tools.length > 0 ? tools : undefined,
-    toolChoice: 'auto',
-    model,
-    temperature: provider.temperature,
-    reasoningEffort,
-    signal
-  }, {
-    onToken: cb.onToken,
-    onReasoningToken: (t) => {
-      roundReasoning += t
-      cb.onReasoningToken?.(t)
-    },
-    onError: cb.onError,
-    onRetry: cb.onRetry
-  })
-  return { content, toolCalls, usage, finishReason, reasoning: roundReasoning, streamInterrupted }
 }
 
 /** 从消息列表中获取最后一条 user 消息的 content（可能是字符串或多模态 ContentPart[]） */

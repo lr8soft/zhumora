@@ -15,10 +15,12 @@ export const UNLIMITED_RETRIES = -1
 /** HTTP 错误（携带状态码，供重试判定使用） */
 export class HttpError extends Error {
   status: number
-  constructor(status: number, message: string) {
+  readonly retryAfterMs?: number
+  constructor(status: number, message: string, retryAfterMs?: number) {
     super(message)
     this.name = 'HttpError'
     this.status = status
+    this.retryAfterMs = retryAfterMs
   }
 }
 
@@ -194,7 +196,9 @@ export async function withRetry<T>(fn: (attempt: number) => Promise<T>, opts: Re
         throw abortError
       }
       if (!shouldRetry(error) || isOfflineError(error) || (!unlimited && attempt > opts.maxRetries)) throw error
-      const delay = backoffDelay(attempt)
+      const hint = (error as Error & { retryAfterMs?: number }).retryAfterMs
+      const delay = typeof hint === 'number' && Number.isFinite(hint) && hint >= 0
+        ? Math.min(hint, 2_147_483_647) : backoffDelay(attempt)
       opts.onLog?.('warn', `[Retry] ${opts.label} 第 ${attempt}${unlimited ? '' : `/${opts.maxRetries}`} 次失败: ${String(error?.message || err).slice(0, 200)} — ${(delay / 1000).toFixed(1)}s 后重试`)
       try {
         opts.onRetry?.(attempt, opts.maxRetries, error)

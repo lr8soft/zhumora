@@ -11,7 +11,7 @@ const { AutoCompactor } = await import('../src/main/agent/autoCompact.ts')
 const { finalizeRun } = await import('../src/main/agent/finalizeRun.ts')
 const { planAutoCompact } = await import('../src/main/agent/compaction.ts')
 const previousFetch = globalThis.fetch
-const provider = { id: 'compaction', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true, contextWindow: 262144 }
+const provider = { completionReview: false, id: 'compaction', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true, contextWindow: 262144 }
 const call = { id: 'read-1', type: 'function' as const, function: { name: 'read', arguments: '{}' } }
 const large = `FIRST_LOG\n${'X'.repeat(1_100_000)}\nLAST_ERROR`
 const history: ChatMessage[] = [
@@ -46,7 +46,7 @@ try {
     if (body.stream) return nextStream?.(body) ?? sse({ content: 'finished' })
     abortSummary?.abort()
     return summaryFails ? new Response('summary unavailable', { status: 503 })
-      : Response.json({ choices: [{ message: { content: summaryResult } }] })
+      : Response.json({ choices: [{ finish_reason: 'stop', message: { content: summaryResult } }] })
   }
 
   const original = structuredClone(history)
@@ -140,11 +140,14 @@ try {
   registry.register('read', { definition: { type: 'function', function: { name: 'read', description: 'read', parameters: {} } }, permission: 'safe',
     execute: async () => { executions++; return { content: large } } })
   nextStream = () => ++streamCalls === 1 ? sse({ tool_calls: [{ index: 0, ...call }] }, 'tool_calls') : sse({ content: 'final progress' })
-  const final = await run([{ role: 'user', content: 'inspect' }], { maxRounds: 1, toolRegistry: registry }, {
-    onAssistantMessage: () => 'assistant-id', onToolResult: (_id, _name, result) => { rawPersisted = result; return 'tool-id' }
-  })
+  let finalContent = ''; completed = false
+  await assert.rejects(run([{ role: 'user', content: 'inspect' }], { maxRounds: 1, toolRegistry: registry }, {
+    onAssistantMessage: content => { finalContent = content; return 'assistant-id' },
+    onComplete: () => { completed = true },
+    onToolResult: (_id, _name, result) => { rawPersisted = result; return 'tool-id' }
+  }), { name: 'AgentCompletionError', reason: 'limit' })
   assert.equal(executions, 1); assert.equal(rawPersisted, large)
-  assert.equal(final.at(-1)!.content, 'final progress')
+  assert.equal(finalContent, 'final progress'); assert.equal(completed, false)
   const last = requests.at(-1)!
   assert.ok(last.stream); assert.equal(last.tools, undefined)
   assert.match(last.messages.at(-1)!.content as string, /agent run has been stopped/)

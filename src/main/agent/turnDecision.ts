@@ -13,6 +13,7 @@
 import type { CompletionFailure } from './completionError.ts'
 
 export interface TurnSignals {
+  refusal?: string
   /** provider 返回的 finish_reason（'stop' | 'length' | 'tool_calls' | ... | 缺失） */
   finishReason: string | undefined
   /** 本轮 streamChat 解析出的工具调用数量 */
@@ -42,7 +43,7 @@ export type TurnDecision =
   | { kind: 'fail'; cause: CompletionFailure }
   /** 空响应（无正文无工具、非截断）：注入继续指令 */
   | { kind: 'recover_empty_response' }
-  /** 正常终止：本轮即最终回答 */
+  /** 正常生成结束：作为最终回答候选，由 runner 继续完成裁决。 */
   | { kind: 'complete' }
   /** 有工具调用且未截断：进入工具执行阶段 */
   | { kind: 'execute_tools' }
@@ -64,6 +65,9 @@ export type RecoveryDecision =
  *  5. 明确的正常结束原因下，有工具调用 → 执行工具；stop 且有正文 → 完成候选。
  */
 export function decideTurnOutcome(signals: TurnSignals): TurnDecision {
+  if (signals.refusal || signals.finishReason === 'content_filter' || signals.finishReason === 'refusal') {
+    return { kind: 'fail', cause: 'refused' }
+  }
   if (signals.finishReason !== undefined
     && !['stop', 'tool_calls', 'length'].includes(signals.finishReason)) {
     return { kind: 'fail', cause: 'finish_reason' }
@@ -101,7 +105,9 @@ export function decideTurnOutcome(signals: TurnSignals): TurnDecision {
 
 /** Finalization is a single text-only attempt; its output never starts another tool/recovery loop. */
 export function finalizationFailure(signals: Pick<TurnSignals,
-  'finishReason' | 'streamInterrupted' | 'toolCallCount' | 'contentEmpty'>): CompletionFailure | null {
+  'refusal' | 'finishReason' | 'streamInterrupted' | 'toolCallCount' | 'contentEmpty'>): CompletionFailure | null {
+  if (signals.refusal || signals.finishReason === 'content_filter' || signals.finishReason === 'refusal') return 'refused'
+  if (signals.finishReason !== undefined && !['stop', 'length', 'tool_calls'].includes(signals.finishReason)) return 'finish_reason'
   if (signals.streamInterrupted) return 'stream'
   if (signals.finishReason === 'length') return 'length'
   if (signals.toolCallCount) return 'unexpected_tools'

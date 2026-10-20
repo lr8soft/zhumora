@@ -9,6 +9,8 @@ import type { BrowserTarget } from './browser'
 import type { BbsConfig } from './bbs'
 import type { SubagentDispatch, SubagentModelSelection } from './subagents'
 import type { SessionModelSelection } from './sessionModel'
+import type { GenerationMetadata } from './generation.ts'
+import type { ProviderResponseOptions } from './providerResponse.ts'
 
 /** LLM 角色标记 */
 export type Role = 'system' | 'user' | 'assistant' | 'tool'
@@ -26,6 +28,8 @@ export type ContentPart = ContentPartText | ContentPartImageUrl
 
 /** 单条对话消息（OpenAI 格式扩展） */
 export interface ChatMessage {
+  reasoning?: string
+  reasoningSource?: { providerId: string; model: string }
   role: Role
   content: string | null | ContentPart[]
   tool_calls?: ToolCall[]
@@ -41,7 +45,7 @@ export interface ToolCall {
 }
 
 /** Provider 配置 */
-export interface ProviderConfig {
+export interface ProviderConfig extends ProviderResponseOptions {
   id: string
   name: string                     // 用户起的名字
   baseUrl: string                  // OpenAI 兼容端点，如 https://api.openai.com/v1
@@ -68,6 +72,7 @@ export interface ProviderConfig {
 
 /** 单条渲染消息（UI 专用，含元数据） */
 export interface UIMessage {
+  generation?: GenerationMetadata
   /** Parent guidance delivered inside an existing child turn; not a new user conversation turn. */
   coordination?: { parentSessionId: string; taskId: string }
   id: string
@@ -77,7 +82,7 @@ export interface UIMessage {
   /** 用户消息携带的图片（base64 data URL，如 "data:image/png;base64,..."）。仅 user 消息使用，DB 单独列持久化 */
   images?: string[]
   /** 模型思考内容（reasoning_content，如 DeepSeek-R1 / o-series）。DB 单独列持久化，
-   *  重建 LLM 历史时不混入 content、不回传给模型（与 Cline / opencode 做法一致） */
+   *  不混入 content；仅在 Provider/model 绑定且回传策略允许时进入请求。 */
   reasoning?: string
   toolCalls?: ToolCall[]
   toolCallId?: string
@@ -268,7 +273,7 @@ export class AgentAbortedError extends Error {
 }
 
 /** 对话级思考强度（聊天输入框选择，每次 agent 运行携带）
- *  - off:    关闭思考（线上发送 reasoning_effort: 'none'）
+ *  - off:    显式关闭思考（按 Provider/model 编码，例如 none 或 enable_thinking=false）
  *  - low:    快速，少思考
  *  - medium: 平衡
  *  - high:   深度推理

@@ -1,4 +1,7 @@
 const en = {
+  generationDetails: 'Generation details',
+  generation: { complete: 'Generation ended', incomplete: 'Incomplete output', refused: 'Provider declined', checking: 'Checking completion',
+    unverified: 'Completion unverified', limit: 'Execution limit reached' },
   childrenHint: 'Show or hide task branches on the canvas. This does not enable, disable or stop subagents.',
   folded: 'Folded', expandTurn: 'Expand · {{count}} messages',
   title: 'Conversation flow', turnCount: '{{count}} turns', stepCount: '{{count}} steps', messageCount: '{{count}} messages', receivedCount: 'Received {{received}} / {{total}} task results',
@@ -16,6 +19,9 @@ const en = {
   tab: { content: 'Content', reasoning: 'Reasoning', args: 'Arguments', result: 'Result' }
 }
 const zh = {
+  generationDetails: '模型响应详情',
+  generation: { complete: '本轮生成结束', incomplete: '输出不完整', refused: '模型拒绝', checking: '正在确认回复',
+    unverified: '未能确认完成', limit: '已达执行限制' },
   childrenHint: '仅显示或隐藏子任务，不影响任务运行。',
   folded: '已折叠', expandTurn: '点击展开 · {{count}} 条消息',
   title: '对话流程', turnCount: '{{count}} 轮对话', stepCount: '{{count}} 个节点', messageCount: '{{count}} 条消息', receivedCount: '已接收 {{received}} / {{total}} 个任务结果',

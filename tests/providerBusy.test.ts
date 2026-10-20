@@ -13,7 +13,7 @@ const { streamChat, complete } = await import('../src/main/llm/provider.ts')
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const { createIpcAgentEventSink } = await import('../src/main/ipc/agentCallbacks.ts')
 const originalFetch = globalThis.fetch
-const provider = { id: 'busy', name: 'busy', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
+const provider = { completionReview: false, id: 'busy', name: 'busy', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
 const params = { messages: [{ role: 'user' as const, content: 'work' }] }
 const frame = (delta: object, finish = null as string | null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason: finish }] })}\n\n`
 const successful = () => new Response(frame({ content: 'ready' }, 'stop') + 'data: [DONE]\n\n')
@@ -92,7 +92,7 @@ try {
   {
     let attempts = 0
     globalThis.fetch = async () => ++attempts === 1 ? new Response('busy', { status: 429 })
-      : Response.json({ choices: [{ message: { content: 'ready' } }] })
+      : Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'ready' } }] })
     assert.equal(await complete(provider, params.messages), 'ready'); assert.equal(attempts, 2)
   }
   for (const maxRounds of [10, 1]) {
@@ -109,9 +109,11 @@ try {
     globalThis.fetch = async () => ++attempts === 1
       ? new Response(frame({ tool_calls: [{ index: 0, id: 'written', function: { name: 'write', arguments: '{}' } }] }, 'tool_calls'))
       : attempts === 2 ? sseError(rateError) : successful()
-    await runAgent({ provider, ...params, messageIds: ['u'], workspacePath: '', compaction: null,
+    const running = runAgent({ provider, ...params, messageIds: ['u'], workspacePath: '', compaction: null,
       memoryEnabled: false, maxRounds, toolRegistry: registry, permissionCheck: async () => true }, callbacks)
-    assert.equal(tools, 1); assert.equal(attempts, 3); assert.equal(completed, 1)
+    if (maxRounds === 1) await assert.rejects(running, { name: 'AgentCompletionError', reason: 'limit' })
+    else await running
+    assert.equal(tools, 1); assert.equal(attempts, 3); assert.equal(completed, maxRounds === 1 ? 0 : 1)
     assert.equal(saved.filter(m => m.role === 'tool').length, 1)
     assert.deepEqual(events, [{ sessionId: 'current-session', failedAttempt: 1, maxRetries: 1, reason: 'provider_busy' }],
       'ordinary and finalization retry notifications both cross the typed IPC boundary with the right session')

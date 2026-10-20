@@ -12,6 +12,7 @@ import ConfirmDeleteDialog from './components/ConfirmDeleteDialog'
 import {
   applyAssistantStart,
   applyAssistantEnd,
+  applyGenerationUpdate,
   applyPersistedMessage,
   applyToolCallEvent,
   applyToolResultEvent,
@@ -219,7 +220,7 @@ export default function App() {
 
       // assistant 消息事件（phase=start：本轮开始，替换 thinking 占位为流式消息；
       // phase=end：本轮结束，把流式消息收尾为 done）。
-      window.api.agent.onAssistantMessage(({ sessionId, messageId, content, toolCalls, phase, reasoning }) => {
+      window.api.agent.onAssistantMessage(({ sessionId, messageId, content, toolCalls, phase, reasoning, generation }) => {
         flushPending()
         const state = useAppStore.getState()
         if (state.retryStatus[sessionId]) state.setRetryStatus(sessionId, null)
@@ -228,10 +229,16 @@ export default function App() {
           pushMessage(sessionId, (m) => applyAssistantStart(sessionId, messageId, m, now))
           return
         }
-        pushMessage(sessionId, (m) => applyAssistantEnd(sessionId, messageId, content, toolCalls, reasoning, m, now))
+        pushMessage(sessionId, (m) => applyAssistantEnd(sessionId, messageId, content, toolCalls, reasoning, m, now, generation))
       }),
 
       // 工具调用 → 挂到对应 assistant 消息（不再依赖 activeSessionId，后台会话同样累积）
+      window.api.agent.onGeneration(({ sessionId, messageId, generation }) => {
+        flushPending()
+        pushMessage(sessionId, messages => applyGenerationUpdate(messageId, generation, messages))
+      }),
+
+      // 工具调用 → 挂到对应 assistant 消息
       window.api.agent.onToolCall(({ sessionId, messageId, toolCall }) => {
         flushPending()
         if (!messageId) return

@@ -15,7 +15,7 @@
     "build": "electron-vite build",
     "posttest": "npm run test:context && npm run test:subagent-recovery && npm run test:responses && npm run test:windows && npm run test:flow-status",
     "test:windows": "node --no-warnings tests/windowAdapters.test.ts",
-    "test:responses": "node --no-warnings tests/providerBusy.test.ts && node --no-warnings tests/providerErrorDetails.test.ts && node --no-warnings tests/responseRecovery.test.ts && node --no-warnings tests/responseReview.test.ts",
+    "test:responses": "node --no-warnings tests/providerBusy.test.ts && node --no-warnings tests/providerErrorDetails.test.ts && node --no-warnings tests/responseRecovery.test.ts && node --no-warnings tests/responseReview.test.ts && node --no-warnings tests/providerResponseContracts.test.ts && node --no-warnings tests/generationState.test.ts && node --no-warnings tests/completionGuard.integration.test.ts",
     "test:flow-status": "node --no-warnings tests/flowStatus.test.ts",
     "test:context": "node --no-warnings tests/compactionPolicy.test.ts && node --no-warnings tests/compaction.integration.test.ts",
     "test:subagent-recovery": "node --no-warnings tests/subagentRecovery.test.ts && node --no-warnings tests/subagentRecovery.integration.test.ts",

@@ -36,7 +36,8 @@ export default function SpeechFlowNode({ id, data, selected }: { id: string; dat
     {hidden > 0 && <button className="flow-inner-more nodrag nopan" onClick={event => {
       event.stopPropagation(); data.onStepSelect?.(id, data.steps![0].id)
     }}>{t('flow.moreSteps', { count: hidden })}<ChevronRight size={12} /></button>}
-    <footer><span className={`flow-status ${data.status}`}>{t(`flow.status.${data.status}`)}</span>
+    <footer><span className={`flow-status ${data.status}`}>{data.message?.generation
+      ? t('flow.generation.' + data.message.generation.status) : t(`flow.status.${data.status}`)}</span>
       <span>{t('flow.executionCounts', { llm: data.llmCount, tools: data.toolCount })}<ChevronRight size={12} /></span></footer>
     <Handle type="source" position={Position.Right} isConnectable={false} />
   </div>

@@ -15,7 +15,7 @@ import { sanitizeHistoryWithIds } from '../src/main/agent/history.ts'
 register('./helpers/runnerCollaborationLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const previousFetch = globalThis.fetch
-const provider = { id: 'review', name: 'review', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
+const provider = { completionReview: false, id: 'review', name: 'review', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
 const frame = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
 const ended = (delta: object, finish = 'stop') => new Response(frame(delta) + frame({}, finish) + 'data: [DONE]\n\n')
 const tool = (id: string, index = 0) => ({ index, id, type: 'function' as const, function: { name: 'write', arguments: '{}' } })
@@ -78,12 +78,15 @@ try {
   }
   {
     const f = fixture(); const abort = new AbortController()
+    const onToken = f.cb.onToken
+    f.cb.onToken = token => { onToken?.(token); abort.abort() }
     f.fetches((_request, i) => {
       if (i === 1) return ended({ tool_calls: [tool('written')] }, 'tool_calls')
-      abort.abort(); return ended({ content: 'partial summary', reasoning_content: 'partial thought' })
+      return ended({ content: 'partial summary', reasoning_content: 'partial thought' })
     })
     await assert.rejects(runAgent({ ...f.options, maxRounds: 1, signal: abort.signal }, f.cb), AgentAbortedError)
     assert.ok(f.saved.some(m => m.content === 'partial summary' && m.reasoning === 'partial thought'))
+    assert.equal(f.saved.at(-1)!.generation?.termination, 'aborted')
     assert.equal(f.executed(), 1); assert.equal(f.complete(), 0)
   }
   {
@@ -93,9 +96,10 @@ try {
       if (i > 2) throw new Error('ordinary tool generation continued after hard stop')
       return ended({ tool_calls: i === 1 ? [tool('one')] : [tool('two'), tool('three', 1)] }, 'tool_calls')
     })
-    await runAgent({ ...f.options, maxRounds: 0, loopConfig: { softThreshold: 1, hardThreshold: 2 } }, f.cb)
+    await assert.rejects(runAgent({ ...f.options, maxRounds: 0, loopConfig: { softThreshold: 1, hardThreshold: 2 } }, f.cb),
+      { name: 'AgentCompletionError', reason: 'limit' })
     assert.equal(f.requests.length, 3); assert.equal(f.requests[2].tools, undefined)
-    assert.equal(f.executed(), 1); assert.equal(f.complete(), 1)
+    assert.equal(f.executed(), 1); assert.equal(f.complete(), 0)
     const results = f.saved.filter(m => m.role === 'tool')
     assert.deepEqual(results.map(m => m.toolCallId), ['one', 'two', 'three'])
     assert.ok(results.slice(1).every(m => m.status === 'error'))

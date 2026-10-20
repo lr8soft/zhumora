@@ -7,11 +7,10 @@
 //    不传 ≠ 关闭 —— vLLM / SGLang 不传时保留服务端默认（reasoning_effort
 //    仅用于注入 enable_thinking），llama.cpp 交给 Jinja 模板默认；对默认
 //    思考的模型（Qwen3 系列等）用户选了"关闭"仍会思考。
-//    llama.cpp / vLLM / SGLang / DeepSeek 都把 `none` 解释为关闭思考。
+//    关闭编码必须符合模型契约：Qwen3.8 使用 enable_thinking=false。
 // 2) 方言 → 写哪些字段。目标端点族（llama.cpp server / vLLM / SGLang /
 //    LiteLLM 网关 / OpenAI / Google 兼容层）共用标准 `reasoning_effort`，
-//    只有 DeepSeek 官方 API（取值集合更窄）与阿里云百炼（`enable_thinking`）
-//    需要另行编码。
+//    DeepSeek 官方 API、百炼和 Qwen3.8 的取值与关闭方式分别编码。
 //
 // 能力探测的 IO 边界在 reasoningCapability.ts；方言类型与存储边界归一化在
 // `shared/reasoning.ts`。
@@ -89,7 +88,8 @@ function hostnameOf(baseUrl: string | undefined): string {
 export function applyReasoningParams(
   body: Record<string, unknown>,
   provider: Pick<ProviderConfig, 'baseUrl'> & { reasoningDialect?: ReasoningDialect },
-  effort: ReasoningEffortParam | undefined
+  effort: ReasoningEffortParam | undefined,
+  model?: string
 ): string[] {
   if (!effort) return []
   const dialect = resolveReasoningDialect(provider)
@@ -98,6 +98,14 @@ export function applyReasoningParams(
     // thinking_budget（未在本项目提供 UI），因此这里不发送该参数。
     body.enable_thinking = effort !== 'none'
     return ['enable_thinking']
+  }
+  if (model && /qwen3[._ -]?8/i.test(model) && dialect === 'openai') {
+    if (effort === 'none') {
+      body.chat_template_kwargs = { enable_thinking: false }
+      return ['chat_template_kwargs']
+    }
+    body.reasoning_effort = effort === 'high' ? 'xhigh' : effort
+    return ['reasoning_effort']
   }
   body.reasoning_effort = dialect === 'deepseek' ? DEEPSEEK_EFFORT[effort] : effort
   return ['reasoning_effort']

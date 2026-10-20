@@ -5,6 +5,8 @@ import { turnStatus } from './status.ts'
 
 export function nodeStatus(message: UIMessage, running: boolean): FlowStatus {
   if (message.status === 'error') return 'error'
+  if (message.generation?.status === 'checking') return running ? 'running' : 'unresolved'
+  if (message.generation && message.generation.status !== 'complete') return 'unresolved'
   if (['streaming', 'thinking', 'pending'].includes(message.status ?? '')) return running ? 'running' : 'unresolved'
   return 'done'
 }
@@ -25,6 +27,7 @@ export function buildTurnNodes(turn: ConversationTurn, sessionId: string, runnin
       kind, sessionId, turnId: turn.id, title: message.toolName ?? '',
       preview: summary ? message.content.slice(COMPACT_SUMMARY_PREFIX.length).trim() : message.content || message.reasoning || '',
       message, status: message.role === 'assistant' && message.toolCalls?.length && message.status !== 'error'
+        && (!message.generation || message.generation.status === 'complete')
         ? 'done' : nodeStatus(message, running)
     }))
     for (const call of message.toolCalls ?? []) {

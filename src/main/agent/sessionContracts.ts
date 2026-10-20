@@ -23,6 +23,7 @@ export interface SessionStore {
   getOrCreateBotSession(channel: string, accountId: string, conversationId: string, title: string): Session
   getMessages(sessionId: string): UIMessage[]
   addMessage(message: UIMessage): void
+  updateMessageGeneration?(messageId: string, generation: NonNullable<UIMessage['generation']>): void
   getSessionCompaction(sessionId: string): { sessionId: string; upToMessageId: string; summary: string; createdAt: number } | null
   setSessionCompaction(record: { sessionId: string; upToMessageId: string; summary: string; createdAt: number }): void
   tryUpdateSessionTitleIfDefault(sessionId: string, title: string): boolean

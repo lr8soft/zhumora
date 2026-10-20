@@ -29,14 +29,15 @@ export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEven
         durationMs
       })
     },
-    assistantEnd: (sessionId, messageId, content, toolCalls, reasoning) => {
+    assistantEnd: (sessionId, messageId, content, toolCalls, reasoning, generation) => {
       sender.send('agent:assistant_message', {
-        sessionId, messageId, content, toolCalls, phase: 'end', reasoning
+        sessionId, messageId, content, toolCalls, phase: 'end', reasoning, ...(generation ? { generation } : {})
       })
     },
     complete: (sessionId, messageId, content) => {
       sender.send('agent:complete', { sessionId, messageId, content })
     },
+    generation: (sessionId, messageId, generation) => sender.send('agent:generation', { sessionId, messageId, generation }),
     error: (sessionId, error) => sender.send('agent:error', { sessionId, error: error.message }),
     retry: (sessionId, failedAttempt, maxRetries, error) => {
       const event: AgentRetryEvent = { sessionId, failedAttempt, maxRetries,

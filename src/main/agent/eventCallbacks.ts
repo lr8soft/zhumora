@@ -6,18 +6,20 @@
 // ============================================================
 import type { ToolCall } from '../../shared/types'
 import type { TokenUsage } from '../llm/provider'
+import type { GenerationMetadata } from '../../shared/generation.ts'
 
 export interface AgentEventCallbacks {
   /** LLM 流式 token */
   onToken?: (token: string) => void
-  /** LLM 流式思考内容（reasoning_content；仅供 UI 展示，不回传模型） */
+  /** LLM 流式思考内容，独立于正文；请求边界按 Provider/model 决定历史回传。 */
   onReasoningToken?: (token: string) => void
   /** LLM 请求了工具调用 */
   onToolCall?: (toolCall: ToolCall, assistantMessageId: string | null) => void
   /** 工具执行完成。返回该 tool 消息落库后的 id（供压缩边界定位），未落库返回 null */
   onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => string | null
   /** 一轮 LLM 调用完成（可能继续循环或结束）。返回该 assistant 消息落库后的 id，未落库返回 null */
-  onAssistantMessage?: (content: string, toolCalls: ToolCall[], reasoning?: string) => string | null
+  onAssistantMessage?: (content: string, toolCalls: ToolCall[], reasoning?: string, generation?: GenerationMetadata) => string | null
+  onAssistantGeneration?: (messageId: string, generation: GenerationMetadata) => void
   /** Token 用量回调 */
   onTokenUsage?: (usage: TokenUsage, model: string) => void
   /** 整个对话完成 */
@@ -41,6 +43,8 @@ export interface AgentEventCallbacks {
 
 /** streamChat 一次调用的结果 + 本轮思考内容（思考内容不进入模型上下文） */
 export interface RoundResult {
+  generation?: GenerationMetadata
+  refusal?: string
   content: string
   toolCalls: ToolCall[]
   usage: TokenUsage | null | undefined

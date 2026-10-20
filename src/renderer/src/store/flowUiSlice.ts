@@ -9,7 +9,7 @@ export const FLOW_EXPANDED_TURNS_KEY = 'zhumora.flowExpandedTurns'
 /** 单会话最多记忆多少个“已单独展开的折叠轮次”，防止 localStorage 无限增长。 */
 const MAX_EXPANDED_TURNS_PER_SESSION = 200
 
-type ExpandedTurnsMap = Record<string, string[]>
+type ExpandedTurnsMap = Record<string, readonly string[]>
 
 export interface FlowUiSlice {
   /** 历史折叠总开关（全局）。true = 折叠旧轮次（仅最后一轮默认展开）。 */

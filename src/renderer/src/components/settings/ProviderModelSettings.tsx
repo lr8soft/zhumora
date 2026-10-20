@@ -27,6 +27,22 @@ export function ProviderModelSettings({ provider: p, onChange, detectContextWind
   const { t } = useTranslation()
   return <div className="provider-model-settings">
     <ProviderModelPicker provider={p} onChange={onChange} detectContextWindow={detectContextWindow} />
+    <div className="provider-block">
+      <label className="provider-block-toggle"><input type="checkbox" className="switch"
+        checked={p.completionReview !== false} onChange={e => onChange({ completionReview: e.target.checked })} />
+        <span className="form-label">{t('settings.providers.completionReview')}</span></label>
+      <p className="form-hint">{t('settings.providers.completionReviewHint')}</p>
+      <label className="provider-block-toggle"><input type="checkbox" className="switch"
+        checked={p.captureResponses === true} onChange={e => onChange({ captureResponses: e.target.checked })} />
+        <span className="form-label">{t('settings.providers.captureResponses')}</span></label>
+      <p className="form-hint">{t('settings.providers.captureResponsesHint')}</p>
+      <label className="form-label">{t('settings.providers.reasoningHistory')}</label>
+      <select className="input-field" value={p.reasoningHistory ?? 'auto'}
+        onChange={e => onChange({ reasoningHistory: e.target.value as ProviderConfig['reasoningHistory'] })}>
+        {(['auto', 'omit', 'preserve'] as const).map(value => <option key={value} value={value}>
+          {t('settings.providers.reasoningHistory_' + value)}</option>)}
+      </select>
+    </div>
     <div>
           <div className="provider-temperature">
             <label className="form-label">{t('settings.providers.temperature')}{p.temperature === undefined && ` (${t('settings.providers.temperatureDefault')})`}</label>

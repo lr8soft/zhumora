@@ -16,7 +16,7 @@ globalThis.fetch = async (input, init) => {
   requests.push({ url, headers: new Headers(init?.headers), body })
   if (url.endsWith('/chat/completions')) {
     if (body?.stream) return new Response('data: {"choices":[{"delta":{"content":"ok"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n')
-    return Response.json({ choices: [{ message: { content: 'ok' } }] })
+    return Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] })
   }
   if (url.endsWith('/models')) {
     const tenant = new Headers(init?.headers).get('x-tenant')

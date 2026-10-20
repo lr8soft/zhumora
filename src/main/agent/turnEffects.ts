@@ -24,6 +24,7 @@ import {
 } from './recoveryPolicy.ts'
 import type { IncompleteCause, RecoveryDecision } from './turnDecision'
 import type { WorkingConversation } from './workingConversation'
+import { markGeneration, roundAssistant } from './roundOutput.ts'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks'
 
 /**
@@ -40,6 +41,7 @@ export function applyRecoveryDecision(
   recovery: RecoveryBudget,
   cb: AgentEventCallbacks
 ): void {
+  result.generation = markGeneration(result, 'incomplete', result.generation?.reason || decision.kind)
   if (decision.kind === 'recover_truncated_tool') {
     // 原始 assistant + 占位 tool 结果仍完整落库供 UI/诊断查看，但整组不进入
     // 工作上下文。否则残缺 arguments 会在下一请求中让严格后端直接 500。
@@ -61,12 +63,12 @@ export function applyRecoveryDecision(
     // content 为空时不推空 assistant 消息（部分严格后端会拒绝），直接续写
     if (result.content) {
       conversation.append(
-        { role: 'assistant', content: result.content },
-        cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined) ?? null
+        roundAssistant(result),
+        cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined, result.generation) ?? null
       )
       allAssistantMessages.push({ role: 'assistant', content: result.content })
     } else {
-      cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined)
+      cb.onAssistantMessage?.(result.content, [], result.reasoning || undefined, result.generation)
     }
     cb.onTruncated?.('text', isStream ? 'stream' : 'length')
     const continuation = recovery.recordTruncation()
@@ -76,7 +78,7 @@ export function applyRecoveryDecision(
   }
 
   // 无正文 assistant 不进工作上下文；真实 reasoning 仍可持久化，完全空的轮次只收尾。
-  cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined)
+  cb.onAssistantMessage?.(result.content, result.toolCalls, result.reasoning || undefined, result.generation)
   const continuation = recovery.recordEmptyResponse()
   log('warn', `Round ${round}: empty response (no content, no tool call, finish_reason=${result.finishReason || 'stop'}) — injecting continue prompt (continuation ${continuation}/${MAX_EMPTY_CONTINUATIONS})`)
   conversation.appendSyntheticUser(EMPTY_CONTINUE_PROMPT)
@@ -109,7 +111,7 @@ export function persistUnexecutedToolRound(result: RoundResult, toolError: strin
   const assistantId = cb.onAssistantMessage?.(
     result.content,
     result.toolCalls,
-    result.reasoning || undefined
+    result.reasoning || undefined, result.generation
   ) ?? null
   allAssistantMessages.push(assistantMsg)
 

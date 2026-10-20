@@ -9,11 +9,12 @@ import { normalizeBbsConfig } from '../../shared/bbs.ts'
 import { ensureMcpServerToken, normalizeMcpServerSettings } from '../../shared/mcpServer.ts'
 import { normalizeReasoningDialect } from '../../shared/reasoning.ts'
 import { normalizeProviderHeaders } from '../../shared/providerHeaders.ts'
+import { normalizeProviderResponseOptions } from '../../shared/providerResponse.ts'
 import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.ts'
 import { normalizeProviderSubagentAccess } from '../../shared/providerSubagents.ts'
 import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel, normalizeSubagentModels, normalizeSubagentDispatch } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 16
+export const SETTINGS_SCHEMA_VERSION = 17
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {
@@ -71,7 +72,8 @@ function normalizeProviders(input: unknown): AppSettings['providers'] | null {
       headers: normalizeProviderHeaders((provider as AppSettings['providers'][number]).headers),
       maxConcurrency: normalizeProviderConcurrency((provider as AppSettings['providers'][number]).maxConcurrency),
       allowSubagents: normalizeProviderSubagentAccess((provider as AppSettings['providers'][number]).allowSubagents),
-      reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect)
+      reasoningDialect: normalizeReasoningDialect((provider as AppSettings['providers'][number]).reasoningDialect),
+      ...normalizeProviderResponseOptions(provider)
     }
   })
 }

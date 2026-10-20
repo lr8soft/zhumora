@@ -99,7 +99,7 @@ globalThis.fetch = async (url, init) => {
     init?.signal?.addEventListener('abort', () => controller.error(new DOMException('aborted', 'AbortError')), { once: true })
   } }))
   if (body.model === 'fail') return new Response('failed', { status: 400 })
-  return Response.json({ choices: [{ message: { content: 'ok' } }] })
+  return Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'ok' } }] })
 }
 try {
   const abortStream = new AbortController()
@@ -129,7 +129,7 @@ try {
     ? new Response(new ReadableStream({ start(controller) {
       controller.enqueue(new TextEncoder().encode('data: {"choices":[{"delta":{"content":"done"},"finish_reason":"stop"}]}\n\ndata: [DONE]\n\n'))
     }, cancel: () => new Promise<void>(() => {}) }))
-    : Response.json({ choices: [{ message: { content: 'after stuck cancellation' } }] })
+    : Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'after stuck cancellation' } }] })
   let deadline: ReturnType<typeof setTimeout> | undefined
   try {
     const work = Promise.all([streamChat(limited, { messages }), complete(limited, messages)])

@@ -62,4 +62,22 @@ assert.equal(events.at(-1), 'complete:m1')
   assert.equal(saved[0].content, 'partial finalization'); assert.equal(saved[0].status, 'done')
   assert.equal(saved[1].status, 'error'); assert.equal(errors, 1)
 }
+{
+  const saved: UIMessage[] = []; const assessments: string[] = []; let ends = 0; let current = true
+  const cb = createPersistedAgentCallbacks('assessment', {
+    addMessage: message => saved.push(message), addTokenUsage() {},
+    updateMessageGeneration: (id, value) => assessments.push(`${id}:${value.assessmentRevision}`)
+  }, () => 'candidate', { assistantEnd: () => { ends++ } }, () => current)
+  cb.onAssistantMessage?.('original candidate', [], 'original reasoning', { version: 1, status: 'checking' })
+  cb.onAssistantGeneration?.('another-id', { version: 1, status: 'complete' })
+  assert.deepEqual(assessments, [])
+  cb.onAssistantGeneration?.('candidate', { version: 1, status: 'unverified' })
+  cb.onAssistantGeneration?.('candidate', { version: 1, status: 'complete' })
+  assert.deepEqual(assessments, ['candidate:1', 'candidate:2'])
+  assert.equal(saved.length, 1); assert.equal(ends, 1, 'assessment cannot send the candidate twice to Bot/TTS')
+  assert.equal(saved[0].content, 'original candidate'); assert.equal(saved[0].reasoning, 'original reasoning')
+  current = false
+  cb.onAssistantGeneration?.('candidate', { version: 1, status: 'incomplete' })
+  assert.equal(assessments.length, 2); assert.equal(saved[0].generation?.status, 'complete')
+}
 console.log('persisted Agent callback tests passed')

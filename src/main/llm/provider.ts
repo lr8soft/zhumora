@@ -7,7 +7,7 @@ import { hasValidToolCalls } from '../../shared/toolCalls'
 import { createProviderRequestHeaders } from '../../shared/providerHeaders'
 import { log } from './logger'
 import { getFetch } from '../net/fetch'
-import { HttpError, getMaxRetries, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
+import { getMaxRetries, isStreamableNetworkError, isStreamIdleTimeoutError, withRetry } from '../net/retry'
 import {
   createStreamAccumulator, accumulateResult, type TokenUsage
 } from './sseAccumulator'
@@ -17,6 +17,9 @@ import { isReasoningParamRejected } from './errors'
 import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
 import { withProviderRequest } from './requestRuntime'
 import { shouldRetryProviderError } from './providerRetry'
+import { serializeMessages, httpResponseError, canReplayReasoning, outputTokenLimit } from './responseParsing.ts'
+import { requestTextCompletion } from './textCompletion.ts'
+import type { GenerationMetadata } from '../../shared/generation.ts'
 
 export type { TokenUsage }
 
@@ -25,7 +28,7 @@ export interface StreamCallbacks {
   /**
    * 模型思考内容增量（reasoning_content / reasoning 字段，
    * DeepSeek-R1、豆包、Kimi、OpenAI o-series 等推理模型在正文前流式输出）。
-   * 仅供 UI 展示，不参与正文拼接、不回传 LLM 上下文。
+   * 不参与正文拼接；是否回传由 Provider/model 绑定的请求投影策略决定。
    */
   onReasoningToken?: (token: string) => void
   onComplete?: (fullText: string, toolCalls: ToolCall[]) => void
@@ -41,6 +44,12 @@ export type ToolChoice =
   | { type: 'function'; function: { name: string } }
 
 export interface CompletionParams {
+  maxRetries?: number
+  allowReasoningDowngrade?: boolean
+  requestTimeoutMs?: number
+  progressTimeoutMs?: number
+  terminalTimeoutMs?: number
+  purpose?: GenerationMetadata['purpose']
   messages: ChatMessage[]
   model?: string
   tools?: ToolDefinition[]
@@ -59,6 +68,8 @@ const STREAM_IDLE_TIMEOUT_MS = 120_000
 
 /** 单次流式尝试的结果 */
 interface AttemptResult {
+  refusal?: string
+  generation?: GenerationMetadata
   content: string
   toolCalls: ToolCall[]
   usage?: TokenUsage
@@ -87,7 +98,7 @@ export async function streamChat(
   provider: ProviderConfig,
   params: CompletionParams,
   cb?: StreamCallbacks
-): Promise<{ content: string; toolCalls: ToolCall[]; usage?: TokenUsage; finishReason?: string; streamInterrupted?: boolean }> {
+): Promise<AttemptResult & { streamInterrupted?: boolean }> {
   const invalidHistoryIndex = params.messages.findIndex(message => !hasValidToolCalls(message))
   if (invalidHistoryIndex >= 0) {
     const error = new Error(`LLM request blocked: message ${invalidHistoryIndex} contains malformed tool call arguments`)
@@ -97,18 +108,7 @@ export async function streamChat(
   const model = params.model || provider.defaultModel
   const body: Record<string, unknown> = {
     model,
-    messages: params.messages.map(m => {
-      const msg: Record<string, unknown> = {
-        role: m.role,
-        // content 可能是 string、null 或多模态 ContentPart[]（截图工具结果）
-        content: Array.isArray(m.content) ? m.content : (m.content ?? '')
-      }
-      // 只包含有值的字段，避免 llama.cpp 等严格后端因 null 报错
-      if (m.tool_calls && m.tool_calls.length > 0) msg.tool_calls = m.tool_calls
-      if (m.tool_call_id) msg.tool_call_id = m.tool_call_id
-      if (m.name) msg.name = m.name
-      return msg
-    }),
+    messages: serializeMessages(params.messages, provider, model, !!params.tools?.length),
     stream: true,
     stream_options: { include_usage: true }
   }
@@ -117,14 +117,14 @@ export async function streamChat(
     body.tool_choice = params.toolChoice ?? 'auto'
   }
   if (params.temperature !== undefined) body.temperature = params.temperature
-  if (params.maxTokens) body.max_tokens = params.maxTokens
+  if (params.maxTokens) Object.assign(body, outputTokenLimit(provider, params.maxTokens))
   // 思考强度（llama.cpp / vLLM / SGLang / LiteLLM 用标准 reasoning_effort；
   // DeepSeek / 百炼官方 API 的字段差异在 llm/reasoning.ts 内编码）。
   // 'none' 是显式关闭思考，与"不发送该字段"语义不同。
-  const reasoningFields = applyReasoningParams(body, provider, params.reasoningEffort)
+  const reasoningFields = applyReasoningParams(body, provider, params.reasoningEffort, model)
 
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
-  const maxRetries = getMaxRetries()
+  const maxRetries = params.maxRetries ?? getMaxRetries()
   // emitted：一旦向回调发出第一个 token / tool call 即置 true（之后不再重试，避免重复输出）
   // partial：最近一次尝试已聚合的部分内容（流中途断开时用于回传给 agent 循环续写）
   const state: { emitted: boolean; partial: AttemptResult | null } = { emitted: false, partial: null }
@@ -138,7 +138,8 @@ export async function streamChat(
       try {
         return await attemptStreamChat(url, body, provider, params, cb, state)
       } catch (err) {
-        if (state.emitted || reasoningFields.length === 0 || !isReasoningParamRejected(err)) throw err
+        if (params.allowReasoningDowngrade === false || params.reasoningEffort === 'none'
+          || state.emitted || reasoningFields.length === 0 || !isReasoningParamRejected(err)) throw err
         for (const field of reasoningFields) delete body[field]
         log('warn', `Endpoint rejected ${reasoningFields.join('/')} — retrying once without it (${provider.name || provider.baseUrl})`)
         return attemptStreamChat(url, body, provider, params, cb, state)
@@ -159,7 +160,7 @@ export async function streamChat(
       }
     )
     cb?.onComplete?.(result.content, result.toolCalls)
-    return { content: result.content, toolCalls: result.toolCalls, usage: result.usage, finishReason: result.finishReason }
+    return result
   } catch (err) {
     // 流中途断开（已输出部分内容后网络错误）：重发会让 UI 收到重复内容，
     // 透明重试不可行 → 不抛错，把部分输出标记为"流中断轮"交给 agent 循环，
@@ -207,10 +208,14 @@ async function executeStreamChat(
 
   // 用户中止信号 + 流空闲超时 合并为一个 AbortController
   const ctrl = new AbortController()
+  let timeoutReason: 'request_timeout' | 'idle_timeout' | undefined
+  const deadline = params.requestTimeoutMs ? setTimeout(() => {
+    timeoutReason = 'request_timeout'; ctrl.abort()
+  }, params.requestTimeoutMs) : null
   let idleTimer: ReturnType<typeof setTimeout> | null = null
   const resetIdleTimer = () => {
     if (idleTimer) clearTimeout(idleTimer)
-    idleTimer = setTimeout(() => ctrl.abort(), STREAM_IDLE_TIMEOUT_MS)
+    idleTimer = setTimeout(() => { timeoutReason = 'idle_timeout'; ctrl.abort() }, STREAM_IDLE_TIMEOUT_MS)
   }
   const onUserAbort = () => ctrl.abort()
   if (params.signal) {
@@ -228,8 +233,7 @@ async function executeStreamChat(
     })
 
     if (!resp.ok) {
-      const errText = await resp.text()
-      throw new HttpError(resp.status, `LLM API ${resp.status}: ${errText.slice(0, 500)}`)
+      throw await httpResponseError(resp)
     }
 
     await readChatStream(resp, acc, applied => {
@@ -238,24 +242,46 @@ async function executeStreamChat(
       if (applied.token) cb?.onToken?.(applied.token)
     }, resetIdleTimer, {
       provider: provider.name || provider.id, model: params.model || provider.defaultModel
-    })
+    }, { progressTimeoutMs: params.progressTimeoutMs, terminalTimeoutMs: params.terminalTimeoutMs,
+      captureFrames: provider.captureResponses, signal: ctrl.signal })
 
-    return accumulateResult(acc)
+    if (acc.finishReason === 'insufficient_system_resource') {
+      throw new ProviderStreamError('provider', { type: 'overloaded_error',
+        message: 'Provider interrupted generation: insufficient_system_resource', finish_reason: acc.finishReason })
+    }
+    return snapshot()
   } catch (err) {
+    if (ctrl.signal.aborted) acc.generation = { version: 1, ...acc.generation, status: 'incomplete',
+      termination: params.signal?.aborted ? 'aborted' : 'timeout', reason: params.signal?.aborted ? 'aborted' : timeoutReason }
+    if (err instanceof ProviderStreamError) err.generation = snapshot().generation
     // 缺失结束信号即使完全空白也交给 Agent 恢复；其他异常仅保留已推流的内容。
-    if (state.emitted || err instanceof IncompleteStreamError) state.partial = accumulateResult(acc)
+    if (state.emitted || err instanceof IncompleteStreamError) state.partial = snapshot()
     if (ctrl.signal.aborted) {
       if (params.signal?.aborted) {
         // 用户中止 → 部分内容按正常完成返回（不重试）
-        return { ...accumulateResult(acc), aborted: true }
+        return { ...snapshot(), aborted: true }
       }
       // 流空闲超时 → 抛出可重试错误（message 匹配重试规则）
+      if (timeoutReason === 'request_timeout') throw new Error(`LLM request timeout after ${params.requestTimeoutMs! / 1000}s`)
       throw new Error(`LLM stream idle timeout: no data received for ${STREAM_IDLE_TIMEOUT_MS / 1000}s`)
     }
     throw err
   } finally {
+    if (deadline) clearTimeout(deadline)
     if (idleTimer) clearTimeout(idleTimer)
     if (params.signal) params.signal.removeEventListener('abort', onUserAbort)
+    log('info', 'LLM response: ' + JSON.stringify(snapshot().generation))
+  }
+  function snapshot(): AttemptResult {
+    const result = accumulateResult(acc)
+    return { ...result, generation: { version: 1, ...result.generation, status: result.refusal
+      || result.finishReason === 'content_filter' || result.finishReason === 'refusal' ? 'refused'
+      : result.generation?.status === 'incomplete' || !['stop', 'tool_calls'].includes(result.finishReason ?? '') ? 'incomplete' : 'complete',
+      providerId: provider.id, model: params.model || provider.defaultModel,
+      reasoningReplay: canReplayReasoning({ role: 'assistant', content: '', reasoning: 'present',
+        reasoningSource: { providerId: provider.id, model: params.model || provider.defaultModel } },
+        provider, params.model || provider.defaultModel, !!params.tools?.length),
+      purpose: params.purpose ?? 'agent' } }
   }
 }
 
@@ -270,45 +296,5 @@ export async function complete(
   maxTokens = 200,
   signal?: AbortSignal
 ): Promise<string> {
-  const invalidHistoryIndex = messages.findIndex(message => !hasValidToolCalls(message))
-  if (invalidHistoryIndex >= 0) {
-    throw new Error(`LLM request blocked: message ${invalidHistoryIndex} contains malformed tool call arguments`)
-  }
-  const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
-  return withRetry(
-    () => withProviderRequest(provider, signal, async () => {
-      const resp = await getFetch()(url, {
-        method: 'POST',
-        signal,
-        headers: createProviderRequestHeaders(provider),
-        body: JSON.stringify({
-          model: model || provider.defaultModel,
-          messages: messages.map(m => {
-            const msg: Record<string, unknown> = {
-              role: m.role,
-              content: Array.isArray(m.content) ? m.content : (m.content ?? '')
-            }
-            if (m.tool_calls && m.tool_calls.length > 0) msg.tool_calls = m.tool_calls
-            if (m.tool_call_id) msg.tool_call_id = m.tool_call_id
-            if (m.name) msg.name = m.name
-            return msg
-          }),
-          max_tokens: maxTokens,
-          temperature: 0.3,
-          stream: false
-        })
-      })
-      if (!resp.ok) throw new HttpError(resp.status, `LLM API ${resp.status}: ${await resp.text()}`)
-      const json: any = await resp.json()
-      return json.choices?.[0]?.message?.content || ''
-    }),
-    {
-      maxRetries: getMaxRetries(),
-      label: `LLM complete ${provider.name || provider.baseUrl}`,
-      // 会话中止时立即退出退避循环；不传 signal 的调用方（标题生成、
-      // 记忆提取等运行外 fire-and-forget 调用）保持原行为
-      signal,
-      shouldRetry: shouldRetryProviderError
-    }
-  )
+  return requestTextCompletion(provider, messages, model, maxTokens, signal)
 }

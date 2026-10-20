@@ -166,14 +166,17 @@ assert.deepEqual(
   'JSON 参数损坏且恢复耗尽时安全结束'
 )
 
-for (const finishReason of [undefined, 'unknown', 'content_filter']) {
+for (const finishReason of [undefined, 'unknown']) {
   assert.deepEqual(decideTurnOutcome({ ...base, finishReason }), { kind: 'fail', cause: 'finish_reason' })
 }
-for (const finishReason of ['unknown', 'content_filter']) {
+for (const finishReason of ['unknown']) {
   assert.deepEqual(decideTurnOutcome({ ...base, finishReason, streamInterrupted: true,
     toolCallCount: 1, toolCallsValid: false }), { kind: 'fail', cause: 'finish_reason' },
   'explicit abnormal termination must not be retried as malformed tools or stream recovery')
 }
+assert.deepEqual(decideTurnOutcome({ ...base, finishReason: 'content_filter', streamInterrupted: true,
+  toolCallCount: 1, toolCallsValid: false }), { kind: 'fail', cause: 'refused' },
+  'content filtering is an explicit refusal and never a malformed-tool or empty-response recovery')
 assert.deepEqual(decideTurnOutcome({ ...base, finishReason: 'stop', toolCallCount: 1 }), { kind: 'execute_tools' },
   'compatible providers may use stop with complete valid tool calls')
 const final = { finishReason: 'stop', streamInterrupted: false, toolCallCount: 0, contentEmpty: false }
@@ -182,5 +185,7 @@ assert.equal(finalizationFailure({ ...final, contentEmpty: true }), 'empty')
 assert.equal(finalizationFailure({ ...final, streamInterrupted: true }), 'stream')
 assert.equal(finalizationFailure({ ...final, finishReason: 'length' }), 'length')
 assert.equal(finalizationFailure({ ...final, toolCallCount: 1 }), 'unexpected_tools')
-assert.equal(finalizationFailure({ ...final, finishReason: 'content_filter' }), 'finish_reason')
+assert.equal(finalizationFailure({ ...final, finishReason: 'content_filter', contentEmpty: true, streamInterrupted: true }), 'refused')
+assert.equal(finalizationFailure({ ...final, refusal: 'declined', toolCallCount: 1 }), 'refused')
+assert.equal(finalizationFailure({ ...final, finishReason: 'unknown', contentEmpty: true, streamInterrupted: true }), 'finish_reason')
 console.log('turnDecision state machine tests passed')

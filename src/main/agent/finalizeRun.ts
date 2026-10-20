@@ -7,6 +7,7 @@ import type { AutoCompactor } from './autoCompact'
 import type { AgentEventCallbacks } from './eventCallbacks'
 import { finalizationFailure } from './turnDecision'
 import { failTurn } from './completeTurn'
+import { projectReasoningHistory } from '../llm/responseParsing.ts'
 
 /**
  * 停止时的优雅收尾（达到轮数上限 / 循环硬停）
@@ -26,6 +27,8 @@ export async function finalizeRun(
 ): Promise<void> {
   conversation.appendSyntheticUser(`[System notice] The agent run has been stopped: ${reason}. You must now respond with text only — do NOT call any tools. In 1-3 short paragraphs, summarize: (1) what has been accomplished so far, (2) what remains to be done, (3) any important file paths or decisions. Be concrete and actionable so the user can continue in the next message.`)
   try {
+    conversation.replaceAfterSystem(projectReasoningHistory(conversation.effective(), provider,
+      modelOverride || provider.defaultModel, false), conversation.effectiveIds())
     await compactor.applyIfOverThreshold(conversation, 'before finalization')
     if (signal?.aborted) throw new AgentAbortedError()
     const model = modelOverride || provider.defaultModel
@@ -33,6 +36,7 @@ export async function finalizeRun(
     const result = await streamChat(provider, {
       messages: conversation.messages,
       tools: undefined,   // 无 tools → 强制纯文本
+      purpose: 'finalization',
       model,
       temperature: provider.temperature,
       reasoningEffort,
@@ -50,15 +54,17 @@ export async function finalizeRun(
     const { content, usage } = result
     if (usage) cb.onTokenUsage?.(usage, model)
     if (signal?.aborted) {
-      if (content || roundReasoning) cb.onAssistantMessage?.(content, [], roundReasoning || undefined)
+      if (content || roundReasoning) cb.onAssistantMessage?.(content, [], roundReasoning || undefined,
+        { version: 1, ...result.generation, status: 'incomplete', termination: 'aborted' })
       throw new AgentAbortedError()
     }
-    const failure = finalizationFailure({ finishReason: result.finishReason, streamInterrupted: result.streamInterrupted,
+    const failure = finalizationFailure({ refusal: result.refusal, finishReason: result.finishReason, streamInterrupted: result.streamInterrupted,
       toolCallCount: result.toolCalls.length, contentEmpty: !content.trim() })
     if (failure) failTurn(failure, { ...result, usage, finishReason: result.finishReason, reasoning: roundReasoning },
       allAssistantMessages, cb, 'finalization')
     const msg: ChatMessage = { role: 'assistant', content: content || null }
-    const id = cb.onAssistantMessage?.(content, [], roundReasoning || undefined) ?? null
+    const id = cb.onAssistantMessage?.(content, [], roundReasoning || undefined,
+      { version: 1, ...result.generation, status: 'limit', reason }) ?? null
     conversation.append(msg, id)
     allAssistantMessages.push(msg)
     log('info', 'Finalize summary completed')

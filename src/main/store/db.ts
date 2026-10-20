@@ -196,15 +196,16 @@ export function getOrCreateBotSession(
 
 export function addMessage(msg: UIMessage): void {
   db!.prepare(`
-    INSERT INTO messages (id, session_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, images, timestamp, status, coordination_parent_id, coordination_task_id)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    INSERT INTO messages (id, session_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, images, timestamp, status, coordination_parent_id, coordination_task_id, generation)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(
     msg.id, msg.sessionId, msg.role, msg.content,
     msg.reasoning || null,
     msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
     msg.toolCallId, msg.toolName,
     msg.images && msg.images.length > 0 ? JSON.stringify(msg.images) : null,
-    msg.timestamp, msg.status || null, msg.coordination?.parentSessionId ?? null, msg.coordination?.taskId ?? null
+    msg.timestamp, msg.status || null, msg.coordination?.parentSessionId ?? null, msg.coordination?.taskId ?? null,
+    msg.generation ? JSON.stringify(msg.generation) : null
   )
   touchSession(msg.sessionId)
 }
@@ -212,6 +213,11 @@ export function addMessage(msg: UIMessage): void {
 export function getMessages(sessionId: string): UIMessage[] {
   const rows = db!.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC, rowid ASC').all(sessionId) as MessageRow[]
   return rows.map(messageFromRow)
+}
+
+/** Update assessment only; message text, identity and tool history stay immutable. */
+export function updateMessageGeneration(messageId: string, generation: NonNullable<UIMessage['generation']>): void {
+  db!.prepare('UPDATE messages SET generation = ? WHERE id = ?').run(JSON.stringify(generation), messageId)
 }
 
 export function updateMessageContent(id: string, content: string, status?: string): void {

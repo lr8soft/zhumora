@@ -10,6 +10,7 @@ import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } fr
 import type { TtsAudioPayload, TtsModelConfig, TtsSessionUpdate } from '../shared/tts'
 import type { PanelId, PanelWindowAction, PanelWindowTicket } from '../shared/panels'
 import type { AgentRetryEvent } from '../shared/agentRetry'
+import type { GenerationMetadata } from '../shared/generation'
 
 const api = {
   /**
@@ -116,10 +117,15 @@ const api = {
      * phase='start'：本轮 LLM 开始输出（UI 把 thinking 占位替换为流式消息）
      * phase='end'：本轮结束已落库（UI 把流式消息收尾为 done；reasoning 为权威完整值）
      */
-    onAssistantMessage: (cb: (data: { sessionId: string; messageId: string; content: string; toolCalls: any[]; phase: 'start' | 'end'; reasoning?: string }) => void) => {
+    onAssistantMessage: (cb: (data: { sessionId: string; messageId: string; content: string; toolCalls: NonNullable<UIMessage['toolCalls']>; phase: 'start' | 'end'; reasoning?: string; generation?: GenerationMetadata }) => void) => {
       const handler = (_e: any, data: any) => cb(data)
       ipcRenderer.on('agent:assistant_message', handler)
       return () => ipcRenderer.removeListener('agent:assistant_message', handler)
+    },
+    onGeneration: (cb: (data: { sessionId: string; messageId: string; generation: GenerationMetadata }) => void) => {
+      const handler = (_e: unknown, data: Parameters<typeof cb>[0]) => cb(data)
+      ipcRenderer.on('agent:generation', handler)
+      return () => ipcRenderer.removeListener('agent:generation', handler)
     },
     /** 某个会话被中止（用户按 Stop） */
     onAborted: (cb: (data: { sessionId: string }) => void) => {

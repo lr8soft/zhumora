@@ -19,7 +19,7 @@ export function turnStatus(messages: readonly UIMessage[], running = false, task
   if (running) return 'running'
   const last = [...messages].reverse().find(message => message.role === 'assistant')
   if (last?.status === 'error') return 'error'
-  if (!last || last.toolCalls?.length || !last.content.trim()
+  if (!last || (last.generation && last.generation.status !== 'complete') || last.toolCalls?.length || !last.content.trim()
     || (last.status !== undefined && last.status !== 'done')) return 'unresolved'
   const { results } = indexToolResults(messages)
   const pending = messages.some(message => message.toolCalls?.some(call =>

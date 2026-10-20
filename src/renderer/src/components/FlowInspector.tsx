@@ -69,6 +69,10 @@ export default function FlowInspector({ node, focus, following, onBrowse, onClos
         </button>
       </div>
       {copyState === 'error' && <p className="flow-load-error" role="alert">{t('flow.copyError')}</p>}
+      {value.message?.generation && <details>
+        <summary>{t('flow.generationDetails')} · {t('flow.generation.' + value.message.generation.status)}</summary>
+        <pre>{JSON.stringify(value.message.generation, null, 2)}</pre>
+      </details>}
       {activeTab === 'args' || activeTab === 'result' ? <pre className={value.result?.status === 'error' && activeTab === 'result' ? 'error' : ''}>{text}</pre>
         : <div className="markdown-body"><MarkdownView content={text || t('flow.noContent')} enableDiagrams={activeTab === 'content' && value.kind === 'llm'} /></div>}
       {activeTab === 'content' && value.message?.images?.length ? <div className="flow-detail-images">

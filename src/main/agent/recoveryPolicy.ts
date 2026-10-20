@@ -41,6 +41,21 @@ export class RecoveryBudget {
   private truncations = 0
   private emptyResponses = 0
   private total = 0
+  private reviews = 0
+  private semanticContinuations = 0
+
+  takeReview(): boolean {
+    if (this.reviews >= 2) return false
+    this.reviews++
+    return true
+  }
+
+  takeSemanticContinuation(): boolean {
+    if (this.semanticContinuations >= 1 || this.total >= MAX_RECOVERY_CONTINUATIONS) return false
+    this.semanticContinuations++
+    this.total++
+    return true
+  }
 
   canRecoverTruncation(): boolean {
     return this.truncations < MAX_TRUNCATION_CONTINUATIONS && this.total < MAX_RECOVERY_CONTINUATIONS

@@ -3,6 +3,7 @@ export interface StreamErrorContext {
   provider?: string
   model?: string
   requestId?: unknown
+  retryAfterMs?: number
 }
 
 /** Keep the entire error value: compatible gateways frequently put the actual cause in nested metadata. */

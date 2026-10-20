@@ -1,5 +1,7 @@
 import type { ToolCall, UIMessage } from '../../shared/types'
 import type { AgentEventCallbacks } from './eventCallbacks'
+import type { GenerationMetadata } from '../../shared/generation.ts'
+import { ProviderStreamError } from '../llm/streamErrors.ts'
 
 export interface AgentEventSink {
   running?(sessionId: string, running: boolean): void
@@ -11,7 +13,8 @@ export interface AgentEventSink {
   reasoning?(sessionId: string, messageId: string, token: string): void
   toolCall?(sessionId: string, messageId: string | null, toolCall: ToolCall): void
   toolResult?(message: UIMessage, toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number): void
-  assistantEnd?(sessionId: string, messageId: string, content: string, toolCalls: ToolCall[], reasoning?: string): void
+  assistantEnd?(sessionId: string, messageId: string, content: string, toolCalls: ToolCall[], reasoning?: string, generation?: GenerationMetadata): void
+  generation?(sessionId: string, messageId: string, generation: GenerationMetadata): void
   complete?(sessionId: string, messageId: string, content: string): void
   error?(sessionId: string, error: Error): void
   retry?(sessionId: string, failedAttempt: number, maxRetries: number, error: Error): void
@@ -21,6 +24,7 @@ export interface AgentEventSink {
 
 export interface AgentPersistence {
   addMessage(message: UIMessage): void
+  updateMessageGeneration?(messageId: string, generation: GenerationMetadata): void
   addTokenUsage(model: string, inputTokens: number, outputTokens: number, createdAt: number): void
 }
 
@@ -36,8 +40,9 @@ export function combineAgentEventSinks(...sinks: AgentEventSink[]): AgentEventSi
     toolCall: (sessionId, messageId, toolCall) => sinks.forEach(sink => sink.toolCall?.(sessionId, messageId, toolCall)),
     toolResult: (message, toolCallId, toolName, result, isError, durationMs) =>
       sinks.forEach(sink => sink.toolResult?.(message, toolCallId, toolName, result, isError, durationMs)),
-    assistantEnd: (sessionId, messageId, content, toolCalls, reasoning) =>
-      sinks.forEach(sink => sink.assistantEnd?.(sessionId, messageId, content, toolCalls, reasoning)),
+    assistantEnd: (sessionId, messageId, content, toolCalls, reasoning, generation) =>
+      sinks.forEach(sink => sink.assistantEnd?.(sessionId, messageId, content, toolCalls, reasoning, generation)),
+    generation: (sessionId, messageId, generation) => sinks.forEach(sink => sink.generation?.(sessionId, messageId, generation)),
     complete: (sessionId, messageId, content) => sinks.forEach(sink => sink.complete?.(sessionId, messageId, content)),
     error: (sessionId, error) => sinks.forEach(sink => sink.error?.(sessionId, error)),
     retry: (sessionId, failedAttempt, maxRetries, error) =>
@@ -63,7 +68,8 @@ export function createPersistedAgentCallbacks(
     },
     onToolResult: (toolCallId, toolName, result, isError, durationMs) => isCurrent()
       ? messages.toolResult(toolCallId, toolName, result, isError, durationMs) : null,
-    onAssistantMessage: (content, toolCalls, reasoning) => isCurrent() ? messages.assistant(content, toolCalls, reasoning) : null,
+    onAssistantMessage: (content, toolCalls, reasoning, generation) => isCurrent() ? messages.assistant(content, toolCalls, reasoning, generation) : null,
+    onAssistantGeneration: (messageId, generation) => { if (isCurrent()) messages.generation(messageId, generation) },
     onTokenUsage: (usage, model) => {
       if (isCurrent()) persistence.addTokenUsage(model, usage.prompt_tokens, usage.completion_tokens, Date.now())
     },
@@ -92,6 +98,7 @@ class PersistedAgentMessages {
   private roundMsgId: string | null = null
   private roundReasoning = ''
   private errorHandled = false
+  private lastAssistant?: UIMessage
   private readonly context: MessageContext
 
   constructor(context: MessageContext) { this.context = context }
@@ -119,15 +126,17 @@ class PersistedAgentMessages {
     return message.id
   }
 
-  assistant(content: string, toolCalls: ToolCall[], reasoning?: string): string | null {
+  assistant(content: string, toolCalls: ToolCall[], reasoning?: string, generation?: GenerationMetadata): string | null {
     let id: string | null = null
     if (content || toolCalls.length || reasoning) {
       id = this.ensureRoundId()
-      this.context.persistence.addMessage({
-        id, sessionId: this.context.sessionId, role: 'assistant', content: content || '',
+      const message: UIMessage = {
+        id, sessionId: this.context.sessionId, role: 'assistant', content: content || '', generation,
         reasoning: reasoning || this.roundReasoning || undefined,
         toolCalls: toolCalls.length ? toolCalls : undefined, timestamp: Date.now(), status: 'done'
-      })
+      }
+      this.lastAssistant = message
+      this.context.persistence.addMessage(message)
     }
     this.streamingMsgId = this.roundMsgId
     this.streamingContent = content || ''
@@ -135,8 +144,16 @@ class PersistedAgentMessages {
     this.roundMsgId = null
     this.roundReasoning = ''
     this.context.events.assistantEnd?.(this.context.sessionId, this.streamingMsgId || '', content, toolCalls,
-      this.streamingReasoning || undefined)
+      this.streamingReasoning || undefined, generation)
     return id
+  }
+
+  generation(id: string, generation: GenerationMetadata): void {
+    if (this.lastAssistant?.id !== id) return
+    generation = { ...generation, assessmentRevision: (this.lastAssistant.generation?.assessmentRevision ?? 0) + 1 }
+    this.lastAssistant.generation = generation
+    this.context.persistence.updateMessageGeneration?.(id, generation)
+    this.context.events.generation?.(this.context.sessionId, id, generation)
   }
 
   complete(): void {
@@ -158,12 +175,14 @@ class PersistedAgentMessages {
       this.context.persistence.addMessage({
         id: this.roundMsgId, sessionId: this.context.sessionId, role: 'assistant',
         content: this.streamingContent ? `${this.streamingContent}\n\n${errorText}` : errorText,
-        reasoning: this.roundReasoning || undefined, timestamp: Date.now(), status: 'error'
+        reasoning: this.roundReasoning || undefined, timestamp: Date.now(), status: 'error',
+        ...(error instanceof ProviderStreamError ? { generation: error.generation } : {})
       })
     } else {
       this.context.persistence.addMessage({
         id: this.context.generateId(), sessionId: this.context.sessionId, role: 'assistant', content: errorText,
-        timestamp: Date.now(), status: 'error'
+        timestamp: Date.now(), status: 'error',
+        ...(error instanceof ProviderStreamError ? { generation: error.generation } : {})
       })
     }
     this.context.events.error?.(this.context.sessionId, error)

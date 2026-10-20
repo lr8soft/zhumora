@@ -165,6 +165,12 @@ const migrations: Migration[] = [
       database.exec(`ALTER TABLE messages ADD COLUMN coordination_parent_id TEXT;
         ALTER TABLE messages ADD COLUMN coordination_task_id TEXT;`)
     }
+  },
+  {
+    version: 9,
+    up(database) {
+      database.exec('ALTER TABLE messages ADD COLUMN generation TEXT')
+    }
   }
 ]
 

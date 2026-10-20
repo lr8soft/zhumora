@@ -11,7 +11,10 @@ export function mapPersistedHistory(history: UIMessage[]): { messages: ChatMessa
         : message.content,
       tool_calls: message.toolCalls,
       tool_call_id: message.toolCallId,
-      name: message.toolName
+      name: message.toolName,
+      ...(message.reasoning ? { reasoning: message.reasoning } : {}),
+      ...(message.generation?.providerId && message.generation.model ? { reasoningSource: {
+        providerId: message.generation.providerId, model: message.generation.model } } : {})
     })),
     ids: history.map(message => message.id)
   }

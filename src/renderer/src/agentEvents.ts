@@ -21,10 +21,25 @@ export interface TokenDelta {
 
 /** A history read can settle after live child events. Preserve those authoritative IDs while the run is active. */
 export function applyHistorySnapshot(snapshot: UIMessage[], current: UIMessage[], running: boolean): UIMessage[] {
-  if (!running || !current.length) return snapshot
+  if (!current.length) return snapshot
   const loadedIds = new Set(snapshot.map(message => message.id))
   // Assistant messages only enter the DB at turn end. A matching DB row is final and must win over streaming overlays.
-  return [...snapshot, ...current.filter(message => !loadedIds.has(message.id))]
+  const byId = new Map(current.map(message => [message.id, message]))
+  const loaded = snapshot.map(message => {
+    const live = byId.get(message.id)
+    return (live?.generation?.assessmentRevision ?? 0) > (message.generation?.assessmentRevision ?? 0)
+      ? { ...message, generation: live!.generation } : message
+  })
+  // An in-flight read can also settle just after running=false. Its old metadata
+  // must not revert an assessment, while the DB still owns row presence/text.
+  return running ? [...loaded, ...current.filter(message => !loadedIds.has(message.id))] : loaded
+}
+
+/** Assessment updates never change text, ordering or IDs, and cannot overwrite a newer assessment. */
+export function applyGenerationUpdate(messageId: string, generation: NonNullable<UIMessage['generation']>, messages: UIMessage[]): UIMessage[] {
+  return messages.map(message => message.id === messageId
+    && (generation.assessmentRevision ?? 0) >= (message.generation?.assessmentRevision ?? 0)
+    ? { ...message, generation } : message)
 }
 
 /** A fast run can land in a history snapshot before its invoke returns. Replace pending by ID without duplicating that DB row. */
@@ -90,18 +105,21 @@ export function applyAssistantEnd(
   toolCalls: ToolCall[],
   reasoning: string | undefined,
   messages: UIMessage[],
-  now: number
+  now: number,
+  generation?: UIMessage['generation']
 ): UIMessage[] {
   const existingIdx = messages.findIndex(x => x.id === messageId)
   if (existingIdx >= 0) {
     const finalContent = content || messages[existingIdx].content
+    const assessed = messages[existingIdx].generation
+    if (generation && (assessed?.assessmentRevision ?? 0) > (generation.assessmentRevision ?? 0)) generation = assessed
     if (!finalContent && !reasoning && !messages[existingIdx].reasoning && toolCalls.length === 0) {
       return messages.filter((_, i) => i !== existingIdx)
     }
     const updated = [...messages]
     updated[existingIdx] = {
       ...updated[existingIdx],
-      content: finalContent,
+      content: finalContent, ...(generation ? { generation } : {}),
       reasoning: reasoning || updated[existingIdx].reasoning,
       toolCalls: toolCalls.length > 0 ? toolCalls : updated[existingIdx].toolCalls,
       status: toolCalls.length > 0 ? 'pending' : 'done'
@@ -113,7 +131,7 @@ export function applyAssistantEnd(
     id: messageId,
     sessionId,
     role: 'assistant',
-    content,
+    content, ...(generation ? { generation } : {}),
     reasoning,
     toolCalls: toolCalls.length > 0 ? toolCalls : undefined,
     timestamp: now,

@@ -26,6 +26,7 @@ export function getPreserveTokenBudget(contextWindow: number): number {
 
 export function estimateMessageTokens(msg: ChatMessage): number {
   let tokens = 4
+  if (msg.reasoning) tokens += estimateTextTokens(msg.reasoning)
   if (msg.content) {
     if (Array.isArray(msg.content)) {
       for (const part of msg.content) {
