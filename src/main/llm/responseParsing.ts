@@ -4,10 +4,11 @@ import { ProviderStreamError } from './streamErrors.ts'
 import type { StreamErrorContext } from './providerErrorDetails.ts'
 import { resolveReasoningDialect } from './reasoning.ts'
 
-/** Official OpenAI budgets include hidden reasoning; compatible local servers retain their existing parameter. */
-export function outputTokenLimit(provider: Pick<ProviderConfig, 'baseUrl'>, maxTokens: number): Record<string, number> {
-  return new URL(provider.baseUrl).hostname === 'api.openai.com'
-    ? { max_completion_tokens: maxTokens } : { max_tokens: maxTokens }
+/** Proxies can explicitly select the upstream contract without guessing model aliases. */
+export function outputTokenLimit(provider: Pick<ProviderConfig, 'baseUrl' | 'outputTokenParameter'>, maxTokens: number): Record<string, number> {
+  const parameter = provider.outputTokenParameter && provider.outputTokenParameter !== 'auto'
+    ? provider.outputTokenParameter : new URL(provider.baseUrl).hostname === 'api.openai.com' ? 'max_completion_tokens' : 'max_tokens'
+  return { [parameter]: maxTokens }
 }
 
 /** Preserve reasoning only for its original provider/model or an explicit compatibility choice. */

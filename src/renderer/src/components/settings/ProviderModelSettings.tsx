@@ -42,6 +42,13 @@ export function ProviderModelSettings({ provider: p, onChange, detectContextWind
         {(['auto', 'omit', 'preserve'] as const).map(value => <option key={value} value={value}>
           {t('settings.providers.reasoningHistory_' + value)}</option>)}
       </select>
+      <label className="form-label">{t('settings.providers.outputTokenParameter')}</label>
+      <select className="input-field" value={p.outputTokenParameter ?? 'auto'}
+        onChange={e => onChange({ outputTokenParameter: e.target.value as ProviderConfig['outputTokenParameter'] })}>
+        {(['auto', 'max_tokens', 'max_completion_tokens'] as const).map(value => <option key={value} value={value}>
+          {value === 'auto' ? t('settings.providers.outputTokenParameterAuto') : value}</option>)}
+      </select>
+      <p className="form-hint">{t('settings.providers.outputTokenParameterHint')}</p>
     </div>
     <div>
           <div className="provider-temperature">

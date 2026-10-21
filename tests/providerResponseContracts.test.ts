@@ -4,6 +4,8 @@ import { createStreamAccumulator, applySseData } from '../src/main/llm/sseAccumu
 import { readChatStream } from '../src/main/llm/streamResponse.ts'
 import { SseEventBuffer } from '../src/main/llm/sseEventBuffer.ts'
 import { SseLineBuffer } from '../src/main/llm/sseAccumulator.ts'
+import { ProviderStreamError } from '../src/main/llm/streamErrors.ts'
+import { outputTokenLimit } from '../src/main/llm/responseParsing.ts'
 register('./helpers/runnerCollaborationLoader.mjs', import.meta.url)
 const { streamChat, complete } = await import('../src/main/llm/provider.ts')
 const originalFetch = globalThis.fetch
@@ -15,6 +17,17 @@ const call = (id = 'a', index: unknown = 0, type = 'function') =>
   ({ tool_calls: [{ index, id, type, function: { name: 'write', arguments: '{}' } }] })
 try {
   assert.equal(applySseData(createStreamAccumulator(), JSON.stringify({ choices: [{ delta: { tool_calls: [] } }] })).emitted, false)
+  {
+    const acc = createStreamAccumulator()
+    const apply = (fragment: object) => applySseData(acc, JSON.stringify({ choices: [{ delta: { tool_calls: [fragment] } }] })).emitted
+    assert.equal(apply({ index: 0 }), false)
+    assert.equal(apply({ index: 0, id: '', function: { name: '', arguments: '' } }), false)
+    assert.equal(apply({ index: 0, id: 'one', type: 'function' }), true)
+    assert.equal(apply({ index: 0, id: 'one', type: 'function' }), false)
+    assert.equal(apply({ index: 0, function: { name: 'write' } }), true)
+    assert.equal(apply({ index: 0, function: { arguments: '{}' } }), true)
+    assert.equal(acc.toolCalls.get(0)!.function.arguments, '{}')
+  }
   for (const delta of [call('a', -1), call('a', 0.5), call('a', '0'), call('a', 0, 'custom'),
     { function_call: { name: 'write', arguments: '{}' } }, { audio: { data: 'unsupported output' } }, { tool_calls: [null] }]) {
     assert.throws(() => applySseData(createStreamAccumulator(), JSON.stringify({ choices: [{ delta }] })),
@@ -72,6 +85,50 @@ try {
     }
     assert.equal((await streamChat(official, { messages: [], maxTokens: 4096 })).content, 'complete')
     assert.equal(await complete(official, [], undefined, 4096), 'complete')
+    const proxy = { ...provider, defaultModel: 'upstream-alias', outputTokenParameter: 'max_completion_tokens' as const }
+    assert.equal((await streamChat(proxy, { messages: [], maxTokens: 4096 })).content, 'complete')
+    assert.equal(await complete(proxy, [], undefined, 4096), 'complete')
+    assert.deepEqual(outputTokenLimit(provider, 800), { max_tokens: 800 })
+    assert.deepEqual(outputTokenLimit({ ...official, outputTokenParameter: 'max_tokens' }, 800), { max_tokens: 800 })
+  }
+  for (const mime of [undefined, 'text/plain', 'text/event-stream', 'application/json']) for (const size of [1, 4096]) {
+    const rawError = { code: 429, message: '原始繁忙详情', metadata: { raw: 'unmodified evidence' } }
+    const body = new TextEncoder().encode(' \n' + JSON.stringify({ error: rawError }))
+    let position = 0
+    const response = new Response(new ReadableStream({ pull(controller) {
+      if (position === body.length) { controller.close(); return }
+      controller.enqueue(body.slice(position, position + size)); position = Math.min(body.length, position + size)
+    } }), { headers: { ...(mime ? { 'content-type': mime } : {}), 'retry-after': '0' } })
+    await assert.rejects(readChatStream(response, createStreamAccumulator(), () => {}, () => {}), (error: unknown) => {
+      assert.ok(error instanceof ProviderStreamError)
+      assert.equal(error.status, 429); assert.equal(error.retryAfterMs, 0)
+      assert.match(error.message, /原始繁忙详情/); assert.match(error.message, /unmodified evidence/)
+      return true
+    })
+    assert.equal(response.body!.locked, false)
+  }
+  {
+    let attempts = 0; let retries = 0
+    globalThis.fetch = async () => ++attempts === 1
+      ? new Response(JSON.stringify({ error: { code: 429, message: 'busy from plain JSON' } }), { headers: { 'retry-after': '0' } })
+      : new Response(frame({ content: 'recovered' }) + end)
+    const result = await streamChat(provider, { messages: [], maxRetries: 1 }, { onRetry: () => { retries++ } })
+    assert.equal(result.content, 'recovered'); assert.equal(attempts, 2); assert.equal(retries, 1)
+  }
+  for (const mime of [undefined, 'text/plain']) {
+    const acc = createStreamAccumulator()
+    await readChatStream(new Response(new TextEncoder().encode('\n: heartbeat\n\n' + frame({ content: 'valid SSE' }) + end),
+      { headers: mime ? { 'content-type': mime } : {} }), acc, () => {}, () => {})
+    assert.equal(acc.content, 'valid SSE', 'MIME compatibility must keep legal SSE working')
+  }
+  {
+    let attempts = 0
+    globalThis.fetch = async () => {
+      attempts++
+      return new Response(frame({ content: 'already visible' }) + 'data: {"error":{"code":429,"message":"busy after output"}}\n\n')
+    }
+    await assert.rejects(streamChat(provider, { messages: [], maxRetries: -1 }), /busy after output/)
+    assert.equal(attempts, 1, 'ordinary user-visible output must not be transparently replayed')
   }
   globalThis.fetch = async () => new Response('x'.repeat(700) + 'actual-tail', { status: 422 })
   await assert.rejects(streamChat(provider, { messages: [] }), /actual-tail/)
@@ -111,25 +168,42 @@ try {
     assert.equal(acc.generation?.traceOmitted, true)
     assert.equal(acc.generation?.rawFrames?.length, 32)
   }
-  for (const kind of ['progress', 'text-tail', 'tool-tail', 'abort'] as const) {
+  for (const kind of ['progress', 'tool-stub', 'repeated-identity', 'text-tail', 'tool-tail', 'abort'] as const) {
     let cancelled = false; let interval: ReturnType<typeof setInterval> | undefined
     const abort = new AbortController()
     const stream = new ReadableStream<Uint8Array>({ start(c) {
       if (kind === 'text-tail') c.enqueue(new TextEncoder().encode(frame({ content: 'complete' }, 'stop')))
       if (kind === 'tool-tail') c.enqueue(new TextEncoder().encode(frame(call(), 'tool_calls')))
-      interval = setInterval(() => { if (kind === 'abort') abort.abort(); else c.enqueue(new TextEncoder().encode(': ping\n\n')) }, 2)
+      interval = setInterval(() => {
+        if (kind === 'abort') abort.abort()
+        else c.enqueue(new TextEncoder().encode(kind === 'tool-stub' ? frame({ tool_calls: [{ index: 0 }] })
+          : kind === 'repeated-identity' ? frame({ tool_calls: [{ index: 0, id: 'same', type: 'function' }] }) : ': ping\n\n'))
+      }, 2)
     }, cancel() { cancelled = true; if (interval) clearInterval(interval) } })
     const acc = createStreamAccumulator()
     const reading = readChatStream(new Response(stream), acc, () => {}, () => {}, undefined,
       { progressTimeoutMs: 20, terminalTimeoutMs: 20, captureFrames: true, signal: abort.signal })
     if (kind === 'text-tail') { await reading; assert.equal(acc.generation?.termination, 'tail_timeout') }
-    else await assert.rejects(reading, { name: kind === 'abort' ? 'AbortError' : 'IncompleteStreamError' })
+    else {
+      const watchdog = setTimeout(() => abort.abort(), 1000)
+      try { await assert.rejects(reading, { name: kind === 'abort' ? 'AbortError' : 'IncompleteStreamError' }) }
+      finally { clearTimeout(watchdog) }
+    }
     assert.equal(cancelled, true, 'all bounded exits release the stream even with continuing heartbeats')
   }
   {
     const acc = createStreamAccumulator()
     applySseData(acc, JSON.stringify({ choices: [], usage: { prompt_tokens: '2', completion_tokens: 1, total_tokens: 3 } }))
     assert.equal(acc.usage, undefined); assert.ok(acc.generation?.warnings?.length)
+  }
+  {
+    let cancelled = false
+    const empty = new TextEncoder().encode(frame({ tool_calls: [{ index: 0 }] }))
+    await assert.rejects(readChatStream(new Response(new ReadableStream({
+      pull(controller) { controller.enqueue(empty) }, cancel() { cancelled = true }
+    })), createStreamAccumulator(), () => {}, () => {}, undefined, { progressTimeoutMs: 10 }),
+    { name: 'IncompleteStreamError', reason: 'progress_timeout' })
+    assert.equal(cancelled, true, 'already queued reads cannot starve the no-progress deadline')
   }
 } finally { globalThis.fetch = originalFetch }
 console.log('Provider contracts: identity, refusal, SSE framing, auxiliary responses and terminal tail passed')

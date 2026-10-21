@@ -14,7 +14,7 @@ import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.t
 import { normalizeProviderSubagentAccess } from '../../shared/providerSubagents.ts'
 import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel, normalizeSubagentModels, normalizeSubagentDispatch } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 17
+export const SETTINGS_SCHEMA_VERSION = 18
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {

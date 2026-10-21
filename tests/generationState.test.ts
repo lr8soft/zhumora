@@ -11,6 +11,7 @@ import { RecoveryBudget } from '../src/main/agent/recoveryPolicy.ts'
 import { decideTurnOutcome } from '../src/main/agent/turnDecision.ts'
 import { applyReasoningParams } from '../src/main/llm/reasoning.ts'
 import { withRetry, HttpError } from '../src/main/net/retryCore.ts'
+import { normalizeSettings, SETTINGS_SCHEMA_VERSION } from '../src/main/store/settingsNormalization.ts'
 const db = new Database(':memory:')
 runDatabaseMigrations(db)
 assert.equal(db.pragma('user_version', { simple: true }), DATABASE_SCHEMA_VERSION)
@@ -36,9 +37,18 @@ assert.equal(applyHistorySnapshot(event, assessed, true)[0].generation!.status, 
 assert.equal(applyHistorySnapshot(event, assessed, false)[0].generation!.status, 'complete', 'a read settling after run cleanup cannot revert assessment')
 assert.equal(applyAssistantEnd('s', 'm', 'partial', [], undefined, assessed, 1, generation)[0].generation!.status, 'complete')
 assert.equal(messageFromRow({ id: 'old', session_id: 's', role: 'assistant', content: 'old', timestamp: 0 }).generation, undefined)
-assert.deepEqual(normalizeProviderResponseOptions({}), { completionReview: true, captureResponses: false, reasoningHistory: 'auto' })
+assert.deepEqual(normalizeProviderResponseOptions({}), { completionReview: true, captureResponses: false, reasoningHistory: 'auto', outputTokenParameter: 'auto' })
 assert.throws(() => validateProviderResponseOptions({ completionReview: 'yes' } as never))
+assert.throws(() => validateProviderResponseOptions({ outputTokenParameter: 'invalid' } as never), /outputTokenParameter/)
 const provider = { id: 'p', name: 'p', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', defaultModel: 'm', enabled: true }
+for (const outputTokenParameter of ['auto', 'max_tokens', 'max_completion_tokens'] as const) {
+  validateProviderResponseOptions({ outputTokenParameter })
+  const migrated = normalizeSettings({ schemaVersion: 17, providers: [{ ...provider, outputTokenParameter }] })
+  assert.equal(migrated.schemaVersion, SETTINGS_SCHEMA_VERSION)
+  assert.equal(migrated.providers[0].outputTokenParameter, outputTokenParameter)
+  assert.deepEqual(normalizeSettings(migrated), migrated, 'normalization is idempotent')
+}
+assert.equal(normalizeSettings({ schemaVersion: 17, providers: [provider] }).providers[0].outputTokenParameter, 'auto')
 const messages = [{ role: 'assistant' as const, content: 'answer', reasoning: 'thought', reasoningSource: { providerId: 'p', model: 'm' } }]
 assert.equal(serializeMessages(messages, provider, 'm', true)[0].reasoning_content, 'thought')
 assert.equal(serializeMessages(messages, provider, 'other', true)[0].reasoning_content, undefined)

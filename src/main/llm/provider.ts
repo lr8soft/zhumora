@@ -16,7 +16,7 @@ import { IncompleteStreamError, ProviderStreamError } from './streamErrors'
 import { isReasoningParamRejected } from './errors'
 import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
 import { withProviderRequest } from './requestRuntime'
-import { shouldRetryProviderError } from './providerRetry'
+import { isProviderBusyError, shouldRetryProviderError } from './providerRetry'
 import { serializeMessages, httpResponseError, canReplayReasoning, outputTokenLimit } from './responseParsing.ts'
 import { requestTextCompletion } from './textCompletion.ts'
 import type { GenerationMetadata } from '../../shared/generation.ts'
@@ -45,7 +45,7 @@ export type ToolChoice =
 
 export interface CompletionParams {
   maxRetries?: number
-  allowReasoningDowngrade?: boolean
+  retryOnlyRateLimit?: boolean
   requestTimeoutMs?: number
   progressTimeoutMs?: number
   terminalTimeoutMs?: number
@@ -68,6 +68,8 @@ const STREAM_IDLE_TIMEOUT_MS = 120_000
 
 /** 单次流式尝试的结果 */
 interface AttemptResult {
+  /** Request-local compatibility result, never a provider-wide capability cache. */
+  reasoningDowngraded?: boolean
   refusal?: string
   generation?: GenerationMetadata
   content: string
@@ -122,6 +124,7 @@ export async function streamChat(
   // DeepSeek / 百炼官方 API 的字段差异在 llm/reasoning.ts 内编码）。
   // 'none' 是显式关闭思考，与"不发送该字段"语义不同。
   const reasoningFields = applyReasoningParams(body, provider, params.reasoningEffort, model)
+  let reasoningDowngraded = false
 
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
   const maxRetries = params.maxRetries ?? getMaxRetries()
@@ -138,9 +141,10 @@ export async function streamChat(
       try {
         return await attemptStreamChat(url, body, provider, params, cb, state)
       } catch (err) {
-        if (params.allowReasoningDowngrade === false || params.reasoningEffort === 'none'
-          || state.emitted || reasoningFields.length === 0 || !isReasoningParamRejected(err)) throw err
+        if (params.reasoningEffort === 'none'
+          || reasoningDowngraded || state.emitted || reasoningFields.length === 0 || !isReasoningParamRejected(err)) throw err
         for (const field of reasoningFields) delete body[field]
+        reasoningDowngraded = true
         log('warn', `Endpoint rejected ${reasoningFields.join('/')} — retrying once without it (${provider.name || provider.baseUrl})`)
         return attemptStreamChat(url, body, provider, params, cb, state)
       }
@@ -154,13 +158,15 @@ export async function streamChat(
         // 会话中止立即打断退避等待与后续重试（否则停止后 runner 会卡在
         // 最长 30s 的退避里无法 settle，会话永久 busy，见 retryCore 注释）
         signal: params.signal,
-        // 仅在尚未向 UI 输出任何内容时才重试（否则聊天区会收到重复内容）
-        shouldRetry: (err) => !state.emitted && shouldRetryProviderError(err),
+        // Review output is private control data: discarding a busy attempt cannot
+        // duplicate a user-visible message or execute a tool. Ordinary output cannot replay.
+        shouldRetry: (err) => (!state.emitted || params.purpose === 'review') && (params.retryOnlyRateLimit
+          ? isProviderBusyError(err) : shouldRetryProviderError(err)),
         onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
       }
     )
     cb?.onComplete?.(result.content, result.toolCalls)
-    return result
+    return { ...result, reasoningDowngraded }
   } catch (err) {
     // 流中途断开（已输出部分内容后网络错误）：重发会让 UI 收到重复内容，
     // 透明重试不可行 → 不抛错，把部分输出标记为"流中断轮"交给 agent 循环，
@@ -173,7 +179,7 @@ export async function streamChat(
       log('warn', `LLM stream incomplete (${String(error?.message || err).slice(0, 120)}) — returning partial content for agent-level continuation`)
       if (state.partial) {
         cb?.onComplete?.(state.partial.content, state.partial.toolCalls)
-        return { ...state.partial, streamInterrupted: true }
+        return { ...state.partial, reasoningDowngraded, streamInterrupted: true }
       }
     }
     cb?.onError?.(err as Error)

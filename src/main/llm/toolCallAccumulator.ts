@@ -11,6 +11,7 @@ function object(value: unknown): Record<string, unknown> {
 /** Identity is immutable; only function name/arguments are deltas. Never coerce a different tool type. */
 export function applyToolDeltas(calls: Map<number, ToolCall>, value: unknown): boolean {
   if (!Array.isArray(value)) throw new ProviderStreamError('payload', value)
+  let progressed = false
   for (const raw of value) {
     const delta = object(raw)
     const index = delta.index
@@ -28,10 +29,11 @@ export function applyToolDeltas(calls: Map<number, ToolCall>, value: unknown): b
       throw new ProviderStreamError('payload', { reason: 'Tool identity changed within one index', fragment: raw })
     }
     const call = existing ?? { id: '', type: 'function' as const, function: { name: '', arguments: '' } }
+    progressed ||= !!((delta.id && !call.id) || fn.name || fn.arguments)
     if (delta.id) call.id = delta.id as string
     if (fn.name) call.function.name += fn.name
     if (fn.arguments) call.function.arguments += fn.arguments
     calls.set(index, call)
   }
-  return value.length > 0
+  return progressed
 }

@@ -18,6 +18,7 @@ export async function readChatStream(response: Response, acc: StreamAccumulator,
   const sse = new SseEventBuffer()
   const started = Date.now()
   let progressAt = started; let terminalAt = 0; let frames = 0; let bytes = 0
+  let prefix = ''; let formatKnown = false
   const rawFrames: string[] = []; let traceBytes = 0; let traceOmitted = false; let failed = false
   const diagnostics = { ...context, requestId: response.headers.get('x-request-id')
     ?? response.headers.get('request-id') ?? response.headers.get('x-generation-id') ?? context?.requestId,
@@ -44,20 +45,14 @@ export async function readChatStream(response: Response, acc: StreamAccumulator,
   try {
     if (mime && mime !== 'text/event-stream' && mime !== 'text/plain') {
       // Read through the response, not its locked stream, to preserve the original error body.
-      const raw = await readBody(reader, decoder, policy.signal)
-      let payload: unknown
-      try { payload = JSON.parse(raw) } catch { payload = raw }
-      if (payload && typeof payload === 'object' && 'error' in payload) {
-        throw new ProviderStreamError('provider', payload.error, diagnostics)
-      }
-      throw new ProviderStreamError('payload', { reason: 'Expected SSE response', contentType: mime, body: payload })
+      rejectNonSseBody(await readBody(reader, decoder, policy.signal), mime, diagnostics)
     }
     if (!reader) throw new IncompleteStreamError()
     while (!acc.done) {
       const timeout = terminalAt
         ? terminalAt + (policy.terminalTimeoutMs ?? 5000) - Date.now()
         : progressAt + (policy.progressTimeoutMs ?? 600_000) - Date.now()
-      const next = await readWithDeadline(reader, Math.max(0, timeout), policy.signal)
+      const next = await readWithDeadline(reader, timeout, policy.signal)
       if (next === 'timeout') {
         if (canAcceptTextTail(acc)) { termination = 'tail_timeout'; break }
         termination = 'timeout'
@@ -67,7 +62,18 @@ export async function readChatStream(response: Response, acc: StreamAccumulator,
       bytes += next.value.byteLength
       if (bytes > 64 * 1024 * 1024) throw new ProviderStreamError('payload', { reason: 'SSE response exceeds 64 MiB limit' }, diagnostics)
       onActivity()
-      sse.feed(decoder.decode(next.value, { stream: true }), handle)
+      let text = decoder.decode(next.value, { stream: true })
+      if (!formatKnown) {
+        prefix += text
+        const first = prefix.trimStart()[0]
+        if (!first) continue
+        if (first === '{' || first === '[') {
+          rejectNonSseBody(prefix + await readBody(reader, decoder, policy.signal), mime, diagnostics)
+        }
+        formatKnown = true
+        text = prefix; prefix = ''
+      }
+      sse.feed(text, handle)
     }
     sse.feed(decoder.decode(), handle)
     sse.flush(handle)
@@ -101,6 +107,16 @@ function canAcceptTextTail(acc: StreamAccumulator): boolean {
   return acc.finishReason === 'stop' && !!acc.content.trim() && !acc.toolCalls.size && !acc.refusal
 }
 
+/** Some compatible gateways return a JSON error with HTTP 200 and a misleading/missing MIME. */
+function rejectNonSseBody(raw: string, mime: string | undefined, context: StreamErrorContext): never {
+  let payload: unknown
+  try { payload = JSON.parse(raw) } catch { payload = raw }
+  if (payload && typeof payload === 'object' && 'error' in payload && payload.error != null) {
+    throw new ProviderStreamError('provider', payload.error, context)
+  }
+  throw new ProviderStreamError('payload', { reason: 'Expected SSE response', contentType: mime, body: payload }, context)
+}
+
 async function readBody(reader: ReadableStreamDefaultReader<Uint8Array> | undefined, decoder: InstanceType<typeof TextDecoder>, signal?: AbortSignal) {
   let text = ''
   if (reader) for (;;) {
@@ -116,6 +132,7 @@ async function readWithDeadline(reader: ReadableStreamDefaultReader<Uint8Array>,
   let timer: ReturnType<typeof setTimeout> | undefined
   let onAbort: (() => void) | undefined
   if (signal?.aborted) throw Object.assign(new Error('aborted'), { name: 'AbortError' })
+  if (ms <= 0) return 'timeout' as const
   try {
     return await Promise.race([reader.read(), new Promise<'timeout'>(resolve => {
       timer = setTimeout(() => resolve('timeout'), ms)

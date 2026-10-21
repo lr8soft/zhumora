@@ -483,5 +483,34 @@ test('边界 = 第一条 → 摘要 + 其余全部保留', () => {
   assertEq(r.effective.length, 1 + (msgs.length - 1), '摘要 + 其余')
 })
 
+test('重复调用 ID 只能由相邻原子组的结果闭合', () => {
+  const old = assistantWithCalls(tc('reused', 'read'))
+  const current = assistantWithCalls(tc('reused', 'read'))
+  const raw = [old, text('user', 'resume'), current, toolResult('reused', 'read', 'new'), text('user', 'next')]
+  const clean = sanitizeHistoryWithIds(raw, ['old', 'resume', 'current', 'result', 'next'])
+  assertEq(clean.ids.join(','), 'resume,current,result,next', '旧悬空组不能借用后来结果')
+  assertEq(clean.messages[1], current, '当前完整组保持原始引用')
+  assertEq(raw.length, 5, '完整历史不变')
+  assertEq(clean.messages.length, clean.ids.length, 'ID 对齐')
+})
+
+test('工具结果不可跨 user/system/assistant 消息闭合', () => {
+  for (const role of ['user', 'system', 'assistant'] as const) {
+    const raw = [assistantWithCalls(tc('a', 'read'), tc('b', 'read')), toolResult('a', 'read', 'first'),
+      text(role, 'boundary'), toolResult('b', 'read', 'late')]
+    const clean = sanitizeHistoryWithIds(raw, ['a', 't1', 'boundary', 't2'])
+    assertEq(clean.ids.join(','), 'boundary', '整个未闭合组与迟到孤儿结果被排除')
+  }
+})
+
+test('相邻完整组可复用调用 ID，结果按实际顺序保留并去除孤儿/重复结果', () => {
+  const raw = [assistantWithCalls(tc('a', 'read'), tc('b', 'read')), toolResult('b', 'read', 'b'),
+    toolResult('a', 'read', 'a'), toolResult('a', 'read', 'duplicate'), toolResult('orphan', 'read', 'orphan'),
+    assistantWithCalls(tc('a', 'read')), toolResult('a', 'read', 'new')]
+  const clean = sanitizeHistoryWithIds(raw, raw.map((_, i) => String(i)))
+  assertEq(clean.ids.join(','), '0,1,2,5,6', '完整原子组与 ID 保留顺序')
+  assertEq(sanitizeHistory(clean.messages).length, clean.messages.length, '清洗幂等')
+})
+
 console.log(`\n${failed === 0 ? '✅' : '❌'} ${passed} passed, ${failed} failed`)
 process.exit(failed === 0 ? 0 : 1)

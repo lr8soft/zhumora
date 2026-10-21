@@ -3,6 +3,9 @@ import { register } from 'node:module'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
 import { createPersistedAgentCallbacks } from '../src/main/agent/persistedCallbacks.ts'
 import { AgentAbortedError, type UIMessage, type ChatMessage } from '../src/shared/types.ts'
+import { buildCompletionReviewInput } from '../src/main/agent/completionReviewInput.ts'
+import { assertContextFits } from '../src/main/agent/contextBudget.ts'
+import { isProviderBusyError } from '../src/main/llm/providerRetry.ts'
 register('./helpers/providerBusyLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const originalFetch = globalThis.fetch
@@ -13,7 +16,11 @@ const frame = (delta: object, finish_reason: string | null = null) =>
 const ended = (delta: object, finish = 'stop') => new Response(frame(delta) + frame({}, finish) + 'data: [DONE]\n\n')
 const tool = { tool_calls: [{ index: 0, id: 'write-once', type: 'function',
   function: { name: 'write', arguments: '{}' } }] }
-function fixture(reviews: string[], options: { abort?: AbortController; reviewError?: boolean; reviewTool?: boolean; guidance?: boolean } = {}) {
+type Request = { messages: ChatMessage[]; tools?: unknown[]; stream?: boolean; reasoning_effort?: string;
+  max_tokens?: number; max_completion_tokens?: number }
+function fixture(reviews: string[], options: { abort?: AbortController; reviewError?: boolean; reviewTool?: boolean; guidance?: boolean;
+  signal?: AbortSignal; reasoningEffort?: 'high'; outputTokenParameter?: 'max_completion_tokens';
+  respond?: (request: Request, review: boolean) => Response | undefined } = {}) {
   const saved: UIMessage[] = []; const requests: { messages: ChatMessage[]; tools?: unknown[]; stream?: boolean }[] = []
   let normal = 0; let reviewed = 0; let executed = 0; let completed = 0; let id = 0; let streamed = ''
   let pendingGuidance = false
@@ -24,7 +31,10 @@ function fixture(reviews: string[], options: { abort?: AbortController; reviewEr
     permission: 'normal', execute: async () => { executed++; return { content: 'saved' } } })
   globalThis.fetch = async (_url, init) => {
     const request = JSON.parse(init!.body as string); requests.push(request)
-    if (String(request.messages[0]?.content).startsWith('[Completion review]')) {
+    const isReview = String(request.messages[0]?.content).startsWith('[Completion review]')
+    const override = options.respond?.(request, isReview)
+    if (override) return override
+    if (isReview) {
       reviewed++
       options.abort?.abort()
       if (options.reviewError) return new Response('review unavailable', { status: 503 })
@@ -38,9 +48,10 @@ function fixture(reviews: string[], options: { abort?: AbortController; reviewEr
   }
   const run = async (maxRounds = 20) => {
     try {
-      return await runAgent({ provider, messages: [{ role: 'user', content: 'implement and validate' }], messageIds: ['u'],
+      return await runAgent({ provider: { ...provider, outputTokenParameter: options.outputTokenParameter },
+        reasoningEffort: options.reasoningEffort, messages: [{ role: 'user', content: 'implement and validate' }], messageIds: ['u'],
         workspacePath: '', compaction: null, toolRegistry: registry, memoryEnabled: false, maxRounds,
-        signal: options.abort?.signal, permissionCheck: async () => true,
+        signal: options.signal ?? options.abort?.signal, permissionCheck: async () => true,
         takeCoordinationMessages: finalizing => {
           if (!finalizing || !pendingGuidance) return []
           assert.equal(saved.at(-1)!.content, '继续分析实现策略（cl', 'persist assistant before incoming guidance')
@@ -49,7 +60,7 @@ function fixture(reviews: string[], options: { abort?: AbortController; reviewEr
         } }, cb)
     } catch (error) { if (!(error instanceof AgentAbortedError)) cb.onError?.(error as Error); throw error }
   }
-  return { run, saved, requests, count: () => ({ normal, reviewed, executed, completed, streamed }) }
+  return { run, cb, saved, requests, count: () => ({ normal, reviewed, executed, completed, streamed }) }
 }
 const verdict = (decision: string) => JSON.stringify({ decision, reason: decision === 'continue' ? 'Candidate ends in unfinished speech' : 'Complete final delivery' })
 try {
@@ -85,7 +96,7 @@ try {
   for (const options of [{ reviewError: true }, { reviewTool: true }]) {
     const f = fixture([], options)
     await assert.rejects(f.run(), { name: 'AgentCompletionError', reason: 'unverified' })
-    assert.equal(f.count().reviewed, 1, 'review has exactly one HTTP attempt even when network retries are enabled')
+    assert.equal(f.count().reviewed, 1, 'non-busy review failures do not retry')
     assert.equal(f.count().executed, 1); assert.equal(f.count().completed, 0)
     if (options.reviewError) assert.match(f.saved.at(-1)!.content, /review unavailable/)
   }
@@ -100,6 +111,79 @@ try {
     await assert.rejects(f.run(1), { name: 'AgentCompletionError', reason: 'limit' })
     assert.equal(f.count().reviewed, 0); assert.equal(f.count().executed, 1); assert.equal(f.count().completed, 0)
     assert.ok(f.saved.some(m => m.generation?.status === 'limit'))
+  }
+  {
+    let rejected = 0
+    const f = fixture([verdict('final')], { reasoningEffort: 'high', respond(request, review) {
+      if (review) assert.equal(request.reasoning_effort, undefined, 'review inherits candidate compatibility downgrade')
+      if (request.reasoning_effort) { rejected++; return new Response('Unsupported parameter: reasoning_effort', { status: 400 }) }
+    } })
+    await f.run()
+    assert.equal(rejected, 2); assert.equal(f.count().completed, 1); assert.equal(f.count().executed, 1)
+  }
+  {
+    const f = fixture([verdict('final')], { outputTokenParameter: 'max_completion_tokens', respond(request, review) {
+      assert.equal(request.max_tokens, undefined)
+      if (review) assert.equal(request.max_completion_tokens, 4096)
+    } })
+    await f.run()
+    assert.equal(f.count().completed, 1); assert.equal(f.count().executed, 1)
+  }
+  // Busy retries use exactly the user's setting, independently of the semantic review budget.
+  for (const transport of ['http', 'sse'] as const) for (const limit of [0, 2, -1]) for (const recover of [false, true]) {
+    const settings = globalThis as typeof globalThis & { __testMaxRetries?: number }
+    settings.__testMaxRetries = limit
+    const abort = new AbortController(); let attempts = 0; let retries = 0
+    const f = fixture([verdict('final')], { signal: abort.signal, respond(_request, review) {
+      if (!review) return
+      attempts++
+      const busyCount = limit === -1 ? 4 : limit
+      if (!recover || attempts <= busyCount) return transport === 'http'
+        ? new Response('provider busy detail', { status: 429, headers: { 'retry-after': '0' } })
+        : new Response(frame({ reasoning_content: 'private control thought', content: '{"decision":' })
+          + 'data: {"error":{"code":429,"message":"provider busy detail"}}\n\n', { headers: { 'retry-after': '0' } })
+    } })
+    f.cb.onRetry = (_failed, maximum, error) => {
+      retries++; assert.equal(maximum, limit); assert.equal(isProviderBusyError(error), true)
+      if (!recover && limit === -1 && retries === 4) abort.abort()
+    }
+    try {
+      if (recover) { await f.run(); assert.equal(f.count().completed, 1) }
+      else {
+        await assert.rejects(f.run(), limit === -1 ? AgentAbortedError : { name: 'AgentCompletionError', reason: 'unverified' })
+        assert.equal(f.count().completed, 0)
+        if (limit !== -1) assert.match(f.saved.at(-1)!.content, /provider busy detail/)
+      }
+      assert.equal(retries, limit === -1 ? 4 : limit)
+      assert.equal(attempts, recover ? retries + 1 : limit === -1 ? 4 : limit + 1)
+      assert.equal(f.count().executed, 1, 'retrying review never replays completed tools')
+      assert.equal(f.saved.filter(m => m.role === 'tool').length, 1)
+      assert.doesNotMatch(f.count().streamed, /private control thought|decision/)
+    } finally { delete settings.__testMaxRetries }
+  }
+  {
+    const goal = '核'.repeat(2500); const candidate = '答'.repeat(1000)
+    const history: ChatMessage[] = [{ role: 'system', content: 'rules '.repeat(800) },
+      { role: 'user', content: goal }, { role: 'tool', content: '果'.repeat(500), tool_call_id: 'done' },
+      { role: 'assistant', content: candidate }]
+    assertContextFits(history, 8192)
+    const request = buildCompletionReviewInput(goal, candidate, history, 8192)
+    assertContextFits(request.messages, 8192, [], request.maxTokens)
+    const evidence = JSON.parse(String(request.messages[1].content))
+    assert.equal(evidence.goal, goal); assert.equal(evidence.candidate, candidate)
+    assert.deepEqual(evidence.recentInputs, [], 'do not spend context on a duplicate goal')
+    const snapshot = JSON.stringify(history)
+    for (const window of [4096, 8192, 16384]) {
+      const large = buildCompletionReviewInput(goal.repeat(8), candidate.repeat(32), history, window)
+      assertContextFits(large.messages, window, [], large.maxTokens)
+      assert.match(String(large.messages[1].content), /omitted/)
+    }
+    assert.equal(JSON.stringify(history), snapshot, 'review projection cannot mutate history')
+    const image = buildCompletionReviewInput('look', 'done', [{ role: 'user', content: [
+      { type: 'text', text: 'look' }, { type: 'image_url', image_url: { url: 'data:image/png;base64,PRIVATE_IMAGE' } }
+    ] }], 8192)
+    assert.doesNotMatch(JSON.stringify(image), /PRIVATE_IMAGE/)
+    assert.match(JSON.stringify(image), /image\(s\) omitted/)
   }
 } finally { globalThis.fetch = originalFetch }
 console.log('Completion guard: half replies, bounded review/continuation, no tool replay, abort and limit propagation passed')

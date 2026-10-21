@@ -138,39 +138,27 @@ export function sanitizeHistoryWithIds(
   messages: ChatMessage[],
   ids: string[]
 ): { messages: ChatMessage[]; ids: string[] } {
-  // 预收集所有 tool 结果 id
-  const resultIds = new Set<string>()
-  for (const m of messages) {
-    if (m.role === 'tool' && m.tool_call_id) resultIds.add(m.tool_call_id)
-  }
-
   const out: ChatMessage[] = []
   const outIds: string[] = []
-  const openCallIds = new Set<string>() // 已见 assistant 调用、尚未见其结果
-
   for (let i = 0; i < messages.length; i++) {
     const m = messages[i]
-    if (m.role === 'assistant') {
-      if (m.tool_calls && m.tool_calls.length > 0) {
-        // 任一结果缺失或调用参数损坏 → 整组丢弃（其已有结果因
-        // openCallIds 未登记也会被当孤儿丢弃）。严格后端会在重放
-        // malformed arguments 时直接 500，且服务重启无法修复这段历史。
-        const allPresent = m.tool_calls.every(tc => resultIds.has(tc.id))
-        if (!allPresent || !hasValidToolCalls(m)) continue
-        for (const tc of m.tool_calls) openCallIds.add(tc.id)
-      } else if (!hasContent(m)) {
-        continue // 空 assistant 消息无意义
+    if (m.role === 'assistant' && m.tool_calls?.length) {
+      // IDs may be reused in later rounds. Only the adjacent atomic group can
+      // close these calls; never borrow results across a user/assistant boundary.
+      const start = i
+      const pending = new Set(m.tool_calls.map(call => call.id))
+      const results: number[] = []
+      while (messages[i + 1]?.role === 'tool') {
+        const index = ++i
+        const callId = messages[index].tool_call_id
+        if (callId && pending.delete(callId)) results.push(index)
       }
-      out.push(m)
-      outIds.push(ids[i])
-    } else if (m.role === 'tool') {
-      // 仅保留"前面存在对应调用"的 tool 结果
-      if (m.tool_call_id && openCallIds.has(m.tool_call_id)) {
-        openCallIds.delete(m.tool_call_id)
-        out.push(m)
-        outIds.push(ids[i])
+      if (!hasValidToolCalls(m) || pending.size) continue
+      for (const index of [start, ...results]) {
+        out.push(messages[index])
+        outIds.push(ids[index])
       }
-    } else {
+    } else if (m.role !== 'tool' && (m.role !== 'assistant' || hasContent(m))) {
       out.push(m)
       outIds.push(ids[i])
     }
