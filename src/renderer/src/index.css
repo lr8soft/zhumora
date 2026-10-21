@@ -745,20 +745,29 @@ select.input-field { cursor: pointer; }
 .memory-foot { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; color: var(--app-color-text-mute); font-size: 0.733rem; }
 
 /* 用量 */
-.usage-table-wrap { overflow-x: auto; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); margin-bottom: 14px; }
+.usage-table-wrap { overflow-x: auto; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
 .usage-table { width: 100%; border-collapse: collapse; font-size: 0.8rem; }
 .usage-table th { padding: 9px 12px; color: var(--app-color-text-mute); border-bottom: 1px solid var(--app-color-border); background: var(--app-chrome-bg); font-size: 0.733rem; font-weight: 600; text-align: right; }
 .usage-table th:first-child { text-align: left; }
 .usage-table td { padding: 9px 12px; border-bottom: 1px solid var(--app-color-border); text-align: right; }
 .usage-table td:first-child { text-align: left; font-family: Consolas, Monaco, monospace; color: var(--app-color-text); }
-.usage-table tr:last-child td { border-bottom: 0; }
+.usage-table tbody tr:last-child td { border-bottom: 0; }
+.usage-table tfoot td { border-top: 1px solid var(--app-color-border-strong); border-bottom: 0; background: var(--app-chrome-bg); font-weight: 600; }
+.usage-table tfoot td:first-child { font-family: "Segoe UI", "Noto Sans SC", "Microsoft YaHei", system-ui, sans-serif; }
 .usage-table .num-input { color: var(--app-color-primary-strong); }
 .usage-table .num-output { color: var(--app-color-warn); }
 .usage-table .num-total { color: var(--app-color-text); font-weight: 600; }
 .usage-table .num-count { color: var(--app-color-text-soft); }
-.chart-panel { padding: 13px; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-color-surface); }
-.chart-panel h3 { margin-bottom: 10px; font-size: 0.867rem; font-weight: 650; }
-.chart-toolbar { display: flex; align-items: center; gap: 8px; margin-bottom: 4px; flex-wrap: wrap; }
+/* 用量统计：总览卡片 + 图表工具栏分组（时间范围 / 拆分 / 指标） */
+.usage-cards { display: grid; grid-template-columns: repeat(auto-fit, minmax(120px, 1fr)); gap: 10px; }
+.usage-card { display: flex; flex-direction: column; gap: 4px; padding: 10px 12px; border: 1px solid var(--app-color-border); border-radius: 6px; background: var(--app-chrome-bg); }
+.usage-card-label { color: var(--app-color-text-mute); font-size: 0.733rem; }
+.usage-card-value { font-family: Consolas, Monaco, monospace; font-size: 1.05rem; font-weight: 650; color: var(--app-color-text); }
+.usage-card-value.card-input { color: var(--app-color-primary-strong); }
+.usage-card-value.card-output { color: var(--app-color-warn); }
+.chart-toolbar { display: flex; align-items: center; gap: 12px; margin-bottom: 10px; flex-wrap: wrap; }
+.chart-group { display: inline-flex; align-items: center; gap: 6px; }
+.chart-group-label { font-size: 0.733rem; color: var(--app-color-text-mute); white-space: nowrap; }
 .chart-seg { display: inline-flex; border: 1px solid var(--app-color-border); border-radius: 6px; overflow: hidden; background: var(--app-chrome-bg); }
 .seg { padding: 4px 11px; font-size: 0.733rem; color: var(--app-color-text-soft); background: transparent; border: 0; cursor: pointer; }
 .seg + .seg { border-left: 1px solid var(--app-color-border); }

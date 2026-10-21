@@ -429,15 +429,25 @@ export default {
     usage: {
       hint: 'Token usage statistics. Recorded in 30-minute buckets, aggregated across sessions.',
       noData: 'No usage data yet. Data will be recorded after you send messages.',
+      overview: 'Overview',
+      byModel: 'By model',
+      byModelHint: 'All-time, grouped by model',
+      trend: 'Usage trend',
+      trendHint: '24h / 3d use 30-minute buckets; 7d / 30d aggregate by calendar day',
       model: 'Model',
       inputTokens: 'Input Tokens',
       outputTokens: 'Output Tokens',
       totalTokens: 'Total Tokens',
       requests: 'Requests',
-      chart30m: '30 min',
-      chartDay: 'By day',
-      chart30mHint: '30-minute recording interval; each point = total usage across all model calls in that half-hour',
-      chartDayHint: 'Aggregated by calendar day for long-term trends'
+      total: 'Total',
+      range: 'Range',
+      split: 'Split',
+      metric: 'Metric',
+      splitAll: 'All models',
+      splitByModel: 'By model',
+      metricTotal: 'Total',
+      metricInput: 'Input',
+      metricOutput: 'Output'
     }
   }
 }

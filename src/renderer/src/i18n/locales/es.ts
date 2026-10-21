@@ -410,15 +410,25 @@ export default {
     usage: {
       hint: 'Estadísticas de uso de tokens. Registro en bloques de 30 minutos, agregado entre sesiones.',
       noData: 'Sin datos de uso. Los datos se registrarán después de enviar mensajes.',
+      overview: 'Resumen',
+      byModel: 'Por modelo',
+      byModelHint: 'Período completo, agrupado por modelo',
+      trend: 'Tendencia de uso',
+      trendHint: '24h / 3d usan bloques de 30 minutos; 7d / 30d agregan por día natural',
       model: 'Modelo',
       inputTokens: 'Tokens de Entrada',
       outputTokens: 'Tokens de Salida',
       totalTokens: 'Total Tokens',
       requests: 'Solicitudes',
-      chart30m: '30 min',
-      chartDay: 'Por día',
-      chart30mHint: 'Intervalo de 30 minutos; cada punto = uso total de todas las llamadas en esa media hora',
-      chartDayHint: 'Agregado por día natural para tendencias a largo plazo'
+      total: 'Total',
+      range: 'Rango',
+      split: 'División',
+      metric: 'Métrica',
+      splitAll: 'Todos los modelos',
+      splitByModel: 'Por modelo',
+      metricTotal: 'Total',
+      metricInput: 'Entrada',
+      metricOutput: 'Salida'
     }
   }
 }

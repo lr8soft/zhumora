@@ -410,15 +410,25 @@ export default {
     usage: {
       hint: 'Token-Nutzungsstatistiken. Erfassung in 30-Minuten-Buckets, zusammengefasst über alle Sitzungen.',
       noData: 'Noch keine Nutzungsdaten. Daten werden nach dem Senden von Nachrichten erfasst.',
+      overview: 'Übersicht',
+      byModel: 'Nach Modell',
+      byModelHint: 'Gesamtzeitraum, nach Modell gruppiert',
+      trend: 'Nutzungstrend',
+      trendHint: '24h / 3d verwenden 30-Minuten-Buckets; 7d / 30d aggregiert nach Kalendertag',
       model: 'Modell',
       inputTokens: 'Input-Tokens',
       outputTokens: 'Output-Tokens',
       totalTokens: 'Gesamt-Tokens',
       requests: 'Anfragen',
-      chart30m: '30 Min',
-      chartDay: 'Täglich',
-      chart30mHint: '30-Minuten-Intervall; jeder Punkt = Summe aller Modellaufrufe in diesem Halbstundenfenster',
-      chartDayHint: 'Nach Kalendertag aggregiert für langfristige Trends'
+      total: 'Summe',
+      range: 'Zeitraum',
+      split: 'Aufteilung',
+      metric: 'Metrik',
+      splitAll: 'Alle Modelle',
+      splitByModel: 'Nach Modell',
+      metricTotal: 'Gesamt',
+      metricInput: 'Input',
+      metricOutput: 'Output'
     }
   }
 }

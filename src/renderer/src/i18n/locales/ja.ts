@@ -410,15 +410,25 @@ export default {
     usage: {
       hint: 'トークン使用量統計。30分ごとにデータポイントを記録し、セッション間で集計します。',
       noData: '使用量データがありません。メッセージ送信後に自動記録されます。',
+      overview: '概要',
+      byModel: 'モデル別',
+      byModelHint: '全期間、モデル別にグループ化',
+      trend: '使用量トレンド',
+      trendHint: '24h / 3d は30分バケット、7d / 30d は自然日単位で集計',
       model: 'モデル',
       inputTokens: '入力トークン',
       outputTokens: '出力トークン',
       totalTokens: '合計トークン',
       requests: 'リクエスト数',
-      chart30m: '30分',
-      chartDay: '日別',
-      chart30mHint: '30分間隔の記録。各点はその半時間内の全モデル呼び出しの合計使用量',
-      chartDayHint: '自然日単位で集計し、長期トレンドを確認'
+      total: '合計',
+      range: '期間',
+      split: '区分',
+      metric: '指標',
+      splitAll: '全モデル',
+      splitByModel: 'モデル別',
+      metricTotal: '合計',
+      metricInput: '入力',
+      metricOutput: '出力'
     }
   }
 }

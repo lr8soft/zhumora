@@ -457,15 +457,25 @@ export default {
     usage: {
       hint: 'Token 用量统计。每 30 分钟一个数据点，跨会话汇总。',
       noData: '暂无用量数据。发送消息后将自动记录。',
+      overview: '总览',
+      byModel: '按模型',
+      byModelHint: '全部时间，按模型分组',
+      trend: '用量趋势',
+      trendHint: '24h / 3d 使用 30 分钟桶；7d / 30d 按自然日聚合',
       model: '模型',
       inputTokens: '输入 Tokens',
       outputTokens: '输出 Tokens',
       totalTokens: '总 Tokens',
       requests: '请求次数',
-      chart30m: '30 分钟',
-      chartDay: '按天',
-      chart30mHint: '记录间隔为 30 分钟，每个点 = 该半小时内所有模型调用的累计用量',
-      chartDayHint: '按自然日聚合，便于查看长期趋势'
+      total: '合计',
+      range: '时间范围',
+      split: '拆分',
+      metric: '指标',
+      splitAll: '全部模型',
+      splitByModel: '按模型',
+      metricTotal: '总量',
+      metricInput: '输入',
+      metricOutput: '输出'
     }
   }
 }
