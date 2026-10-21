@@ -107,6 +107,32 @@ try {
     assert.equal(f.saved.at(-1)!.generation?.status, 'unverified')
   }
   {
+    const abort = new AbortController(); const f = fixture([verdict('final')], { signal: abort.signal })
+    const publish = f.cb.onAssistantGeneration
+    f.cb.onAssistantGeneration = (id, generation) => {
+      publish?.(id, generation)
+      if (generation.status === 'complete') abort.abort()
+    }
+    await assert.rejects(f.run(), AgentAbortedError)
+    assert.equal(f.count().completed, 0); assert.equal(f.count().executed, 1)
+    assert.equal(f.saved.at(-1)!.generation?.status, 'unverified')
+  }
+  {
+    let reviews = 0; let retries = 0
+    const f = fixture([verdict('final')], { reasoningEffort: 'high', respond(request, review) {
+      if (!review) return
+      reviews++
+      if (reviews === 1) return new Response(frame({ reasoning_content: 'discard this attempt' })
+        + 'data: {"error":{"code":429,"message":"busy"}}\n\n', { headers: { 'retry-after': '0' } })
+      if (request.reasoning_effort) return new Response('Unsupported parameter: reasoning_effort', { status: 400 })
+    } })
+    f.cb.onRetry = () => { retries++ }
+    await f.run()
+    assert.equal(reviews, 3); assert.equal(retries, 1)
+    assert.equal(f.count().completed, 1); assert.equal(f.count().executed, 1)
+    assert.doesNotMatch(JSON.stringify(f.saved), /discard this attempt/)
+  }
+  {
     const f = fixture([])
     await assert.rejects(f.run(1), { name: 'AgentCompletionError', reason: 'limit' })
     assert.equal(f.count().reviewed, 0); assert.equal(f.count().executed, 1); assert.equal(f.count().completed, 0)

@@ -40,6 +40,8 @@ assert.equal(retryMessageKey({ failedAttempt: 1, maxRetries: 5 }), 'chat.retryin
 
 try {
   for (const first of [() => new Response('busy', { status: 429 }),
+    () => new Response('busy: upstream diagnostic mentions invalid tool call arguments', { status: 429, headers: { 'retry-after': '0' } }),
+    () => sseError({ code: 429, message: 'busy: failed to parse tool call arguments as json' }),
     () => sseError(rateError), () => sseError({ code: '429', message: 'busy' }),
     () => sseError({ type: 'rate_limit_error', message: 'try later' })]) {
     let attempts = 0, retries = 0, errors = 0
@@ -92,6 +94,13 @@ try {
   {
     let attempts = 0
     globalThis.fetch = async () => ++attempts === 1 ? new Response('busy', { status: 429 })
+      : Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'ready' } }] })
+    assert.equal(await complete(provider, params.messages), 'ready'); assert.equal(attempts, 2)
+  }
+  {
+    let attempts = 0
+    globalThis.fetch = async () => ++attempts === 1
+      ? Response.json({ error: { code: 429, message: 'busy: func_args_not_string from upstream' } })
       : Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'ready' } }] })
     assert.equal(await complete(provider, params.messages), 'ready'); assert.equal(attempts, 2)
   }

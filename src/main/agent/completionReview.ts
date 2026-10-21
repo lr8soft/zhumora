@@ -62,7 +62,16 @@ export async function checkFinalCandidate(result: RoundResult, state: {
   }
   result.generation = markGeneration(result, review.decision === 'final' ? 'complete' : 'unverified', review.reason)
   publish()
-  if (review.decision === 'final') return true
+  if (review.decision === 'final') {
+    // 发布判定会同步通知 UI；用户可能恰好在这一刻停止运行。中止优先于成功：
+    // 候选降级为未验证后再传播中止，不能随后发布 running=false 的成功收尾。
+    if (state.signal?.aborted) {
+      result.generation = markGeneration(result, 'unverified', 'Run aborted before the final result was published.')
+      publish()
+      throw new AgentAbortedError()
+    }
+    return true
+  }
   if (review.decision !== 'continue' || !state.recovery.takeSemanticContinuation()) {
     throw new AgentCompletionError('unverified', 'response', review.reason)
   }

@@ -187,6 +187,16 @@ export async function runAgent(
         cb, recovery, reasoningEffort, toolsAvailable: tools.length > 0, candidateId: conversation.ids.at(-1) ?? null })) continue
       const lateGuidance = opts.takeCoordinationMessages?.(true) ?? []
       if (lateGuidance.length) { appendCoordinationMessages(conversation, lateGuidance); continue }
+      // 收尾前最后一道中止检查：复核被关闭（纯文本任务）或取消在完成发布期间到达时，
+      // 同样不能发布运行成功，候选也不能继续显示为已确认完整。
+      if (signal?.aborted) {
+        const candidateId = conversation.ids.at(-1)
+        if (candidateId && result.generation) {
+          cb.onAssistantGeneration?.(candidateId,
+            markGeneration(result, 'unverified', 'Run aborted before the final result was published.'))
+        }
+        throw new AgentAbortedError()
+      }
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 

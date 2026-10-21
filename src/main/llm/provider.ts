@@ -162,7 +162,15 @@ export async function streamChat(
         // duplicate a user-visible message or execute a tool. Ordinary output cannot replay.
         shouldRetry: (err) => (!state.emitted || params.purpose === 'review') && (params.retryOnlyRateLimit
           ? isProviderBusyError(err) : shouldRetryProviderError(err)),
-        onRetry: (failedAttempt, max, error) => cb?.onRetry?.(failedAttempt, max, error)
+        onRetry: (failedAttempt, max, error) => {
+          // Review output is private control data: discarding a busy attempt cannot
+          // duplicate a user-visible message or execute a tool, so the retried
+          // attempt starts with nothing emitted and no reusable partial control
+          // output. That keeps the one-shot parameter downgrade available for the
+          // review request itself.
+          if (params.purpose === 'review') { state.emitted = false; state.partial = null }
+          cb?.onRetry?.(failedAttempt, max, error)
+        }
       }
     )
     cb?.onComplete?.(result.content, result.toolCalls)
