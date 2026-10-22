@@ -7,7 +7,6 @@ import { serializeMessages, retryAfterMilliseconds } from '../src/main/llm/respo
 import { nodeStatus } from '../src/renderer/src/flow/projection.ts'
 import { turnStatus } from '../src/renderer/src/flow/status.ts'
 import { applyAssistantEnd, applyGenerationUpdate, applyHistorySnapshot } from '../src/renderer/src/agentEvents.ts'
-import { RecoveryBudget } from '../src/main/agent/recoveryPolicy.ts'
 import { decideTurnOutcome } from '../src/main/agent/turnDecision.ts'
 import { applyReasoningParams } from '../src/main/llm/reasoning.ts'
 import { withRetry, HttpError } from '../src/main/net/retryCore.ts'
@@ -37,8 +36,18 @@ assert.equal(applyHistorySnapshot(event, assessed, true)[0].generation!.status, 
 assert.equal(applyHistorySnapshot(event, assessed, false)[0].generation!.status, 'complete', 'a read settling after run cleanup cannot revert assessment')
 assert.equal(applyAssistantEnd('s', 'm', 'partial', [], undefined, assessed, 1, generation)[0].generation!.status, 'complete')
 assert.equal(messageFromRow({ id: 'old', session_id: 's', role: 'assistant', content: 'old', timestamp: 0 }).generation, undefined)
-assert.deepEqual(normalizeProviderResponseOptions({}), { completionReview: true, captureResponses: false, reasoningHistory: 'auto', outputTokenParameter: 'auto' })
-assert.throws(() => validateProviderResponseOptions({ completionReview: 'yes' } as never))
+for (const status of ['checking', 'unverified'] as const) {
+  const legacyGeneration = { version: 1 as const, status, purpose: 'review' as const,
+    reason: 'Original assessment', requestId: 'original-request', assessmentRevision: 2 }
+  const original = { id: 'legacy-' + status, session_id: 's', role: 'assistant' as const,
+    content: 'Original answer', timestamp: 0, status: 'done' as const, generation: JSON.stringify(legacyGeneration) }
+  const restored = messageFromRow(original)
+  assert.deepEqual(restored.generation, legacyGeneration, 'retired review metadata remains readable')
+  assert.equal(restored.content, original.content)
+  assert.equal(nodeStatus(restored, false), 'unresolved', 'old assessments cannot become successful after migration')
+}
+assert.deepEqual(normalizeProviderResponseOptions({}), { captureResponses: false, reasoningHistory: 'auto', outputTokenParameter: 'auto' })
+assert.throws(() => validateProviderResponseOptions({ captureResponses: 'yes' } as never))
 assert.throws(() => validateProviderResponseOptions({ outputTokenParameter: 'invalid' } as never), /outputTokenParameter/)
 const provider = { id: 'p', name: 'p', baseUrl: 'https://api.deepseek.com/v1', apiKey: '', defaultModel: 'm', enabled: true }
 for (const outputTokenParameter of ['auto', 'max_tokens', 'max_completion_tokens'] as const) {
@@ -49,6 +58,21 @@ for (const outputTokenParameter of ['auto', 'max_tokens', 'max_completion_tokens
   assert.deepEqual(normalizeSettings(migrated), migrated, 'normalization is idempotent')
 }
 assert.equal(normalizeSettings({ schemaVersion: 17, providers: [provider] }).providers[0].outputTokenParameter, 'auto')
+for (const completionReview of [undefined, false, true]) {
+  const currentProvider = { ...provider, apiKey: 'kept-key', headers: { 'x-custom': 'kept-header' },
+    maxConcurrency: 3, allowSubagents: false, captureResponses: true, reasoningHistory: 'preserve' as const,
+    outputTokenParameter: 'max_completion_tokens' as const, temperature: 0.25 }
+  const legacyProvider = completionReview === undefined ? currentProvider : { ...currentProvider, completionReview }
+  const input = { schemaVersion: 18, maxRetries: -1, providers: [legacyProvider] }
+  const migrated = normalizeSettings(input)
+  assert.equal(migrated.schemaVersion, 19)
+  assert.equal(Object.hasOwn(migrated.providers[0], 'completionReview'), false, 'old review settings are removed at the storage boundary')
+  assert.deepEqual(migrated.providers[0], normalizeSettings({ providers: [currentProvider] }).providers[0],
+    'retiring review preserves all other provider settings')
+  assert.equal(migrated.maxRetries, -1, 'settings migration must preserve unlimited retries')
+  assert.deepEqual(normalizeSettings(migrated), migrated, 'review retirement migration is idempotent')
+  if (completionReview !== undefined) assert.equal(Object.hasOwn(legacyProvider, 'completionReview'), true, 'normalization does not mutate input')
+}
 const messages = [{ role: 'assistant' as const, content: 'answer', reasoning: 'thought', reasoningSource: { providerId: 'p', model: 'm' } }]
 assert.equal(serializeMessages(messages, provider, 'm', true)[0].reasoning_content, 'thought')
 assert.equal(serializeMessages(messages, provider, 'other', true)[0].reasoning_content, undefined)
@@ -75,11 +99,6 @@ assert.equal(retryAfterMilliseconds(new Headers({ 'retry-after-ms': '25' })), 25
   await assert.rejects(withRetry(async () => { throw new HttpError(429, 'busy', 60000) },
     { maxRetries: -1, label: 'retry-after abort', signal: aborted.signal, onRetry: () => aborted!.abort() }), { name: 'AbortError' })
 }
-const budget = new RecoveryBudget()
-budget.recordEmptyResponse(); budget.recordTruncation(); budget.recordTruncation()
-assert.equal(budget.takeSemanticContinuation(), true); budget.resetAfterToolRound()
-assert.equal(budget.canRecoverEmptyResponse(), false); assert.equal(budget.takeSemanticContinuation(), false)
-assert.equal(budget.takeReview(), true); assert.equal(budget.takeReview(), true); assert.equal(budget.takeReview(), false)
 assert.deepEqual(decideTurnOutcome({ finishReason: 'stop', refusal: 'declined', toolCallCount: 0, toolCallsValid: true,
   contentEmpty: true, canRecoverEmptyResponse: true, canRecoverTruncation: true }), { kind: 'fail', cause: 'refused' })
-console.log('Generation state: migration, metadata, UI, reasoning binding, retry hints and independent budgets passed')
+console.log('Generation state: review retirement migration, legacy metadata, UI, reasoning binding and retry hints passed')

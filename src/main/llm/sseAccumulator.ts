@@ -94,7 +94,7 @@ export function applySseData(acc: StreamAccumulator, data: string, context?: Str
   }
   if (!json || typeof json !== 'object' || Array.isArray(json)) throw invalidPayload()
   if (json.error != null) throw new ProviderStreamError('provider', json.error, {
-    ...context, requestId: json.request_id ?? context?.requestId
+    ...context, envelope: json, responseBody: data, requestId: json.request_id ?? context?.requestId
   })
   if (!Array.isArray(json.choices)) throw invalidPayload()
   if (typeof json.model === 'string') acc.generation = { version: 1, status: 'complete', ...acc.generation, returnedModel: json.model }

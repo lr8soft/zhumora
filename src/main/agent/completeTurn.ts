@@ -1,4 +1,5 @@
 import type { ChatMessage } from '../../shared/types.ts'
+import { AgentAbortedError } from '../../shared/types.ts'
 import { log } from '../llm/logger.ts'
 import type { AgentEventCallbacks, RoundResult } from './eventCallbacks.ts'
 import type { WorkingConversation } from './workingConversation.ts'
@@ -7,11 +8,12 @@ import { persistIncompleteToolRound, persistUnexecutedToolRound } from './turnEf
 import { AgentCompletionError, type CompletionFailure } from './completionError.ts'
 import { markGeneration, roundAssistant } from './roundOutput.ts'
 
-/** Persist the current assistant before draining guidance. Rejected early finals stay real history, not fabricated tool calls. */
+/** Persist the assistant before guidance; a normal delivery can still require another coordinated turn. */
 export function completeTurn(result: RoundResult, round: number, state: {
   conversation: WorkingConversation
   allAssistantMessages: ChatMessage[]
   cb: AgentEventCallbacks
+  signal?: AbortSignal
   takeCoordinationMessages?: (finalizing?: boolean) => CoordinationMessage[]
 }): boolean {
   const { cb, conversation, allAssistantMessages } = state
@@ -19,16 +21,22 @@ export function completeTurn(result: RoundResult, round: number, state: {
   const assistant = roundAssistant(result)
   conversation.append(assistant, id)
   allAssistantMessages.push(assistant)
-  const messages = state.takeCoordinationMessages?.(true) ?? []
-  if (messages.length) {
-    if (result.generation?.status === 'checking') {
-      result.generation = markGeneration(result, 'unverified', 'New coordination input requires further work.')
-      if (id) cb.onAssistantGeneration?.(id, result.generation)
+  const messages = state.signal?.aborted ? [] : state.takeCoordinationMessages?.(true) ?? []
+  // Persistence and coordination callbacks can synchronously cancel this run. Use the
+  // assistant's exact ID before appending guidance, rather than the conversation tail.
+  if (state.signal?.aborted) {
+    if (id && result.generation) {
+      result.generation = { ...result.generation, status: 'incomplete', termination: 'aborted',
+        reason: 'Run aborted before the final result was published.' }
+      cb.onAssistantGeneration?.(id, result.generation)
     }
+    throw new AgentAbortedError()
+  }
+  if (messages.length) {
     appendCoordinationMessages(conversation, messages)
     return false
   }
-  if (result.generation?.status !== 'checking') log('info', `Agent completed after ${round} round(s)`)
+  log('info', `Agent completed after ${round} round(s)`)
   return true
 }
 
@@ -37,7 +45,7 @@ export function failTurn(cause: CompletionFailure, result: RoundResult, allAssis
   cb: AgentEventCallbacks, stage: 'response' | 'finalization' = 'response'): never {
   const error = new AgentCompletionError(cause, stage, result.refusal || result.generation?.reason
     || ((cause === 'refused' || cause === 'finish_reason') ? result.finishReason : undefined))
-  result.generation = markGeneration(result, cause === 'refused' ? 'refused' : cause === 'unverified' ? 'unverified' : 'incomplete',
+  result.generation = markGeneration(result, cause === 'refused' ? 'refused' : 'incomplete',
     result.generation?.reason || cause)
   if (result.toolCalls.length) {
     if (cause === 'length' || cause === 'stream' || cause === 'malformed') {

@@ -2,6 +2,9 @@ import assert from 'node:assert/strict'
 import { applySseData, createStreamAccumulator } from '../src/main/llm/sseAccumulator.ts'
 import { readChatStream } from '../src/main/llm/streamResponse.ts'
 import { ProviderStreamError } from '../src/main/llm/streamErrors.ts'
+import { httpResponseError } from '../src/main/llm/responseParsing.ts'
+import { createPersistedAgentCallbacks } from '../src/main/agent/persistedCallbacks.ts'
+import type { UIMessage } from '../src/shared/types.ts'
 
 const original = { message: 'Upstream failed: Authorization: Bearer original-value\nMore details',
   code: 503, type: 'upstream_error', param: null,
@@ -44,4 +47,16 @@ await assert.rejects(readChatStream(new Response('data: {"error":"failed","reque
   assert.match(e.message, /Request ID: frame-id/)
   return true
 })
-console.log('Provider error details: original nested fields, string errors, request context and cleanup passed')
+{
+  const saved: UIMessage[] = []
+  const cb = createPersistedAgentCallbacks('http-failure', { addMessage: message => saved.push(message), addTokenUsage() {} },
+    () => 'http-error', {})
+  const envelope = { error: original, trace: { upstream: 'original-trace' } }
+  const failure = await httpResponseError(Response.json(envelope, { status: 503, headers: { 'x-request-id': 'failed-request' } }))
+  cb.onError?.(failure)
+  assert.equal(saved[0].generation?.providerError?.httpStatus, 503)
+  assert.equal(saved[0].generation?.providerError?.requestId, 'failed-request')
+  assert.deepEqual(saved[0].generation?.providerError?.envelope, envelope)
+  assert.match(saved[0].content, /original-trace/)
+}
+console.log('Provider error details: original nested fields, envelopes, persistent HTTP diagnostics and cleanup passed')

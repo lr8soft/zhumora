@@ -1,8 +1,8 @@
 # LLM Provider 响应异常调研与完整治理方案
 
-调研日期：2026-10-20（Asia/Shanghai）  
+调研日期：2026-10-20；主流实现复核：2026-10-22（Asia/Shanghai）
 项目基线：Zhumora 0.5.2，Git HEAD 88f09cd；空响应修复前对照点 45356e8。  
-文档性质：前 15 节保留调研时的缺口、证据与设计；第 16 节记录用户授权后的实际实现。当前实现以 ARCHITECTURE.md 为准；原生协议等后续建议不能视为已实现。未提交代码。
+文档性质：前 15 节保留最初调研的缺口、证据与设计，第 16–18 节记录历史实现。**第 19 节按 OpenCode/Codex 公开源码修订方案，取代默认强制语义复核；第 20 节记录用户授权后的实际实现。** 当前实现以 ARCHITECTURE.md 为准；原生协议等未实现建议不能视为现状。本轮不提交代码。
 
 ## 1. 结论与范围
 
@@ -563,3 +563,154 @@ Responses/Claude/Gemini 只在明确需要时各自实现解码与 Provider 状�
 ### 18.6 仍未实现
 
 沿用第 16/17 节的边界：未新增完整审计库与请求回放 UI、原生 Responses/Claude/Gemini 适配器、Provider 自动切换、未知模型的通用 reasoning 回传，也未做真实模型下的复核准确率评测；原始截图那一轮的线上终止原因仍无法由截图证明。本轮未修改本地模型部署或采样参数。
+
+## 19. 按 OpenCode / Codex 修订方案（2026-10-22，实施见第 20 节）
+
+### 19.1 结论与证据范围
+
+**取消普通收尾的强制第二次 LLM 语义复核，改为协议终态、实际交付、工具后续与运行状态共同裁决；Provider 错误采用统一分类和恢复。** 这取代第 6、8、9、12 节批次 E 和第 14 节中把默认语义复核作为必需条件的建议。第 16–18 节仍是实际历史实现记录，不代表该设计继续被推荐。ARCHITECTURE.md 暂不改写为新行为，因为本轮只修订方案。
+
+本轮读取的是以下固定提交的官方源码，不把滚动分支或文档搜索缓存当成固定实现：
+
+| 项目 | 固定版本 | 核查范围 |
+|---|---|---|
+| OpenCode | `9496ff842cc8ed3bb3db7d8e7d946c6262d9be72`，2026-10-22 01:06:18 UTC，`@opencode/core` 2.1.2 | `packages/core/src/session/runner/`、`packages/ai/src/provider-error.ts`、Chat 协议及相关测试 |
+| Codex | `45179176e52ab890a3cf5ce47e8ab585e7295f7e`，2026-10-22 01:08:35 UTC | `codex-rs/core/src/session/turn.rs`、Responses SSE、错误分类、流恢复及相关测试 |
+
+OpenCode 已迁移到 `packages/core/`；Context7/搜索缓存中的旧 `packages/opencode/src/session/processor.ts`、旧无限或 5 次重试不能冒充这个提交的行为。Context7 与官方说明用于索引和配置核对，实现结论以固定源码为准。没有执行上游完整测试；下表区分源码路径推导与已有测试证据。结论只覆盖公开核心，不推断闭源服务或所有插件的行为。
+
+### 19.2 主流正常完成流程
+
+| 问题 | OpenCode | Codex | Zhumora 采用方式 |
+|---|---|---|---|
+| 普通收尾是否必须额外问一个 LLM | 正常 step 返回 `Completed(needsContinuation)`，主循环没有默认 JSON 语义 judge [O1][O2] | 普通 turn 按 `needs_follow_up`、pending input 和已配置 Stop hooks 收尾，没有默认第二次 JSON LLM 判定 [C1] | 删除正常完成链中的强制复核，不将其改名为另一种默认验证器 |
+| 工具结果是否需要模型接续 | 本地工具 called/settled 使 `needsContinuation=true` [O3] | 完整工具 item 设置 `needs_follow_up=true`；`end_turn=false` 也可要求继续 [C1][C2] | 保留现有完整工具组 → 全部结果 → 下一轮，并在完成前消费协调输入 |
+| 正常终态但没有正文/工具 | `TestLLM.stop()` 无正文无工具，runner 测试允许它结束；reasoning-only 同样可结束是路径推导 [O4] | 无工具、pending input 或阻塞 hook 时，合法 completed 即使 `last_agent_message=None` 也可结束；为源码推导 [C1][C2] | 不复制此缺口；保留本项目已验证的空交付有界恢复 |
+| 流缺少终态 | unknown finish / 缺 finish 按 incomplete-stream 恢复 [O1][O5] | EOF 缺 response.completed 明确报流错误，有专门测试；completed 后不必等待连接 EOF [C3] | 保留缺 finish、流中断与 length 的独立分类，不恢复到“HTTP 200/EOF 就成功” |
+| 是否证明用户目标全部完成 | 正常结束不包含通用目标语义证明 | turn 的 completed/failed/interrupted 与模型响应终态分开 [C1][C7] | completed 表示运行正常交付和结束，验收仍依据正文、工具事实及项目测试 |
+
+Codex 的 `phase=commentary/final_answer` 应在原生 Responses 历史中保留，但不能把 commentary 直接等同 `end_turn=false`：固定版本的普通循环并不以 phase 直接设置 needs_follow_up。[C1][C2][C8] Zhumora 当前只接 Chat Completions，不能给所有兼容 Provider 凭空添加 Responses 字段或猜测正文是 commentary。
+
+**边界取舍：** 非空、正常 stop、协议完整，但模型实际只说了半句话时，主流普通流程同样没有通用语义保证。新方案不再承诺通过隐式第二次模型调用解决这一切。保留完整终止证据、准确展示响应状态；用户明确要求的测试、验收和审查仍作为正常任务执行，不成为每条回复的额外门禁。Codex 的 review 命令、可配置 Stop hooks 和 OpenCode 插件不等于默认收尾复核。
+
+### 19.3 错误分类与重试：采用主流分层，保留用户配置
+
+OpenCode 的 `classifyProviderFailure` 用明确证据识别认证、额度、策略、无效请求、RateLimit 和 ProviderInternal，其余保留为 UnknownProvider；`isRetryable` 允许 UnknownProvider 重试。[O6] Codex 的 Responses `response.failed` 解析也将未识别 code 映射为 Retryable，而不是要求所有可恢复错误都带数字状态。[C4] 这些结论不表示所有协议损坏、任意异常或上游事件都能重试；OpenCode 的非结构化 provider-error 事件还有直接终结路径。
+
+因此修订上一轮“没有数字状态的 ProviderStreamError 直接终止”的策略：
+
+| 分类 | 处理 |
+|---|---|
+| 明确 429 / 明确限流 code | 用户 `maxRetries=0/N/-1` 原值生效，`-1` 就是无限；尊重 Retry-After，提示 Provider 繁忙，取消立即终止退避与后续请求 |
+| 已有统一策略支持的瞬时 HTTP/SSE/网络错误 | 共用同一重试分类和用户配置，不因请求是收尾或异常藏在 HTTP 200 内而改成一次即失败 |
+| Provider 显式返回错误，但状态未知且没有确定性拒绝证据 | 作为 unknown-provider-error 走统一重试配置，保留全部详情；提示“Provider 响应异常，正在重试”，不伪造 429 或显示繁忙 |
+| 已确认认证、额度、策略或无效请求 | 保留原始原因，明确失败；已存在的精确参数兼容降级仍只在其约束内进行 |
+| 非法 JSON/SSE、身份混合、非法工具结构等确定性协议错误 | 独立协议失败或已有有界恢复，不把它们统称 UnknownProvider 后无限重试 |
+| 空正文、length、流不完整 | 仍有独立生成恢复预算；不借用户的网络无限重试把这些预算改成无限 |
+
+仅有 `openai_error / bad_response_status_code` 时不能还原具体 HTTP 状态；在没有其它确定性证据时，应允许未知 Provider 错误恢复，而不是假定请求非法。上游若持续返回这类占位错误且用户选择无限重试，就持续显示原因并允许取消，不另加私有次数上限。这是向主流分类方式靠拢后的明确取舍。
+
+**不复制上游次数限制：** 固定版本 OpenCode 通用重试最多 10 次、Transport Timeout 另有 3 次限制；Codex 默认 HTTP 4 次/stream 5 次，HTTP 429 和 SSE 限流还有不同处理。[O7][C5][C6] 它们不能覆盖本项目用户已确认的 429 无限语义，也不新增 Provider 自动切换。
+
+### 19.4 有输出之后的恢复与历史安全
+
+OpenCode 只有未产生 durable output 时才透明 Retry；已有 text/reasoning/tool 输出后，对判为可恢复、预算尚可用且未被用户中止或拒绝的失败，先结算工具和本轮状态，再追加 synthetic continuation，并使用新的 assistant ID。[O1][O2] Codex 从当前历史重新构建恢复请求，等待已启动工具结算；已入历史却因取消未执行的工具产生 aborted output。[C1][C2] 不能把这种恢复理解成“重新运行整次用户任务”。
+
+Zhumora 应借鉴该边界，但保持现有“完整解析后才执行工具”的架构，不引入上游流中提前执行工具的机制：
+
+1. 无输出时重试同一逻辑请求；已有正文/思考时保留失败片段及原因，恢复内容使用新的权威消息 ID，不把重试 token 追加到旧消息造成重复。
+2. 部分工具组不可执行；需要持久化时仍补齐占位结果，effective history 按现有规则构建。既有已执行工具和结果保留，恢复不自动调度历史工具。
+3. 429 不能被 `emitted` 一刀切取消恢复；已有输出时采用可见续接，仍遵守用户配置。逻辑请求的已用重试次数跨透明重试/续接传递，不因进入下一轮重置计数，也不拿两次空响应预算替代 429 配置。
+4. 对其它流中断，保留已有有界续写策略；不同时叠加 Provider 重试和 runner 恢复而重复计数或发起两条请求。
+5. 等待、队列、读流、权限和工具执行前继续检查同一 signal；取消后只结算必要的历史占位，不再发请求或执行新工具。
+
+该方案保证 runtime 不重放已完成工具，不宣称能对所有外部副作用提供全局 exactly-once；模型重新主动请求同一业务动作与 runtime 重放必须区分，不能靠粗暴按工具名/参数去重阻止合法重复调用。
+
+### 19.5 错误证据应完整保留
+
+参考 OpenCode 的 error-retention 回归：完整事件 body（含 error 外层 trace）、HTTP status/响应上下文和 cause 分开保留。[O8] 本项目目前只传 error 子对象，复核 wrapper 又只复制 message，已经通过隔离回放确认会丢信息；不能反过来断定截图上游一定提供了外层状态。
+
+建议在现有 Provider 错误边界统一保留原始 envelope、传输状态与明确的 Provider 状态、request ID、请求阶段、流统计和 cause。HTTP 200 不是嵌入错误的成功状态；外层 HTTP 状态与内层上游错误码不能互相覆盖。错误跨 Agent/SessionService 包装后仍能落库和展示这些信息；不新增用户未要求的脱敏，也不为此记录认证请求头。
+
+沿用 generation 元数据和权威 ID，不新建第二套运行状态表。界面明确区分正常交付、正在恢复、空交付耗尽、流失败、拒绝、限制停止和用户中止；“本轮结束”不冒充“所有需求已验收”。错误仍显示原始详情，不用泛化文案覆盖 Provider 原文。
+
+### 19.6 实施范围与兼容迁移
+
+实施时先补相关状态机/协议回归，再删除只为语义复核存在的代码；本轮没有实施这些更改：
+
+- 删除 `completionReview.ts`、`completionReviewInput.ts` 的普通收尾入口，runner 不再走 checking → 第二次 LLM → final/continue/uncertain；保留 assistant 先落库、再消费协调输入，以及最后一道取消检查。
+- `RecoveryBudget` 删除复核/语义续跑专属计数，保留空响应两次、不完整两次、全 run 总恢复四次。参数降级本身的单请求标志保留；仅复核消费的跨层 `reasoningDowngraded` 字段和专用重试开关在确认无调用者后移除。
+- 删除复核设置/UI/校验，在唯一 settings 归一化边界前向迁移并显式剔除旧 `completionReview`。只从 normalizer 返回值删字段不够：前面的 `...provider` 会把旧字段带回来。无需为删除 JSON 设置增加 SQLite 表迁移。
+- 保留 `captureResponses`、reasoning/history/token 配置、generation/agent:generation/assessmentRevision。旧 checking/unverified/purpose=review 继续可读，旧记录不批量改成成功；旧错误正文和工具历史不重写。
+- 完整错误分类、用户重试配置和有输出恢复留在现有 Provider/runner 边界；SessionService、PermissionBroker、SessionEventHub 的 owner 不变，不新增复核服务、后台自动验收 Agent 或全局恢复锁。
+- `ARCHITECTURE.md` 在实际修改运行代码的同一批次更新，不能提前把方案写成已实现。
+
+### 19.7 回归验收与本轮验证
+
+后续实现必须覆盖：正常正文 stop 不多发复核请求；工具只执行一次且结果仍邻接；空 stop/reasoning-only 仍有界恢复并在耗尽时失败；length、缺 finish 和协议错误分别处理；未知 Provider 错误及 HTTP/SSE 429 的 0/有限/无限重试；有输出后的恢复不拼接旧消息、不重置逻辑次数、不重放已完成工具；取消能打断退避/读流/排队；收尾前取消和迟到协调输入；完整错误 envelope/http/cause 传播；旧配置 true/false/缺失的幂等迁移和旧 generation 展示。
+
+不能整包删掉 `completionGuard.integration.test.ts`：移除复核 JSON 专属断言后，应保留/迁移其取消、协调、工具历史、权威 ID 和输出参数覆盖，并新增“有效终态不额外请求 LLM”的回归。修改前记录基线，结束执行类型检查、`npm test`、`npm run build`。
+
+本轮基线（仅方案文档修改前，代码 HEAD `f826a3c`）：普通沙箱执行 `npm test` 被本机 MCP 测试连接 EACCES 阻断；允许本机网络后重跑，MCP 测试通过，最终停在既有 `officeTools` 的三项 PDF CJK 文本回读断言（与第 18.4 节相同）。没有改测试或放宽断言。上游只读源码及测试断言用于比较，不冒充已执行上游测试；本轮也没有向真实 Provider 发送请求。
+
+文档修订后 `npm test` 仍为相同的三项 `officeTools` 失败；由于该失败会阻断 posttest，另行执行 `npm run test:responses`，通过。`npm run build` 和 `git diff --check` 通过。本轮只修改本调研文档，未修改运行代码或测试，也未提交。
+
+### 19.8 固定源码链接
+
+- [O1 OpenCode step 裁决、透明重试与有输出续接](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/core/src/session/runner/step.ts#L171)
+- [O2 OpenCode 主调用循环与 length 恢复](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/core/src/session/runner/llm.ts#L242)
+- [O3 OpenCode needsContinuation 的来源](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/core/src/session/runner/publish-llm-event.ts#L644)
+- [O4 OpenCode 无正文/工具的 TestLLM.stop](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/ai/src/testing.ts#L69)；[runner 对应测试](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/core/test/session-runner.test.ts#L4121)
+- [O5 OpenCode Chat 缺 finish 校验](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/ai/src/protocols/openai-chat.ts#L1192)
+- [O6 OpenCode 错误可重试类型](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/ai/src/provider-error.ts#L80)；[确定性证据与 UnknownProvider 分类](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/ai/src/provider-error.ts#L231)
+- [O7 OpenCode 当前默认重试预算](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/core/src/model-retry.ts#L11)
+- [O8 OpenCode 完整错误保留测试](https://github.com/anomalyco/opencode/blob/9496ff842cc8ed3bb3db7d8e7d946c6262d9be72/packages/ai/test/provider/error-retention.test.ts#L43)
+- [C1 Codex 普通 turn 完成判断](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/core/src/session/turn.rs#L583)；[end_turn 对后续需求的作用](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/core/src/session/turn.rs#L3222)
+- [C2 Codex 工具与非工具消息分流](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/core/src/stream_events_utils.rs#L321)
+- [C3 Codex Responses completed/incomplete](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/codex-api/src/sse/responses.rs#L419)；[缺 completed 的 EOF 失败](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/codex-api/src/sse/responses.rs#L577)
+- [C4 Codex 未识别流内错误的默认 Retryable](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/codex-api/src/sse/responses_error.rs#L98)
+- [C5 Codex 响应恢复策略](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/core/src/responses_retry.rs#L61)；[Provider 重试配置](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/model-provider-info/src/lib.rs#L459)
+- [C6 Codex 配置官方说明](https://developers.openai.com/codex/config-reference/)；[重试建议不扩大配置次数的测试](https://github.com/openai/codex/blob/45179176e52ab890a3cf5ce47e8ab585e7295f7e/codex-rs/core/tests/suite/retry_after.rs#L507)
+- [C7 Codex app-server 的 turn.status](https://developers.openai.com/siwc/token-sharing-open-source/codex-app-server)
+- [C8 Codex 官方 phase 使用说明](https://developers.openai.com/cookbook/examples/gpt-5/codex_prompting_guide)
+
+## 20. 按主流流程实施修复（2026-10-22）
+
+本节取代第 19 节调研时“尚未修改运行代码”的状态。实现仍使用现有 SessionService、runner、Provider、权限和持久化回调，没有新增 runtime 或实际模型请求。
+
+### 20.1 已实施行为
+
+- 删除 `completionReview.ts` / `completionReviewInput.ts` 与 runner 的强制第二次模型请求；删除复核、语义继续专属预算及专用重试分支。正常完整、非空 stop 在检查协调输入与取消后结束，正文标点不参与裁决。
+- 空/仅思考交付、不完整流、length、非法工具组仍有独立有界恢复，耗尽明确失败；maxRounds/hard stop 的总结仍不能变成普通成功，也不能重开工具循环。
+- `providerFailure.ts` 统一解析明确状态及错误 code/type。确定性认证、额度、策略、无效请求终止；瞬时服务错误与未知 Provider 显式错误可重试；协议损坏不混入未知错误。429 优先遵守用户 0/N/-1，不伪造状态、不新增上限。
+- 错误保存完整 envelope/响应正文、HTTP 与 Provider 状态、请求 ID 和可用 cause，落入 generation.providerError；HTTP 错误保持 HttpError 兼容。旧消息无需 schema 表迁移，返回原始错误不脱敏。
+- `streamCallbacks.ts` 在可恢复的已输出尝试之后保存不完整消息，用新权威 ID 接续；reasoning 按实际尝试隔离，不混入正文。未执行工具组补占位且不进入 effective history；既有工具结果不重放。
+- 整个逻辑请求保留同一个 withRetry，已有输出的 429/未知错误恢复不重置计数，也不消耗空响应预算。重试前通过现有 AutoCompactor 检查增长后的上下文。beforeRetry 结算失败原样传播，取消后不再发请求，临时异常不生成永久 error 消息。裸 streamChat 没有结算回调时不会重复推送已有输出。
+- 普通 Agent 与限制收尾共用上述流回调；网络中断/缺 finish 仍走已有独立有界恢复。单请求思考参数降级保留一次机会，没有 Provider 全局能力缓存。
+- 设置 JSON schema 19 显式剔除旧 completionReview，移除设置/UI/类型/校验；保留旧 checking/unverified/review 历史读取及 assessmentRevision 协议。新取消状态按确切 assistant ID 更新，不能误标协调 user。
+- IPC 重试状态增加 provider_error：明确 429 提示繁忙，其它 Provider 错误提示响应异常，网络提示保持。事件继续按 sessionId 归并，未新增权限或会话入口。
+
+### 20.2 回归与验证
+
+重整完成回归以验证“正常收尾无额外 LLM 请求”，保留工具、协调、权威 ID、取消及限制停止覆盖；保留旧元数据读取和配置前向迁移用例。新增 Provider 错误分类/原始 envelope 传播、分会话提示及部分输出恢复集成测试，接入 test:responses。
+
+覆盖 429/未知错误的 0/有限/无限重试、跨多次失败的单调计数、无输出透明重试、有输出新消息、reasoning 不串尝试、未执行工具占位、已完成工具只执行一次、失败元数据落库、取消结算/退避、收尾恢复，以及失败尝试不占用唯一参数降级机会。
+
+修改前基线：`npm run build` 通过，`npm test` 在既有三项 officeTools PDF CJK 文本回读断言失败；与第 18.4、19.7 节一致。没有修改这些断言或 PDF 实现。
+
+最终验证：两套 TypeScript 检查（tsconfig.node.json、tsconfig.web.json）、`npm run build`、`git diff --check` 均通过。`npm test` 仍在相同三项 PDF 回读断言失败；另行执行完整 `npm run posttest`，上下文、子任务恢复、响应（含新增用例）、窗口和流程状态均通过。重试核心、持久化回调与 runner 协调专项也通过。
+
+最后审查补了“结算失败不得再次作为模型中断恢复”的回归：新增断言先复现重复结算两次，再将 Provider 的旧尝试状态在结算交接前清空，确认原始持久化/准备错误只传播一次，不重复保存或重新请求；修复后重跑上述最终检查。全程使用隔离 HTTP/SSE 响应，没有发送真实模型请求，也未提交或推送。
+
+## 21. 实施后逻辑复审（2026-10-22）
+
+本次先执行 `test:responses`，基线通过；结合三路独立只读审查，新增回归先复现以下缺口，再修复生产代码：
+
+- 限制收尾的 assistant 持久化回调同步取消时，runner 仍抛 limit、摘要仍保留 done；现按准确消息 ID 标记 incomplete/aborted，并抛中止。
+- 辅助补全直接 response.json()，非法正文含 network 时 SyntaxError 被当作网络错误重试；现保留原始 text 并将 JSON 解析错误归为 protocol，同时保留 cause、原始格式和 x-generation-id。
+- 完整 envelope 新增到错误详情后，旧 malformed 正则会扫描外层历史 trace，错误终止当前未知/瞬时 Provider 错误；现仅在归一化边界检查当前错误说明，真实 429 仍最高优先，真实 malformed history 仍终止。
+- 保存失败片段原本只在有下一次重试时执行，最后一次工具片段和占位丢失；现显式区分保存与重试准备，预算耗尽也结算，不再追加继续指令/压缩/请求。refusal 的真实说明同样保留，不当成正常完成，也不改变明确 429 的重试要求。
+
+补充取消回归覆盖多工具占位结算中途取消、异步重试准备后取消、耗尽不做重试准备、最后工具组闭合、消息/ID 对齐和已有工具不重放。专项测试与双 TypeScript 检查通过；完整测试和构建结果在本节追加。
+
+复审最终验证：两套 TypeScript 检查、重试核心、完整 `npm run posttest`（含响应/上下文/子任务恢复/窗口/流程状态）以及 `npm run build` 均通过。`npm test` 仍为与基线一致的三项 PDF CJK 回读失败（季度经营报告、模板报告、已审核），没有新增失败或放宽断言。`git diff --check` 通过；未提交代码。

@@ -1,5 +1,7 @@
 import { formatProviderStreamError, type StreamErrorContext } from './providerErrorDetails.ts'
-import type { GenerationMetadata } from '../../shared/generation.ts'
+import type { GenerationMetadata, ProviderFailureDetails } from '../../shared/generation.ts'
+import { HttpError } from '../net/retryCore.ts'
+import { providerFailureDetails, providerFailureStatus } from './providerFailure.ts'
 
 /** A clean HTTP EOF/DONE without the selected choice's finish_reason is still incomplete. */
 export class IncompleteStreamError extends Error {
@@ -17,6 +19,7 @@ export class IncompleteStreamError extends Error {
 export class ProviderStreamError extends Error {
   readonly status?: number
   readonly retryAfterMs?: number
+  readonly diagnostics: ProviderFailureDetails
   generation?: GenerationMetadata
   constructor(detail: 'payload' | 'provider' | 'content_type', error?: unknown, context?: StreamErrorContext) {
     super(detail === 'provider' ? formatProviderStreamError(error, context)
@@ -24,14 +27,21 @@ export class ProviderStreamError extends Error {
         : 'LLM provider returned an invalid chat completion stream payload'
           + (error === undefined ? '' : '\nDetails:\n' + JSON.stringify(error, null, 2)))
     this.name = 'ProviderStreamError'
+    this.cause = context?.cause
+    this.diagnostics = providerFailureDetails(error, context, detail !== 'provider')
     this.retryAfterMs = context?.retryAfterMs
-    if (detail === 'provider' && error && typeof error === 'object') {
-      const fields = error as Record<string, unknown>
-      const status = [fields.status, fields.status_code, fields.code]
-        .map(value => typeof value === 'number' ? value : typeof value === 'string' && /^\d{3}$/.test(value) ? Number(value) : undefined)
-        .find(value => value !== undefined && Number.isInteger(value) && value >= 100 && value <= 599)
-      this.status = status ?? (fields.type === 'rate_limit_error' || fields.code === 'rate_limit_exceeded' ? 429
-        : fields.type === 'overloaded_error' ? 529 : undefined)
-    }
+    if (detail === 'provider') this.status = providerFailureStatus(this.diagnostics)
+  }
+}
+
+/** Keep the existing HttpError contract while preserving the provider's complete response evidence. */
+export class ProviderHttpError extends HttpError {
+  readonly diagnostics: ProviderFailureDetails
+  generation?: GenerationMetadata
+  constructor(status: number, body: string, error: unknown, context: StreamErrorContext = {}) {
+    super(status, `LLM API ${status}: ${body}\n${formatProviderStreamError(error, { ...context, httpStatus: status })}`,
+      context.retryAfterMs)
+    this.cause = context.cause
+    this.diagnostics = providerFailureDetails(error, { ...context, httpStatus: status, responseBody: body })
   }
 }

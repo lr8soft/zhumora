@@ -9,7 +9,7 @@ import { failTurn } from '../src/main/agent/completeTurn.ts'
 register('./helpers/runnerCollaborationLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const originalFetch = globalThis.fetch
-const provider = { completionReview: false, id: 'test', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
+const provider = { id: 'test', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
 const sse = (delta: object, finish = 'stop') => new Response([
   `data: ${JSON.stringify({ choices: [{ delta, finish_reason: null }] })}\n\n`,
   `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finish }] })}\n\n`, 'data: [DONE]\n\n'

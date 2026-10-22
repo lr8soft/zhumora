@@ -12,7 +12,7 @@ register('./helpers/runnerCollaborationLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const { streamChat } = await import('../src/main/llm/provider.ts')
 const originalFetch = globalThis.fetch
-const provider = { completionReview: false, id: 'test', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
+const provider = { id: 'test', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
 const frame = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
 const tool = (id: string) => ({ tool_calls: [{ index: 0, id, type: 'function', function: { name: 'write', arguments: '{}' } }] })
 const response = (body: string) => new Response(body, { headers: { 'content-type': 'text/event-stream' } })

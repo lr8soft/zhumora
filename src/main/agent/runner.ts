@@ -34,8 +34,7 @@ import { SESSION_TITLE_REMINDER } from '../../shared/sessionTitle'
 import type { AgentEventCallbacks } from './eventCallbacks'
 import { completeTurn, failTurn } from './completeTurn.ts'
 import { appendCoordinationMessages, type CoordinationMessage } from './runInbox.ts'
-import { roundAssistant, markGeneration } from './roundOutput.ts'
-import { checkFinalCandidate, shouldReviewCompletion } from './completionReview.ts'
+import { roundAssistant } from './roundOutput.ts'
 import { AgentCompletionError } from './completionError.ts'
 import { projectReasoningHistory } from '../llm/responseParsing.ts'
 
@@ -144,7 +143,8 @@ export async function runAgent(
     // 工具 schema 同样占请求 token，必须纳入预算。
     await compactor.applyIfOverThreshold(conversation, `at round ${round}`, tools)
 
-    const result = await streamAgentRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, signal, cb)
+    const result = await streamAgentRound(conversation, provider, opts.modelOverride, reasoningEffort, tools, signal, cb,
+      allAssistantMessages, () => compactor.applyIfOverThreshold(conversation, 'before provider retry', tools))
     if (result.usage) cb.onTokenUsage?.(result.usage, opts.modelOverride || provider.defaultModel)
 
     // 中止检查：provider 层对"用户中止"按部分内容正常返回（不抛错）。
@@ -177,26 +177,8 @@ export async function runAgent(
     }
 
     if (decision.kind === 'complete') {
-      if (shouldReviewCompletion(provider, tools.length > 0, conversation.messages)) {
-        result.generation = markGeneration(result, 'checking', 'Checking whether the final response is complete.')
-      }
-      if (!completeTurn(result, round, { conversation, allAssistantMessages, cb,
+      if (!completeTurn(result, round, { conversation, allAssistantMessages, cb, signal,
         takeCoordinationMessages: opts.takeCoordinationMessages })) continue
-      if (!await checkFinalCandidate(result, { provider, model: opts.modelOverride || provider.defaultModel,
-        goal: extractTextContent(getLastUserMessage(messages)), contextWindow, signal, conversation,
-        cb, recovery, reasoningEffort, toolsAvailable: tools.length > 0, candidateId: conversation.ids.at(-1) ?? null })) continue
-      const lateGuidance = opts.takeCoordinationMessages?.(true) ?? []
-      if (lateGuidance.length) { appendCoordinationMessages(conversation, lateGuidance); continue }
-      // 收尾前最后一道中止检查：复核被关闭（纯文本任务）或取消在完成发布期间到达时，
-      // 同样不能发布运行成功，候选也不能继续显示为已确认完整。
-      if (signal?.aborted) {
-        const candidateId = conversation.ids.at(-1)
-        if (candidateId && result.generation) {
-          cb.onAssistantGeneration?.(candidateId,
-            markGeneration(result, 'unverified', 'Run aborted before the final result was published.'))
-        }
-        throw new AgentAbortedError()
-      }
       return finishRun(allAssistantMessages, conversation, provider, memoryEnabled, sessionId, cb)
     }
 

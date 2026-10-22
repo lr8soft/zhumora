@@ -223,4 +223,26 @@ assert.equal(isStreamIdleTimeoutError(new Error('net::ERR_TIMED_OUT')), false, '
   assert.equal(attempts, 2, '无 signal 时共 2 次尝试')
 }
 
+// Settling failed output is a real operation, not a best-effort display callback.
+{
+  const failure = new HttpError(429, 'busy', 0)
+  const persistenceFailure = new Error('cannot preserve interrupted output')
+  let attempts = 0; let prepared = 0
+  await assert.rejects(withRetry(async () => { attempts++; throw failure }, {
+    maxRetries: 2, label: 'settlement-failure', beforeRetry() { prepared++; throw persistenceFailure }
+  }), error => error === persistenceFailure)
+  assert.equal(attempts, 1); assert.equal(prepared, 1)
+  prepared = 0
+  await assert.rejects(withRetry(async () => { throw failure }, {
+    maxRetries: 0, label: 'no-retry', beforeRetry() { prepared++ }
+  }), error => error === failure)
+  assert.equal(prepared, 0, 'an exhausted budget never begins recovery preparation')
+  const abort = new AbortController(); attempts = 0
+  await assert.rejects(withRetry(async () => { attempts++; throw failure }, {
+    maxRetries: -1, label: 'cancel-after-settlement', signal: abort.signal,
+    beforeRetry: async () => { await Promise.resolve(); abort.abort() }
+  }), { name: 'AbortError' })
+  assert.equal(attempts, 1)
+}
+
 console.log('retry policy tests passed')

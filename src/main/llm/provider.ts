@@ -12,11 +12,11 @@ import {
   createStreamAccumulator, accumulateResult, type TokenUsage
 } from './sseAccumulator'
 import { readChatStream } from './streamResponse'
-import { IncompleteStreamError, ProviderStreamError } from './streamErrors'
+import { IncompleteStreamError, ProviderHttpError, ProviderStreamError } from './streamErrors'
 import { isReasoningParamRejected } from './errors'
 import { applyReasoningParams, type ReasoningEffortParam } from './reasoning'
 import { withProviderRequest } from './requestRuntime'
-import { isProviderBusyError, shouldRetryProviderError } from './providerRetry'
+import { shouldRetryProviderError } from './providerRetry'
 import { serializeMessages, httpResponseError, canReplayReasoning, outputTokenLimit } from './responseParsing.ts'
 import { requestTextCompletion } from './textCompletion.ts'
 import type { GenerationMetadata } from '../../shared/generation.ts'
@@ -35,6 +35,8 @@ export interface StreamCallbacks {
   onError?: (error: Error) => void
   /** 网络失败，正在自动重试（failedAttempt = 已失败次数，maxRetries = -1 表示无限） */
   onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
+  /** Preserve a failed visible attempt; only willRetry allows preparation of a continuation request. */
+  onInterruptedAttempt?: (partial: StreamAttemptResult, error: Error, willRetry: boolean) => ChatMessage[] | Promise<ChatMessage[]>
 }
 
 export type ToolChoice =
@@ -45,7 +47,6 @@ export type ToolChoice =
 
 export interface CompletionParams {
   maxRetries?: number
-  retryOnlyRateLimit?: boolean
   requestTimeoutMs?: number
   progressTimeoutMs?: number
   terminalTimeoutMs?: number
@@ -67,9 +68,8 @@ export interface CompletionParams {
 const STREAM_IDLE_TIMEOUT_MS = 120_000
 
 /** 单次流式尝试的结果 */
-interface AttemptResult {
-  /** Request-local compatibility result, never a provider-wide capability cache. */
-  reasoningDowngraded?: boolean
+export interface StreamAttemptResult {
+  reasoning: string
   refusal?: string
   generation?: GenerationMetadata
   content: string
@@ -100,7 +100,7 @@ export async function streamChat(
   provider: ProviderConfig,
   params: CompletionParams,
   cb?: StreamCallbacks
-): Promise<AttemptResult & { streamInterrupted?: boolean }> {
+): Promise<StreamAttemptResult & { streamInterrupted?: boolean }> {
   const invalidHistoryIndex = params.messages.findIndex(message => !hasValidToolCalls(message))
   if (invalidHistoryIndex >= 0) {
     const error = new Error(`LLM request blocked: message ${invalidHistoryIndex} contains malformed tool call arguments`)
@@ -128,16 +128,14 @@ export async function streamChat(
 
   const url = `${provider.baseUrl.replace(/\/$/, '')}/chat/completions`
   const maxRetries = params.maxRetries ?? getMaxRetries()
-  // emitted：一旦向回调发出第一个 token / tool call 即置 true（之后不再重试，避免重复输出）
-  // partial：最近一次尝试已聚合的部分内容（流中途断开时用于回传给 agent 循环续写）
-  const state: { emitted: boolean; partial: AttemptResult | null } = { emitted: false, partial: null }
+  const state: { emitted: boolean; partial: StreamAttemptResult | null } = { emitted: false, partial: null }
 
   try {
     // 端点不认识思考强度参数（严格校验请求体的网关 / 旧版后端直接 400/422）
     // 时去掉本次实际写入的字段重发一次，而不是让整轮运行失败。删掉后 body 里
     // 不再有这些字段，外层网络重试自然沿用降级后的载荷（无需额外标志位）；
     // 仅在尚未输出内容时降级。
-    const attempt = async (): Promise<AttemptResult> => {
+    const attempt = async (): Promise<StreamAttemptResult> => {
       try {
         return await attemptStreamChat(url, body, provider, params, cb, state)
       } catch (err) {
@@ -158,23 +156,16 @@ export async function streamChat(
         // 会话中止立即打断退避等待与后续重试（否则停止后 runner 会卡在
         // 最长 30s 的退避里无法 settle，会话永久 busy，见 retryCore 注释）
         signal: params.signal,
-        // Review output is private control data: discarding a busy attempt cannot
-        // duplicate a user-visible message or execute a tool. Ordinary output cannot replay.
-        shouldRetry: (err) => (!state.emitted || params.purpose === 'review') && (params.retryOnlyRateLimit
-          ? isProviderBusyError(err) : shouldRetryProviderError(err)),
-        onRetry: (failedAttempt, max, error) => {
-          // Review output is private control data: discarding a busy attempt cannot
-          // duplicate a user-visible message or execute a tool, so the retried
-          // attempt starts with nothing emitted and no reusable partial control
-          // output. That keeps the one-shot parameter downgrade available for the
-          // review request itself.
-          if (params.purpose === 'review') { state.emitted = false; state.partial = null }
-          cb?.onRetry?.(failedAttempt, max, error)
-        }
+        // Visible provider failures continue from durable state; raw network truncation
+        // keeps the runner's independent bounded recovery rather than becoming unlimited.
+        shouldRetry: err => shouldRetryProviderError(err) && (!state.emitted
+          || (err instanceof ProviderStreamError && !!state.partial && !!cb?.onInterruptedAttempt)),
+        beforeRetry: error => settleInterruptedAttempt(error, true),
+        onRetry: cb?.onRetry
       }
     )
     cb?.onComplete?.(result.content, result.toolCalls)
-    return { ...result, reasoningDowngraded }
+    return result
   } catch (err) {
     // 流中途断开（已输出部分内容后网络错误）：重发会让 UI 收到重复内容，
     // 透明重试不可行 → 不抛错，把部分输出标记为"流中断轮"交给 agent 循环，
@@ -187,11 +178,24 @@ export async function streamChat(
       log('warn', `LLM stream incomplete (${String(error?.message || err).slice(0, 120)}) — returning partial content for agent-level continuation`)
       if (state.partial) {
         cb?.onComplete?.(state.partial.content, state.partial.toolCalls)
-        return { ...state.partial, reasoningDowngraded, streamInterrupted: true }
+        return { ...state.partial, streamInterrupted: true }
       }
     }
+    await settleInterruptedAttempt(err as Error, false)
     cb?.onError?.(err as Error)
     throw err
+  }
+
+  async function settleInterruptedAttempt(error: Error, willRetry: boolean): Promise<void> {
+    const partial = state.emitted ? state.partial : null
+    // Claim the attempt before calling persistence. If settlement fails, the outer
+    // error path must neither persist it twice nor treat it as network truncation.
+    state.emitted = false
+    state.partial = null
+    if (partial && cb?.onInterruptedAttempt) {
+      const messages = await cb.onInterruptedAttempt(partial, error, willRetry)
+      if (willRetry) body.messages = serializeMessages(messages, provider, model, !!params.tools?.length)
+    }
   }
 }
 
@@ -205,8 +209,8 @@ export async function streamChat(
  */
 async function attemptStreamChat(
   url: string, body: Record<string, unknown>, provider: ProviderConfig, params: CompletionParams,
-  cb: StreamCallbacks | undefined, state: { emitted: boolean; partial: AttemptResult | null }
-): Promise<AttemptResult> {
+  cb: StreamCallbacks | undefined, state: { emitted: boolean; partial: StreamAttemptResult | null }
+): Promise<StreamAttemptResult> {
   return withProviderRequest(provider, params.signal, () => executeStreamChat(url, body, provider, params, cb, state))
 }
 
@@ -216,9 +220,10 @@ async function executeStreamChat(
   provider: ProviderConfig,
   params: CompletionParams,
   cb: StreamCallbacks | undefined,
-  state: { emitted: boolean; partial: AttemptResult | null }
-): Promise<AttemptResult> {
+  state: { emitted: boolean; partial: StreamAttemptResult | null }
+): Promise<StreamAttemptResult> {
   const acc = createStreamAccumulator()
+  let reasoning = ''
 
   // 用户中止信号 + 流空闲超时 合并为一个 AbortController
   const ctrl = new AbortController()
@@ -247,12 +252,12 @@ async function executeStreamChat(
     })
 
     if (!resp.ok) {
-      throw await httpResponseError(resp)
+      throw await httpResponseError(resp, { provider: provider.name || provider.id, model: params.model || provider.defaultModel })
     }
 
     await readChatStream(resp, acc, applied => {
       if (applied.emitted) state.emitted = true
-      if (applied.reasoning) cb?.onReasoningToken?.(applied.reasoning)
+      if (applied.reasoning) { reasoning += applied.reasoning; cb?.onReasoningToken?.(applied.reasoning) }
       if (applied.token) cb?.onToken?.(applied.token)
     }, resetIdleTimer, {
       provider: provider.name || provider.id, model: params.model || provider.defaultModel
@@ -267,7 +272,11 @@ async function executeStreamChat(
   } catch (err) {
     if (ctrl.signal.aborted) acc.generation = { version: 1, ...acc.generation, status: 'incomplete',
       termination: params.signal?.aborted ? 'aborted' : 'timeout', reason: params.signal?.aborted ? 'aborted' : timeoutReason }
-    if (err instanceof ProviderStreamError) err.generation = snapshot().generation
+    if (err instanceof ProviderStreamError || err instanceof ProviderHttpError) {
+      acc.generation = { version: 1, ...acc.generation, status: 'incomplete', providerError: err.diagnostics,
+        ...(err.diagnostics.requestId ? { requestId: err.diagnostics.requestId } : {}) }
+      err.generation = snapshot().generation
+    }
     // 缺失结束信号即使完全空白也交给 Agent 恢复；其他异常仅保留已推流的内容。
     if (state.emitted || err instanceof IncompleteStreamError) state.partial = snapshot()
     if (ctrl.signal.aborted) {
@@ -286,9 +295,9 @@ async function executeStreamChat(
     if (params.signal) params.signal.removeEventListener('abort', onUserAbort)
     log('info', 'LLM response: ' + JSON.stringify(snapshot().generation))
   }
-  function snapshot(): AttemptResult {
+  function snapshot(): StreamAttemptResult {
     const result = accumulateResult(acc)
-    return { ...result, generation: { version: 1, ...result.generation, status: result.refusal
+    return { ...result, reasoning, generation: { version: 1, ...result.generation, status: result.refusal
       || result.finishReason === 'content_filter' || result.finishReason === 'refusal' ? 'refused'
       : result.generation?.status === 'incomplete' || !['stop', 'tool_calls'].includes(result.finishReason ?? '') ? 'incomplete' : 'complete',
       providerId: provider.id, model: params.model || provider.defaultModel,

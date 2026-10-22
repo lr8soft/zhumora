@@ -43,7 +43,6 @@ export interface AgentEventCallbacks {
 
 /** streamChat 一次调用的结果 + 本轮思考内容（思考内容不进入模型上下文） */
 export interface RoundResult {
-  reasoningDowngraded?: boolean
   generation?: GenerationMetadata
   refusal?: string
   content: string

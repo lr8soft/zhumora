@@ -15,7 +15,7 @@ import { sanitizeHistoryWithIds } from '../src/main/agent/history.ts'
 register('./helpers/runnerCollaborationLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const previousFetch = globalThis.fetch
-const provider = { completionReview: false, id: 'review', name: 'review', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
+const provider = { id: 'review', name: 'review', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
 const frame = (delta: object, finish: string | null = null) => `data: ${JSON.stringify({ choices: [{ index: 0, delta, finish_reason: finish }] })}\n\n`
 const ended = (delta: object, finish = 'stop') => new Response(frame(delta) + frame({}, finish) + 'data: [DONE]\n\n')
 const tool = (id: string, index = 0) => ({ index, id, type: 'function' as const, function: { name: 'write', arguments: '{}' } })

@@ -20,7 +20,7 @@ export async function readChatStream(response: Response, acc: StreamAccumulator,
   let progressAt = started; let terminalAt = 0; let frames = 0; let bytes = 0
   let prefix = ''; let formatKnown = false
   const rawFrames: string[] = []; let traceBytes = 0; let traceOmitted = false; let failed = false
-  const diagnostics = { ...context, requestId: response.headers.get('x-request-id')
+  const diagnostics = { ...context, httpStatus: response.status, requestId: response.headers.get('x-request-id')
     ?? response.headers.get('request-id') ?? response.headers.get('x-generation-id') ?? context?.requestId,
     retryAfterMs: retryAfterMilliseconds(response.headers) }
   const handle = (data: string) => {
@@ -112,7 +112,7 @@ function rejectNonSseBody(raw: string, mime: string | undefined, context: Stream
   let payload: unknown
   try { payload = JSON.parse(raw) } catch { payload = raw }
   if (payload && typeof payload === 'object' && 'error' in payload && payload.error != null) {
-    throw new ProviderStreamError('provider', payload.error, context)
+    throw new ProviderStreamError('provider', payload.error, { ...context, envelope: payload, responseBody: raw })
   }
   throw new ProviderStreamError('payload', { reason: 'Expected SSE response', contentType: mime, body: payload }, context)
 }

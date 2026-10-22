@@ -29,10 +29,6 @@ export function ProviderModelSettings({ provider: p, onChange, detectContextWind
     <ProviderModelPicker provider={p} onChange={onChange} detectContextWindow={detectContextWindow} />
     <div className="provider-block">
       <label className="provider-block-toggle"><input type="checkbox" className="switch"
-        checked={p.completionReview !== false} onChange={e => onChange({ completionReview: e.target.checked })} />
-        <span className="form-label">{t('settings.providers.completionReview')}</span></label>
-      <p className="form-hint">{t('settings.providers.completionReviewHint')}</p>
-      <label className="provider-block-toggle"><input type="checkbox" className="switch"
         checked={p.captureResponses === true} onChange={e => onChange({ captureResponses: e.target.checked })} />
         <span className="form-label">{t('settings.providers.captureResponses')}</span></label>
       <p className="form-hint">{t('settings.providers.captureResponsesHint')}</p>

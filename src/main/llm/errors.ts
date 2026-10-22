@@ -4,8 +4,7 @@
  * failure, so retrying the identical payload can never recover.
  */
 export function isMalformedToolArgumentsError(error: unknown): boolean {
-  if (!(error instanceof Error)) return false
-  const message = error.message || ''
+  const message = typeof error === 'string' ? error : error instanceof Error ? error.message : ''
   return /failed to parse tool call arguments as json|func_args_not_string|invalid tool call arguments/i.test(message)
 }
 

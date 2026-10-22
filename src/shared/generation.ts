@@ -1,3 +1,14 @@
+/** Original provider evidence, independent of the transport's HTTP status. */
+export interface ProviderFailureDetails {
+  category: 'rate_limit' | 'authentication' | 'quota' | 'policy' | 'invalid_request' | 'server' | 'unknown' | 'protocol'
+  httpStatus?: number
+  providerStatus?: number
+  requestId?: string
+  responseBody?: string
+  envelope?: unknown
+  cause?: { name: string; message: string }
+}
+
 /** A persisted projection of one generation, never the owner of an Agent run. */
 export interface GenerationMetadata {
   version: 1
@@ -20,4 +31,5 @@ export interface GenerationMetadata {
   reason?: string
   assessmentRevision?: number
   reasoningReplay?: boolean
+  providerError?: ProviderFailureDetails
 }

@@ -1,7 +1,7 @@
 import type { ToolCall, UIMessage } from '../../shared/types'
 import type { AgentEventCallbacks } from './eventCallbacks'
 import type { GenerationMetadata } from '../../shared/generation.ts'
-import { ProviderStreamError } from '../llm/streamErrors.ts'
+import { ProviderHttpError, ProviderStreamError } from '../llm/streamErrors.ts'
 
 export interface AgentEventSink {
   running?(sessionId: string, running: boolean): void
@@ -171,18 +171,21 @@ class PersistedAgentMessages {
     if (this.errorHandled) return
     this.errorHandled = true
     const errorText = `Error: ${error.message}`
+    const generation = error instanceof ProviderStreamError || error instanceof ProviderHttpError
+      ? error.generation ?? { version: 1 as const, status: 'incomplete' as const, providerError: error.diagnostics }
+      : undefined
     if (this.roundMsgId) {
       this.context.persistence.addMessage({
         id: this.roundMsgId, sessionId: this.context.sessionId, role: 'assistant',
         content: this.streamingContent ? `${this.streamingContent}\n\n${errorText}` : errorText,
         reasoning: this.roundReasoning || undefined, timestamp: Date.now(), status: 'error',
-        ...(error instanceof ProviderStreamError ? { generation: error.generation } : {})
+        ...(generation ? { generation } : {})
       })
     } else {
       this.context.persistence.addMessage({
         id: this.context.generateId(), sessionId: this.context.sessionId, role: 'assistant', content: errorText,
         timestamp: Date.now(), status: 'error',
-        ...(error instanceof ProviderStreamError ? { generation: error.generation } : {})
+        ...(generation ? { generation } : {})
       })
     }
     this.context.events.error?.(this.context.sessionId, error)

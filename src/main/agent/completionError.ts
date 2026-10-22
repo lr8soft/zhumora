@@ -1,8 +1,7 @@
-export type CompletionFailure = 'empty' | 'length' | 'stream' | 'malformed' | 'unexpected_tools' | 'finish_reason' | 'refused' | 'unverified' | 'limit'
+export type CompletionFailure = 'empty' | 'length' | 'stream' | 'malformed' | 'unexpected_tools' | 'finish_reason' | 'refused' | 'limit'
 
 const FAILURE_MESSAGES: Record<CompletionFailure, string> = {
   refused: 'The provider declined or filtered the response.',
-  unverified: 'The final response could not be confirmed as complete.',
   limit: 'The agent stopped at its execution limit. The progress summary is not a completed task.',
   empty: 'The model produced no answer or tool call.',
   length: 'The model output was truncated.',

@@ -1,6 +1,5 @@
 import type { ChatMessage, ProviderConfig } from '../../shared/types.ts'
-import { HttpError } from '../net/retryCore.ts'
-import { ProviderStreamError } from './streamErrors.ts'
+import { ProviderHttpError, ProviderStreamError } from './streamErrors.ts'
 import type { StreamErrorContext } from './providerErrorDetails.ts'
 import { resolveReasoningDialect } from './reasoning.ts'
 
@@ -42,14 +41,16 @@ export function projectReasoningHistory(messages: ChatMessage[], provider: Provi
 }
 
 export function parseTextCompletion(json: unknown, context?: StreamErrorContext): string {
-  if (!json || typeof json !== 'object') throw new ProviderStreamError('payload', json)
+  if (!json || typeof json !== 'object') throw new ProviderStreamError('payload', json, { ...context, envelope: json })
   const body = json as { error?: unknown; choices?: { index?: unknown; message?: { content?: unknown; refusal?: unknown; tool_calls?: unknown[]; function_call?: unknown }; finish_reason?: string }[] }
-  if (body.error != null) throw new ProviderStreamError('provider', body.error, context)
+  if (body.error != null) throw new ProviderStreamError('provider', body.error, { ...context, envelope: json,
+    responseBody: context?.responseBody ?? JSON.stringify(json) })
   const choice = body.choices?.[0]
   if (!Array.isArray(body.choices) || body.choices.length !== 1 || choice?.finish_reason !== 'stop'
     || (choice.index != null && choice.index !== 0) || choice.message?.function_call != null || choice.message?.refusal
     || choice.message?.tool_calls?.length || typeof choice.message?.content !== 'string' || !choice.message.content.trim()) {
-    throw new ProviderStreamError('payload', { reason: 'Auxiliary completion did not deliver a complete text response', response: json })
+    throw new ProviderStreamError('payload', { reason: 'Auxiliary completion did not deliver a complete text response', response: json },
+      { ...context, envelope: json })
   }
   return choice.message.content
 }
@@ -62,7 +63,13 @@ export function retryAfterMilliseconds(headers: Headers, now = Date.now()): numb
   return Number.isFinite(ms) && ms >= 0 ? Math.min(ms, 2_147_483_647) : undefined
 }
 
-export async function httpResponseError(response: Response): Promise<HttpError> {
-  return new HttpError(response.status, 'LLM API ' + response.status + ': ' + await response.text(),
-    retryAfterMilliseconds(response.headers))
+export async function httpResponseError(response: Response, context: StreamErrorContext = {}): Promise<ProviderHttpError> {
+  const raw = await response.text()
+  let envelope: unknown
+  try { envelope = JSON.parse(raw) } catch { envelope = raw }
+  const error = envelope && typeof envelope === 'object' && 'error' in envelope ? envelope.error : envelope
+  return new ProviderHttpError(response.status, raw, error, { ...context, envelope,
+    requestId: response.headers.get('x-request-id') ?? response.headers.get('request-id')
+      ?? response.headers.get('x-generation-id') ?? context.requestId,
+    retryAfterMs: retryAfterMilliseconds(response.headers) })
 }

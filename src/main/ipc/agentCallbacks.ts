@@ -2,6 +2,8 @@ import type { AgentEventSink } from '../agent/persistedCallbacks'
 import type { PermissionPresenter } from '../agent/permissionBroker'
 import type { AgentRetryEvent } from '../../shared/agentRetry'
 import { isProviderBusyError } from '../llm/providerRetry'
+import { ProviderStreamError } from '../llm/streamErrors.ts'
+import { HttpError } from '../net/retryCore.ts'
 
 /** Maps platform-neutral Agent events onto the renderer IPC contract. */
 export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEventSink {
@@ -41,7 +43,8 @@ export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEven
     error: (sessionId, error) => sender.send('agent:error', { sessionId, error: error.message }),
     retry: (sessionId, failedAttempt, maxRetries, error) => {
       const event: AgentRetryEvent = { sessionId, failedAttempt, maxRetries,
-        reason: isProviderBusyError(error) ? 'provider_busy' : 'network' }
+        reason: isProviderBusyError(error) ? 'provider_busy'
+          : error instanceof ProviderStreamError || error instanceof HttpError ? 'provider_error' : 'network' }
       sender.send('agent:retry', event)
     },
     truncated: (sessionId, kind, reason) => sender.send('agent:truncated', { sessionId, kind, reason }),

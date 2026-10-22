@@ -1,6 +1,6 @@
 import { isRetriableError } from '../net/retryCore.ts'
 import { isMalformedToolArgumentsError } from './errors.ts'
-import { IncompleteStreamError, ProviderStreamError } from './streamErrors.ts'
+import { IncompleteStreamError, ProviderHttpError, ProviderStreamError } from './streamErrors.ts'
 
 /** Only rate limiting is classified as provider busy; validation failures stay terminal. */
 export function isProviderBusyError(error: unknown): boolean {
@@ -14,7 +14,10 @@ export function shouldRetryProviderError(error: unknown): boolean {
   // message 正则，否则同一个 429 会因为措辞不同落到"确定性错误"而不再重试。
   // llama.cpp 用 HTTP 500 报 malformed history，该路径不受影响（500 不是 429）。
   if (isProviderBusyError(error)) return true
-  if (error instanceof IncompleteStreamError || isMalformedToolArgumentsError(error)) return false
-  if (error instanceof ProviderStreamError) return error.status !== undefined && isRetriableError(error)
+  if (error instanceof IncompleteStreamError) return false
+  if (error instanceof ProviderStreamError || error instanceof ProviderHttpError) {
+    return ['rate_limit', 'server', 'unknown'].includes(error.diagnostics.category)
+  }
+  if (isMalformedToolArgumentsError(error)) return false
   return isRetriableError(error)
 }

@@ -13,7 +13,7 @@ const { streamChat, complete } = await import('../src/main/llm/provider.ts')
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const { createIpcAgentEventSink } = await import('../src/main/ipc/agentCallbacks.ts')
 const originalFetch = globalThis.fetch
-const provider = { completionReview: false, id: 'busy', name: 'busy', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
+const provider = { id: 'busy', name: 'busy', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true }
 const params = { messages: [{ role: 'user' as const, content: 'work' }] }
 const frame = (delta: object, finish = null as string | null) => `data: ${JSON.stringify({ choices: [{ delta, finish_reason: finish }] })}\n\n`
 const successful = () => new Response(frame({ content: 'ready' }, 'stop') + 'data: [DONE]\n\n')
@@ -103,6 +103,31 @@ try {
       ? Response.json({ error: { code: 429, message: 'busy: func_args_not_string from upstream' } })
       : Response.json({ choices: [{ finish_reason: 'stop', message: { content: 'ready' } }] })
     assert.equal(await complete(provider, params.messages), 'ready'); assert.equal(attempts, 2)
+  }
+  {
+    let attempts = 0
+    globalThis.fetch = async () => { attempts++; return new Response('network unavailable', {
+      headers: { 'x-generation-id': 'invalid-json-request' }
+    }) }
+    await assert.rejects(complete(provider, params.messages), error => {
+      assert.ok(error instanceof ProviderStreamError)
+      assert.equal(error.diagnostics.category, 'protocol')
+      assert.equal(error.diagnostics.responseBody, 'network unavailable')
+      assert.equal(error.diagnostics.requestId, 'invalid-json-request')
+      assert.equal(error.diagnostics.cause?.name, 'SyntaxError')
+      return true
+    })
+    assert.equal(attempts, 1, 'malformed JSON is never retried based on words in its parse error')
+  }
+  {
+    const raw = ' { "error" : { "code": "invalid_api_key", "message": "bad key" } }\n'
+    globalThis.fetch = async () => new Response(raw, { headers: { 'x-generation-id': 'raw-body-request' } })
+    await assert.rejects(complete(provider, params.messages), error => {
+      assert.ok(error instanceof ProviderStreamError)
+      assert.equal(error.diagnostics.responseBody, raw, 'preserve the original body without JSON re-encoding')
+      assert.equal(error.diagnostics.requestId, 'raw-body-request')
+      return true
+    })
   }
   for (const maxRounds of [10, 1]) {
     const saved: UIMessage[] = []; const events: AgentRetryEvent[] = []

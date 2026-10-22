@@ -14,7 +14,7 @@ import { normalizeProviderConcurrency } from '../../shared/providerConcurrency.t
 import { normalizeProviderSubagentAccess } from '../../shared/providerSubagents.ts'
 import { DEFAULT_SUBAGENTS_ENABLED, normalizeSubagentsEnabled, normalizeSubagentModel, normalizeSubagentModels, normalizeSubagentDispatch } from '../../shared/subagents.ts'
 
-export const SETTINGS_SCHEMA_VERSION = 18
+export const SETTINGS_SCHEMA_VERSION = 19
 
 export function defaultSettings(workspacePath: string): AppSettings {
   return {
@@ -67,8 +67,10 @@ function normalizeProviders(input: unknown): AppSettings['providers'] | null {
   if (!Array.isArray(input)) return null
   return input.map(provider => {
     if (!provider || typeof provider !== 'object') return provider
+    // Retired completion checks must not survive the spread of saved provider options.
+    const { completionReview: _legacyReview, ...currentProvider } = provider
     return {
-      ...provider,
+      ...currentProvider,
       headers: normalizeProviderHeaders((provider as AppSettings['providers'][number]).headers),
       maxConcurrency: normalizeProviderConcurrency((provider as AppSettings['providers'][number]).maxConcurrency),
       allowSubagents: normalizeProviderSubagentAccess((provider as AppSettings['providers'][number]).allowSubagents),

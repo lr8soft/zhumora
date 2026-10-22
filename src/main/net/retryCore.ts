@@ -123,6 +123,8 @@ export interface RetryOptions {
   signal?: AbortSignal
   /** 自定义重试判定（默认 isRetriableError） */
   shouldRetry?: (err: unknown) => boolean
+  /** Settle failed output before the next attempt; failures here must propagate, never be swallowed as UI callbacks. */
+  beforeRetry?: (error: Error) => void | Promise<void>
   /** 每次重试前回调（供 UI 提示），failedAttempt = 已失败次数 */
   onRetry?: (failedAttempt: number, maxRetries: number, error: Error) => void
   /** 日志函数（默认静默；调用方注入 log 以保持本模块零依赖） */
@@ -196,6 +198,8 @@ export async function withRetry<T>(fn: (attempt: number) => Promise<T>, opts: Re
         throw abortError
       }
       if (!shouldRetry(error) || isOfflineError(error) || (!unlimited && attempt > opts.maxRetries)) throw error
+      await opts.beforeRetry?.(error)
+      assertNotAborted(opts.signal)
       const hint = (error as Error & { retryAfterMs?: number }).retryAfterMs
       const delay = typeof hint === 'number' && Number.isFinite(hint) && hint >= 0
         ? Math.min(hint, 2_147_483_647) : backoffDelay(attempt)
