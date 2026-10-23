@@ -634,7 +634,19 @@ select.input-field { cursor: pointer; }
 
 /* ---------- 设置页 ---------- */
 .settings-view { min-width: 0; min-height: 0; overflow-y: auto; background: var(--app-color-bg); }
-.settings-page-title { position: relative; -webkit-app-region: no-drag; user-select: none; padding-right: 140px; }
+/* 设置页标题栏：sticky 固定在窗口顶部 56px（与 chat-topbar 同高同模式），
+   标签页与内容在其下方滚动、不再从窗口控制区后面露出；负 margin 抵消 .settings-page
+   的 22px/24px 内边距使标题栏通铺到窗口边缘；::before 常驻拖拽区见上方 chat-topbar 行 */
+.settings-page-title {
+  position: sticky; top: 0; z-index: 5;
+  height: var(--window-controls-height);
+  display: flex; align-items: center;
+  margin: -22px -24px 0;
+  padding: 0 140px 0 24px;
+  background: var(--app-color-bg);
+  border-bottom: 1px solid var(--app-color-border);
+  -webkit-app-region: no-drag; user-select: none;
+}
 /* 不设内容宽度上限：设置页跟随窗口真实宽度放缩（app-shell 已用 minmax(0,1fr) 约束列宽） */
 .settings-page { min-width: 0; padding: 22px 24px 40px; }
 .settings-page-title { font-size: 1.333rem; font-weight: 650; letter-spacing: -.01em; }
