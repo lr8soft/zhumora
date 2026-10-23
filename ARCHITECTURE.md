@@ -369,6 +369,7 @@ stateDiagram-v2
 
 ### LLM 响应完整性与运行终态
 
+- LLM 请求与 MCP 连接共用 `net/retryCore.ts` 的指数退避：基础间隔按 1/2/4/8/16/20 秒增长，第六次失败起保持 20 秒，再叠加 ±20% 随机抖动（封顶阶段实际 16–24 秒）。有效服务端 Retry-After 优先于本地退避，不受 20 秒基础上限约束；重试预算、离线快速失败和中止信号规则保持不变。
 - `finish_reason` 只描述一次模型生成的结束，不是用户目标完成的证明。`turnDecision.ts` 统一裁决响应：有效完整工具轮继续执行；`stop` 且有正文、无工具时才是正常最终回复候选；空正文且无工具（包括 reasoning-only）最多追加两次合成继续指令，仍为空则抛 `AgentCompletionError`，禁止回落到 complete。length、流不完整、工具参数损坏的恢复耗尽同样明确失败，部分输出和不可执行工具组的占位结果保留。
 - `RecoveryBudget` 由单次 runner 持有，空响应与不完整响应各有独立连续预算（各两次），工具轮可重置这两项连续计数；全 run 恢复总上限为四次，永不随工具轮重置。普通非空 stop 不再进行额外 LLM 语义复核，也没有复核/语义续跑预算。Provider 显式错误与网络尝试遵守可取消的用户 maxRetries；无 finish_reason EOF、length、空交付仍走各自有界恢复，不能借网络无限重试绕过生成恢复上限。
 - `llm/streamResponse.ts` 只负责单次 HTTP 响应读取，SSE 聚合与格式验证仍在纯模块 `sseAccumulator.ts`/`sseEventBuffer.ts`；并发额度和透明重试归 provider 适配器。完整流须有有效的选定 choice finish_reason；仅 EOF 或仅 `[DONE]` 不算完整。兼容 finish_reason 后直接 EOF、不带末尾换行、usage-only 尾块，以及缺失 MIME / text/plain 代理（正常回复仍须是合法 SSE chat 数据）。读取边界按首个非空白字符识别误标 MIME 的 JSON 错误，缺失 MIME / text/plain / text/event-stream 下的 JSON error 同样保留完整原文和状态，进入原错误/429 重试链；不会伪装成 missing_finish。`[DONE]` 后取消 reader 并释放网络名额，不等待长连接关闭。显式非 SSE MIME、错误 JSON/SSE error 和损坏 chat 数据明确失败，不能当作正常生成结束。

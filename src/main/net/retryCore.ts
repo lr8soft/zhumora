@@ -118,7 +118,7 @@ export interface RetryOptions {
   label: string
   /** 中止信号（通常是会话的 AbortController signal）。信号已 abort 或
    *  在退避等待期间 abort → 立即以 AbortError 结束，不再发起后续尝试。
-   *  会话停止语义依赖这一点：退避最长 30s 且重试可无限，不监听信号
+   *  会话停止语义依赖这一点：退避可能等待数十秒且重试可无限，不监听信号
    *  时 runner 无法 settle，会话会永久卡在 busy 状态。 */
   signal?: AbortSignal
   /** 自定义重试判定（默认 isRetriableError） */
@@ -165,7 +165,7 @@ function interruptibleSleep(ms: number, signal: AbortSignal | undefined): Promis
 }
 
 const BASE_DELAY_MS = 1000
-const MAX_DELAY_MS = 30000
+const MAX_DELAY_MS = 20000
 
 /** 指数退避 + 随机抖动 */
 function backoffDelay(failedAttempt: number): number {
@@ -175,7 +175,7 @@ function backoffDelay(failedAttempt: number): number {
 
 /**
  * 带重试执行异步函数
- * maxRetries = -1 时无限重试（间隔封顶 MAX_DELAY_MS）。
+ * maxRetries = -1 时无限重试（基础间隔封顶 MAX_DELAY_MS，再加 ±20% 抖动）。
  * 整体离线（明确无网络，isOfflineError）时首次失败即抛出不重试 ——
  * 无网络时重试只会把退避预算耗尽，且 UI 会误显示"重试中"。
  */

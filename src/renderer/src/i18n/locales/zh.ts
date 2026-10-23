@@ -425,7 +425,7 @@ export default {
       network: '网络',
       networkHint: 'LLM 请求与 MCP 连接失败时的自动重试策略。',
       maxRetries: '重试次数',
-      maxRetriesHint: '请求失败后的重试次数，0 = 不重试。重试间隔递增（1s 起，最长 30s）。',
+      maxRetriesHint: '请求失败后的重试次数，0 = 不重试。基础间隔从 1s 递增至 20s，另有 ±20% 随机抖动；服务端指定的等待时间优先。',
       retriesUnlimited: '无限重试',
       systemCerts: '使用系统证书库',
       systemCertsHint: '开启后 LLM 与 MCP 的连接信任与 Chrome 一致的证书来源（Windows 系统证书库）。端点使用自签名证书 / 内网 CA 时，把证书导入系统证书库后启用此项。',

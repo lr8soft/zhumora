@@ -383,7 +383,7 @@ export default {
       network: 'ネットワーク',
       networkHint: 'LLM リクエストと MCP 接続の失敗時の自動再試行設定。',
       maxRetries: '再試行数',
-      maxRetriesHint: 'リクエスト失敗後の再試行数。0 = 再試行しない。間隔は 1 秒から最大 30 秒まで増加します。',
+      maxRetriesHint: 'リクエスト失敗後の再試行数。0 = 再試行しない。基本間隔は 1 秒から 20 秒まで増加し、±20% のランダムな変動があります。サーバー指定の待機時間が優先されます。',
       retriesUnlimited: '無限に再試行',
       systemCerts: 'システムの証明書ストアを使用',
       systemCertsHint: 'オンにすると、LLM と MCP の接続が Chrome と同じ証明書ソース（Windows システム証明書ストア）を信頼します。自己署名証明書や社内 CA のエンドポイントでは、先に証明書をシステム証明書ストアにインポートしてから有効にしてください。',

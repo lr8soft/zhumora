@@ -397,7 +397,7 @@ export default {
       network: 'Network',
       networkHint: 'Automatic retry policy for failed LLM requests and MCP connections.',
       maxRetries: 'Retries',
-      maxRetriesHint: 'How many times to retry after a request fails. 0 = no retry. Delay grows from 1s up to 30s.',
+      maxRetriesHint: 'How many times to retry after a request fails. 0 = no retry. Base delay grows from 1s to 20s with ±20% jitter; server-specified delays take priority.',
       retriesUnlimited: 'Unlimited retries',
       systemCerts: 'Use system certificate store',
       systemCertsHint: 'When enabled, LLM and MCP connections trust the same CAs as Chrome (Windows certificate store). For endpoints with self-signed or internal CAs, import the certificate into your system store first, then enable this.',

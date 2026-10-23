@@ -383,7 +383,7 @@ export default {
       network: 'Red',
       networkHint: 'Reintento automático ante fallos en las peticiones LLM y las conexiones MCP.',
       maxRetries: 'Reintentos',
-      maxRetriesHint: 'Cuántas veces reintentar una petición fallida. 0 = sin reintento. La espera crece de 1 s hasta 30 s.',
+      maxRetriesHint: 'Cuántas veces reintentar una petición fallida. 0 = sin reintento. La espera base crece de 1 s a 20 s con una variación aleatoria del ±20 %; el tiempo indicado por el servidor tiene prioridad.',
       retriesUnlimited: 'Reintentos ilimitados',
       systemCerts: 'Usar almacén de certificados del sistema',
       systemCertsHint: 'Cuando está activado, las conexiones LLM y MCP confían en los mismos certificados que Chrome (almacén de certificados de Windows). Para puntos finales con certificados autofirmados o CAs internas, importa primero el certificado al almacén del sistema y luego activa esta opción.',

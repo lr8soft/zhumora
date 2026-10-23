@@ -86,7 +86,7 @@ export interface StreamAttemptResult {
  * 发起流式补全请求
  * 返回 { content, toolCalls, streamInterrupted? }
  * 网络失败（5xx / 超时 / 连接重置等）在尚未向 UI 输出任何 token 前自动重试；
- * 重试次数读取设置 maxRetries（-1 = 无限），退避 1s→2s→4s… 上限 30s。
+ * 重试次数读取设置 maxRetries（-1 = 无限），退避 1s→2s→4s… 基础间隔上限 20s（±20% 抖动）。
  *
  * 流"中途"断开（已输出部分内容后网络错误）：
  * - 未输出过 → 透明重试（同上）；
@@ -154,7 +154,7 @@ export async function streamChat(
         maxRetries,
         label: `LLM ${provider.name || provider.baseUrl}`,
         // 会话中止立即打断退避等待与后续重试（否则停止后 runner 会卡在
-        // 最长 30s 的退避里无法 settle，会话永久 busy，见 retryCore 注释）
+        // 数十秒的退避里无法 settle，会话永久 busy，见 retryCore 注释）
         signal: params.signal,
         // Visible provider failures continue from durable state; raw network truncation
         // keeps the runner's independent bounded recovery rather than becoming unlimited.

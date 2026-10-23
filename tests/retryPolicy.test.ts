@@ -9,6 +9,7 @@
 //   - 流空闲超时被识别（已输出部分时走 agent 循环续接）。
 // ============================================================
 import assert from 'node:assert/strict'
+import { mock } from 'node:test'
 import {
   HttpError,
   isRetriableError,
@@ -243,6 +244,40 @@ assert.equal(isStreamIdleTimeoutError(new Error('net::ERR_TIMED_OUT')), false, '
     beforeRetry: async () => { await Promise.resolve(); abort.abort() }
   }), { name: 'AbortError' })
   assert.equal(attempts, 1)
+}
+
+// Capture scheduled delays without spending real time in exponential backoff.
+{
+  const originalSetTimeout = globalThis.setTimeout
+  const delays: number[] = []
+  const timer = mock.method(globalThis, 'setTimeout', (callback: () => void, ms?: number) => {
+    delays.push(ms ?? 0)
+    return originalSetTimeout(callback, 0)
+  })
+  try {
+    const cases: [number, number[]][] = [
+      [0, [800, 1600, 3200, 6400, 12800, 16000, 16000, 16000]],
+      [0.5, [1000, 2000, 4000, 8000, 16000, 20000, 20000, 20000]],
+      [0.999999, [1200, 2400, 4800, 9600, 19200, 24000, 24000, 24000]]
+    ]
+    for (const [randomValue, expected] of cases) {
+      delays.length = 0
+      const random = mock.method(Math, 'random', () => randomValue)
+      try {
+        const result = await withRetry(async attempt => {
+          if (attempt <= 8) throw new Error('fetch failed')
+          return 'ok'
+        }, { maxRetries: UNLIMITED_RETRIES, label: 'backoff-cap' })
+        assert.equal(result, 'ok')
+        assert.deepEqual(delays, expected, 'base delay caps at 20s before applying ±20% jitter')
+      } finally { random.mock.restore() }
+    }
+    delays.length = 0
+    await withRetry(async attempt => {
+      if (attempt === 1) throw new HttpError(429, 'busy', 45000)
+    }, { maxRetries: 1, label: 'server-delay' })
+    assert.deepEqual(delays, [45000], 'Retry-After overrides the local backoff cap')
+  } finally { timer.mock.restore() }
 }
 
 console.log('retry policy tests passed')

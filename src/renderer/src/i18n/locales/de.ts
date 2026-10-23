@@ -383,7 +383,7 @@ export default {
       network: 'Netzwerk',
       networkHint: 'Automatische Wiederholung fehlgeschlagener LLM-Anfragen und MCP-Verbindungen.',
       maxRetries: 'Wiederholungen',
-      maxRetriesHint: 'Wie oft eine fehlgeschlagene Anfrage erneut versucht wird. 0 = keine Wiederholung. Verzögerung steigt von 1 s bis 30 s.',
+      maxRetriesHint: 'Wie oft eine fehlgeschlagene Anfrage erneut versucht wird. 0 = keine Wiederholung. Die Basiswartezeit steigt von 1 s auf 20 s mit ±20 % Zufallsschwankung; die Servervorgabe hat Vorrang.',
       retriesUnlimited: 'Unbegrenzt wiederholen',
       systemCerts: 'System-Zertifikatsspeicher verwenden',
       systemCertsHint: 'Wenn aktiviert, vertrauen LLM- und MCP-Verbindungen denselben Zertifikaten wie Chrome (Windows-Zertifikatsspeicher). Bei Endpunkten mit selbst signierten oder internen CAs zuerst das Zertifikat in den Systempeicher importieren, dann diese Option aktivieren.',

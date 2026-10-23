@@ -383,7 +383,7 @@ export default {
       network: 'Réseau',
       networkHint: "Nouvelle tentative automatique en cas d'échec des requêtes LLM et des connexions MCP.",
       maxRetries: 'Nouvelles tentatives',
-      maxRetriesHint: "Nombre de tentatives après un échec. 0 = aucune tentative. L'attente passe de 1 s à 30 s maximum.",
+      maxRetriesHint: "Nombre de tentatives après un échec. 0 = aucune tentative. Le délai de base passe de 1 s à 20 s avec une variation aléatoire de ±20 % ; le délai indiqué par le serveur est prioritaire.",
       retriesUnlimited: 'Tentatives illimitées',
       systemCerts: "Utiliser le magasin de certificats du système",
       systemCertsHint: "Quand activé, les connexions LLM et MCP font confiance aux mêmes certificats que Chrome (magasin de certificats Windows). Pour des points de terminaison avec certificats auto-signés ou CA internes, importez d'abord le certificat dans le magasin système, puis activez cette option.",
