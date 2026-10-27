@@ -112,9 +112,10 @@ export default function ComposerToolbar({
           className={approveMode === 'full' ? 'composer-mode-chip mode-full' : approveMode === 'auto' ? 'composer-mode-chip mode-auto' : 'composer-mode-chip'}
           onClick={() => setModeMenuOpen(!modeMenuOpen)}
           title={modeHint(approveMode)}
+          aria-label={modeLabel(approveMode)}
         >
           {modeIcon(approveMode)}
-          {modeLabel(approveMode)}
+          <span className="chip-label">{modeLabel(approveMode)}</span>
         </button>
         {modeMenuOpen && (
           <AnchoredPopover onClose={() => setModeMenuOpen(false)}>
@@ -144,10 +145,11 @@ export default function ComposerToolbar({
           onClick={() => avatarModels.length === 0 ? setSetupPrompt('avatar') : setAvatarMenuOpen(!avatarMenuOpen)}
           disabled={!activeSession}
           title={avatarModels.length === 0 ? t('chat.avatarNoModels') : t('chat.avatarHint')}
+          aria-label={activeAvatarModel?.name || t('chat.avatarOff')}
         >
           <UserRound size={13} />
-          {activeAvatarModel?.name || t('chat.avatarOff')}
-          <ChevronDown size={11} className={avatarMenuOpen ? 'chevron-up' : ''} />
+          <span className="chip-label">{activeAvatarModel?.name || t('chat.avatarOff')}</span>
+          <ChevronDown size={11} className={avatarMenuOpen ? 'chip-caret chevron-up' : 'chip-caret'} />
         </button>
         {avatarMenuOpen && (
           <AnchoredPopover onClose={() => setAvatarMenuOpen(false)}>
@@ -178,6 +180,7 @@ export default function ComposerToolbar({
         className={activeSession?.ttsEnabled ? 'composer-mode-chip tts-active' : 'composer-mode-chip'}
         disabled={!activeSession}
         title={!ttsReady ? t('chat.ttsNoModel') : activeSession?.ttsEnabled ? t('chat.ttsDisable') : t('chat.ttsEnable')}
+        aria-label="TTS"
         onClick={() => {
           if (!ttsReady) {
             setSetupPrompt('tts')
@@ -188,7 +191,7 @@ export default function ComposerToolbar({
         }}
       >
         {activeSession?.ttsEnabled ? <Volume2 size={13} /> : <VolumeX size={13} />}
-        TTS
+        <span className="chip-label">TTS</span>
       </button>
 
       <div className="composer-toolbar-spacer" />
@@ -199,9 +202,10 @@ export default function ComposerToolbar({
             className={reasoningEffort === 'high' ? 'composer-effort-chip effort-high' : reasoningEffort === 'low' ? 'composer-effort-chip effort-low' : 'composer-effort-chip'}
             onClick={() => setEffortMenuOpen(!effortMenuOpen)}
             title={t('chat.reasoningEffortHint')}
+            aria-label={t(`chat.reasoningEffort.${reasoningEffort}`)}
           >
             <BrainCircuit size={14} />
-            {t(`chat.reasoningEffort.${reasoningEffort}`)}
+            <span className="chip-label">{t(`chat.reasoningEffort.${reasoningEffort}`)}</span>
           </button>
           {effortMenuOpen && (
             <AnchoredPopover onClose={() => setEffortMenuOpen(false)}>

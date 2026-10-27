@@ -42,7 +42,8 @@
 .dock-composer .dock-panel-content > .chat-input-area { flex: 1; width: 100%; height: 100%; padding: 9px 12px; }
 .dock-composer .dock-panel-content { overflow: auto; }
 .dock-composer .chat-textarea { max-height: none; min-height: 40px; field-sizing: fixed; }
-.dock-composer .composer-toolbar { flex-wrap: wrap; gap: 5px; padding: 5px 8px 7px; }
+/* 单行不换行：窄宽度由容器查询把 chip 缩成图标、模型选择按钮自行收缩（见 index.css composer 容器规则） */
+.dock-composer .composer-toolbar { gap: 5px; padding: 5px 8px 7px; }
 .dock-composer .composer-toolbar-spacer { min-width: 10px; }
 .dock-composer .subagent-notice { flex: 1; align-items: center; }
 .dock-panel.is-floating { position: absolute; z-index: 15; flex: initial; border-color: var(--app-color-border-strong); border-radius: 7px; box-shadow: var(--app-shadow-panel); }

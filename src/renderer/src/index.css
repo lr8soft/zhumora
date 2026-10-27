@@ -272,7 +272,7 @@ h1, h2, h3, p { margin: 0; }
 .compact-chip.compacting .spinner { width: 11px; height: 11px; }
 
 /* 批准模式下拉选择器 */
-.mode-selector { position: relative; display: inline-flex; }
+.mode-selector { position: relative; display: inline-flex; min-width: 0; }
 .mode-menu-backdrop { position: fixed; inset: 0; z-index: 100; }
 .mode-menu {
   position: absolute; bottom: calc(100% + 6px); right: 0; z-index: 200;
@@ -501,6 +501,7 @@ h1, h2, h3, p { margin: 0; }
 .composer-icon-btn:hover:not(:disabled) { color: var(--app-color-text); background: var(--app-muted-bg); }
 .composer-icon-btn:disabled { opacity: .45; cursor: not-allowed; }
 .composer-mode-chip {
+  min-width: 0;
   display: flex; align-items: center; gap: 6px; padding: 5px 11px;
   color: var(--app-color-text-mute); border: 0; border-radius: 999px;
   background: var(--app-muted-bg); font-size: 0.733rem; font-weight: 600; cursor: pointer;
@@ -511,6 +512,7 @@ h1, h2, h3, p { margin: 0; }
 .composer-mode-chip.mode-full { color: var(--app-color-warn); background: color-mix(in srgb, var(--app-color-warn) 10%, transparent); }
 /* 思考强度 chip + 菜单（仅 provider 开启功能时显示） */
 .composer-effort-chip {
+  min-width: 0;
   display: flex; align-items: center; gap: 6px; padding: 5px 11px;
   color: var(--app-color-text-mute); border: 0; border-radius: 999px;
   background: var(--app-muted-bg); font-size: 0.733rem; font-weight: 600; cursor: pointer;
@@ -527,7 +529,7 @@ h1, h2, h3, p { margin: 0; }
 /* 模型选择按钮（自定义菜单，替代原生 select） */
 .composer-model-select {
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
-  width: 190px; height: 32px; flex: 0 0 auto; padding: 0 10px;
+  width: 190px; height: 32px; flex: 0 1 auto; min-width: 96px; padding: 0 10px;
   color: var(--app-color-text-soft); border: 0; border-radius: 8px;
   background: transparent; font-size: 0.767rem; cursor: pointer;
 }
@@ -631,6 +633,13 @@ select.input-field { cursor: pointer; }
 .composer-collaboration-chip[aria-pressed="true"] { color: var(--app-color-primary-strong); background: var(--app-color-primary-soft); }
 .docked-composer { container: composer / inline-size; }
 @container composer (max-width: 900px) { .composer-collaboration-chip > span { display: none; } }
+/* 窄宽时权限/Avatar/TTS/思考强度 chip 与并行协作 chip 同策略：只留图标，保证工具栏单行不换行 */
+@container composer (max-width: 760px) {
+  .composer-mode-chip > .chip-label, .composer-effort-chip > .chip-label, .composer-mode-chip > svg.chip-caret { display: none; }
+  .composer-mode-chip, .composer-effort-chip { padding-left: 10px; padding-right: 10px; }
+}
+/* chip 文本基础省略号：防止 Avatar 长模型名把工具栏撑爆 */
+.chip-label { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 
 /* ---------- 设置页 ---------- */
 .settings-view { min-width: 0; min-height: 0; overflow-y: auto; background: var(--app-color-bg); }
