@@ -414,3 +414,4 @@ if (failed) {
   process.exit(1)
 }
 console.log(`\nall ${R.length} office tests passed`)
+await import('./officeRead.test.ts')

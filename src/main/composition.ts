@@ -34,6 +34,10 @@ import { createAvatarTools } from './tools/avatar'
 import { TtsManager } from './tts/manager'
 import { McpServerManager } from './mcpServer/server'
 import { createSubagentTools } from './tools/subagent'
+import { app } from 'electron'
+import * as path from 'node:path'
+import { ToolOutputStore } from './tools/toolOutputStore'
+import { createToolOutputReader } from './tools/toolOutputReader'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -44,6 +48,7 @@ const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHa
 ]
 
 export interface ApplicationServices {
+  outputStore: ToolOutputStore
   tools: ToolRegistry
   permissions: PermissionBroker
   sessions: SessionService
@@ -58,6 +63,9 @@ export interface ApplicationServices {
 
 export function createApplicationServices(avatar: AvatarWindowManager): ApplicationServices {
   toolRegistry.clear()
+  const outputStore = new ToolOutputStore(path.join(app.getPath('userData'), 'tool-output'))
+  void outputStore.cleanup().catch(error => log('warn', `Failed to clean expired tool outputs: ${String(error)}`))
+  toolRegistry.register('read_tool_output', createToolOutputReader(outputStore), 'builtin')
   const desktopControl = new DesktopControlCoordinator(new DesktopControlOverlay(id => db.getSession(id)?.title || '当前会话'))
   // BBS 工具无自身生命周期：配置（token/开关/地址）与 fetch 每次调用时现读
   // （settings 保存即生效；系统证书开关切换也即时生效），无需重连或重启。
@@ -70,6 +78,7 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
   const permissions = new PermissionBroker()
   const tts = new TtsManager(db)
   const sessions = new SessionService({
+    outputStore,
     tools: toolRegistry,
     permissions,
     store: db,
@@ -110,5 +119,5 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
       test: config => qq.test(config)
     })
   ])
-  return { tools: toolRegistry, permissions, sessions, bots, mcpServer, avatar, tts, desktopControl, llmRequests: providerRequests }
+  return { tools: toolRegistry, permissions, sessions, bots, mcpServer, avatar, tts, desktopControl, llmRequests: providerRequests, outputStore }
 }

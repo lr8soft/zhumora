@@ -6,7 +6,7 @@ import { updateSessionTitle } from '../store/db'
 import { editFileExact, readPath, resolveToolPath, writeFilePreservingBom } from './fileOperations'
 import { globWithRipgrep, grepWithRipgrep } from './ripgrep'
 import { executeShellCommand } from './shell'
-import { limitToolOutput } from './outputLimits'
+import { recoverableToolOutput } from './recoverableOutput'
 
 export const readTool: ToolHandler = {
   definition: {
@@ -15,7 +15,7 @@ export const readTool: ToolHandler = {
       name: 'read',
       description: [
         'Read a UTF-8 text file or list a directory.',
-        'File output includes line numbers. It is limited to 2000 lines, 50KB, and 2000 characters per line; use offset to continue when the result says more data is available.',
+        'File output includes line numbers. It is limited to 2000 lines, 50KB, and 2000 characters per line; follow offset and char_offset in the continuation notice to read all remaining content.',
         'Directories are sorted with folders first and can also be paginated.',
         'Use grep for content discovery and glob for file discovery. Read multiple known files in parallel.',
         'Binary files are rejected instead of returning corrupted text.'
@@ -25,7 +25,8 @@ export const readTool: ToolHandler = {
         properties: {
           file_path: { type: 'string', description: 'Absolute path, or path relative to the workspace root' },
           offset: { type: 'number', description: '1-indexed starting line or directory entry, default 1' },
-          limit: { type: 'number', description: 'Maximum lines or entries, default/max 2000' }
+          limit: { type: 'number', description: 'Maximum lines or entries, default/max 2000' },
+          char_offset: { type: 'number', description: '0-based UTF-16 character offset within the starting text line, default 0. Use the returned continuation cursor for long lines.' }
         },
         required: ['file_path']
       }
@@ -33,7 +34,7 @@ export const readTool: ToolHandler = {
   },
   permission: 'safe',
   execute(args, ctx) {
-    return readPath(ctx.workspacePath, args.file_path as string, args.offset, args.limit, ctx.signal)
+    return readPath(ctx.workspacePath, args.file_path as string, args.offset, args.limit, ctx.signal, args.char_offset).then(content => ({ content }))
   }
 }
 
@@ -103,7 +104,7 @@ const bashDescription = [
   `Execute a non-interactive command using ${shellName}. OS: ${process.platform}.`,
   'Use workdir instead of cd. Use dedicated read/write/edit/grep/glob tools for filesystem work.',
   'Use mode="detach" when starting a GUI app or long-running service. It returns immediately and leaves that process running. Do not use shell backgrounding syntax.',
-  'stdout and stderr return a bounded preview with exit metadata: at most 500 output lines, 48000 characters and 2000 characters per line. Long output preserves the beginning and end, including trailing errors, and marks omissions. For verbose logs, redirect output to a file and use read with offset/limit; narrow commands/searches instead of repeating huge outputs.',
+  'stdout and stderr return a bounded preview with exit metadata: at most 500 output lines, 48000 characters and 2000 characters per line. Truncated output is automatically saved; use read_tool_output with its output_id to read or search omitted logs without executing the command again.',
   'mode="wait" is the default. Its timeout is 120 seconds by default and 600 seconds maximum; timeout or cancellation terminates the process tree.',
   process.platform === 'win32'
     ? 'Use cmd.exe syntax (%VAR%, &&, quoted paths); do not use Bash-only syntax.'
@@ -129,15 +130,20 @@ export const bashTool: ToolHandler = {
     }
   },
   permission: 'dangerous',
-  execute(args, ctx) {
-    return executeShellCommand({
+  async execute(args, ctx) {
+    let outputRef: { id: string } | undefined
+    const content = await executeShellCommand({
       workspacePath: ctx.workspacePath,
       command: args.command as string,
       workdir: args.workdir as string | undefined,
       timeoutSeconds: args.timeout,
       mode: args.mode as 'wait' | 'detach' | undefined,
-      signal: ctx.signal
-    }).then(content => ({ content }))
+      signal: ctx.signal,
+      outputStore: ctx.outputStore,
+      sessionId: ctx.sessionId,
+      onOutputRef: id => { outputRef = { id } }
+    })
+    return { content, ...(outputRef ? { outputRef } : {}) }
   }
 }
 
@@ -149,7 +155,7 @@ export const grepTool: ToolHandler = {
       description: [
         'Search file contents with ripgrep regular expressions and return path:line: preview.',
         'Search respects .gitignore/.ignore rules, includes hidden files, and always excludes .git.',
-        'Use include to constrain file globs and exclude for additional directory names or globs. Results have a 48000-character/2000-line cap in addition to match limits; narrow the pattern/path when truncated.'
+        'Use include to constrain file globs and exclude for additional directory names or globs. Results have a 48000-character/2000-line cap in addition to match limits. Use read_tool_output with the returned output_id to inspect omitted matches.'
       ].join('\n'),
       parameters: {
         type: 'object',
@@ -173,7 +179,8 @@ export const grepTool: ToolHandler = {
       include: args.include as string | undefined,
       exclude: args.exclude as string[] | undefined,
       limit: args.limit,
-      signal: ctx.signal
+      signal: ctx.signal,
+      context: ctx
     })
   }
 }
@@ -186,7 +193,7 @@ export const globTool: ToolHandler = {
       description: [
         'Find files with ripgrep glob matching.',
         'Search respects .gitignore/.ignore rules and always excludes .git.',
-        'Examples: **/*.ts, **/*AuthManager*, src/**/*.cpp. Results have a 48000-character/2000-line cap in addition to file limits; narrow the pattern/path when truncated.'
+        'Examples: **/*.ts, **/*AuthManager*, src/**/*.cpp. Results have a 48000-character/2000-line cap in addition to file limits. Use read_tool_output with the returned output_id to inspect omitted files.'
       ].join('\n'),
       parameters: {
         type: 'object',
@@ -208,7 +215,8 @@ export const globTool: ToolHandler = {
       pattern: args.pattern as string,
       exclude: args.exclude as string[] | undefined,
       limit: args.limit,
-      signal: ctx.signal
+      signal: ctx.signal,
+      context: ctx
     })
   }
 }
@@ -237,7 +245,7 @@ export const lsTool: ToolHandler = {
       .filter(entry => !ignore.has(entry.name))
       .sort((a, b) => a.isDirectory() === b.isDirectory() ? a.name.localeCompare(b.name) : a.isDirectory() ? -1 : 1)
       .map(entry => `${entry.isDirectory() ? 'd' : entry.isFile() ? 'f' : 'l'} ${entry.name}${entry.isDirectory() ? '/' : ''}`)
-    return limitToolOutput(lines.join('\n') || '(empty directory)', 'Use read on this directory with offset/limit for a paginated listing.')
+    return recoverableToolOutput(lines.join('\n') || '(empty directory)', ctx, 'Use read on this directory with offset/limit for a paginated listing.')
   }
 }
 

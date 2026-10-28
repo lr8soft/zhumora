@@ -2,9 +2,12 @@ import { spawn } from 'node:child_process'
 import * as path from 'node:path'
 import { rgPath } from '@vscode/ripgrep'
 import { limitToolOutput } from './outputLimits.ts'
+import { recoverableToolOutput } from './recoverableOutput.ts'
+import type { ToolExecutionResult } from '../../shared/types.ts'
+import type { ToolContext } from './registry.ts'
 
-const MAX_RECORD_BYTES = 64 * 1024
-const MAX_PREVIEW_CHARS = 2_000
+const MAX_CAPTURE_BYTES = 8 * 1024 * 1024
+const CAPTURE_LIMIT_NOTICE = '[Search capture limit reached (8 MiB); results are incomplete. Narrow the pattern or path and search again.]'
 
 function runtimeRgPath(): string {
   return rgPath.includes('app.asar') ? rgPath.replace('app.asar', 'app.asar.unpacked') : rgPath
@@ -31,6 +34,7 @@ interface RunResult {
   stdout: string
   stderr: string
   code: number
+  captureLimited: boolean
 }
 
 async function runRipgrep(args: string[], cwd: string, signal?: AbortSignal): Promise<RunResult> {
@@ -41,11 +45,12 @@ async function runRipgrep(args: string[], cwd: string, signal?: AbortSignal): Pr
     const stderr: Buffer[] = []
     let stdoutBytes = 0
     let stderrBytes = 0
-    const maxCapture = 8 * 1024 * 1024
+    let captureLimited = false
 
     const collect = (target: Buffer[], chunk: Buffer, current: number): number => {
-      if (current >= maxCapture) return current
-      const accepted = chunk.subarray(0, maxCapture - current)
+      if (current + chunk.length > MAX_CAPTURE_BYTES) captureLimited = true
+      if (current >= MAX_CAPTURE_BYTES) return current
+      const accepted = chunk.subarray(0, MAX_CAPTURE_BYTES - current)
       target.push(accepted)
       return current + accepted.length
     }
@@ -59,15 +64,21 @@ async function runRipgrep(args: string[], cwd: string, signal?: AbortSignal): Pr
       signal?.removeEventListener('abort', abort)
       if (signal?.aborted) return reject(new Error('Search aborted'))
       resolve({
-        stdout: Buffer.concat(stdout).toString('utf8'),
+        // An exhausted capture may end halfway through a JSON record or filename.
+        stdout: completeCapturedLines(Buffer.concat(stdout).toString('utf8'), captureLimited),
         stderr: Buffer.concat(stderr).toString('utf8'),
-        code: code ?? -1
+        code: code ?? -1,
+        captureLimited
       })
     })
   })
 }
 
-export async function grepWithRipgrep(options: {
+function completeCapturedLines(text: string, limited: boolean): string {
+  return limited ? text.slice(0, text.lastIndexOf('\n') + 1) : text
+}
+
+interface SearchOptions {
   workspacePath: string
   searchPath?: string
   pattern: string
@@ -75,7 +86,24 @@ export async function grepWithRipgrep(options: {
   exclude?: string[]
   limit?: unknown
   signal?: AbortSignal
-}): Promise<string> {
+  context?: ToolContext
+}
+
+async function searchOutput(
+  lines: string[], limit: number, kind: 'matches' | 'files', options: SearchOptions, captureLimited: boolean
+): Promise<string | ToolExecutionResult> {
+  const hint = `Narrow the pattern/path or use read_tool_output to inspect omitted ${kind}.`
+  const full = [...lines, ...(captureLimited ? [CAPTURE_LIMIT_NOTICE] : [])].join('\n') || `No ${kind} found`
+  const preview = [...lines.slice(0, limit), ...(lines.length > limit ? [`... (truncated at ${limit} ${kind}; ${hint})`] : []),
+    ...(captureLimited ? [CAPTURE_LIMIT_NOTICE] : [])].join('\n') || `No ${kind} found`
+  if (!options.context) return limitToolOutput(preview, hint)
+  const output = await recoverableToolOutput(full, options.context, hint, undefined, preview)
+  return captureLimited ? { ...output, isError: true } : output
+}
+
+export function grepWithRipgrep(options: SearchOptions & { context: ToolContext }): Promise<ToolExecutionResult>
+export function grepWithRipgrep(options: SearchOptions): Promise<string>
+export async function grepWithRipgrep(options: SearchOptions): Promise<string | ToolExecutionResult> {
   const target = path.resolve(options.workspacePath, options.searchPath || '.')
   const cwd = options.workspacePath
   const relativeTarget = path.relative(cwd, target)
@@ -92,38 +120,28 @@ export async function grepWithRipgrep(options: {
 
   const result = await runRipgrep(args, cwd, options.signal)
   if (result.code !== 0 && result.code !== 1) {
+    if (options.context) return { ...await recoverableToolOutput(result.stderr.trim() || `ripgrep exited with code ${result.code}`, options.context, 'Simplify the search pattern and path.'), isError: true }
     throw new Error(limitToolOutput(result.stderr.trim() || `ripgrep exited with code ${result.code}`, 'Simplify the search pattern and path.'))
   }
 
   const matches: string[] = []
   for (const record of result.stdout.split(/\r?\n/)) {
-    if (!record || Buffer.byteLength(record) > MAX_RECORD_BYTES) continue
+    if (!record) continue
     let parsed: any
     try { parsed = JSON.parse(record) } catch { continue }
     if (parsed.type !== 'match') continue
     const data = parsed.data
     const file = normalizeResultPath(options.workspacePath, cwd, data.path?.text || '')
     const line = Number(data.line_number || 0)
-    const preview = String(data.lines?.text || '').replace(/\r?\n$/, '').slice(0, MAX_PREVIEW_CHARS)
-    matches.push(`${file}:${line}: ${preview}${String(data.lines?.text || '').length > MAX_PREVIEW_CHARS ? '…' : ''}`)
-    if (matches.length > limit) break
+    const text = String(data.lines?.text || '').replace(/\r?\n$/, '')
+    matches.push(`${file}:${line}: ${text}`)
   }
-  if (matches.length === 0) return 'No matches found'
-  if (matches.length > limit) {
-    matches.length = limit
-    matches.push(`... (truncated at ${limit} matches; narrow the pattern or path)`)
-  }
-  return limitToolOutput(matches.join('\n'), 'Narrow the pattern/path or lower limit to inspect omitted matches.')
+  return searchOutput(matches, limit, 'matches', options, result.captureLimited)
 }
 
-export async function globWithRipgrep(options: {
-  workspacePath: string
-  searchPath?: string
-  pattern: string
-  exclude?: string[]
-  limit?: unknown
-  signal?: AbortSignal
-}): Promise<string> {
+export function globWithRipgrep(options: SearchOptions & { context: ToolContext }): Promise<ToolExecutionResult>
+export function globWithRipgrep(options: SearchOptions): Promise<string>
+export async function globWithRipgrep(options: SearchOptions): Promise<string | ToolExecutionResult> {
   const cwd = path.resolve(options.workspacePath, options.searchPath || '.')
   const limit = positiveLimit(options.limit, 500, 2_000)
   const args = ['--no-config', '--files', '--no-require-git', `--glob=${options.pattern}`, '--glob=!**/.git/**']
@@ -131,16 +149,11 @@ export async function globWithRipgrep(options: {
   args.push('.')
   const result = await runRipgrep(args, cwd, options.signal)
   if (result.code !== 0 && result.code !== 1) {
+    if (options.context) return { ...await recoverableToolOutput(result.stderr.trim() || `ripgrep exited with code ${result.code}`, options.context, 'Simplify the glob pattern and path.'), isError: true }
     throw new Error(limitToolOutput(result.stderr.trim() || `ripgrep exited with code ${result.code}`, 'Simplify the glob pattern and path.'))
   }
 
   const files = result.stdout.split(/\r?\n/).filter(Boolean)
     .map(file => normalizeResultPath(options.workspacePath, cwd, file))
-    .slice(0, limit + 1)
-  if (files.length === 0) return 'No files found'
-  if (files.length > limit) {
-    files.length = limit
-    files.push(`... (truncated at ${limit} files; narrow the pattern or path)`)
-  }
-  return limitToolOutput(files.join('\n'), 'Narrow the pattern/path or lower limit to inspect omitted files.')
+  return searchOutput(files, limit, 'files', options, result.captureLimited)
 }

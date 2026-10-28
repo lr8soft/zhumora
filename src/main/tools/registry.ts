@@ -2,6 +2,7 @@
 // 工具定义公共接口
 // ============================================================
 import type { ToolDefinition, ToolExecutionResult, ToolHandlerOutput } from '../../shared/types'
+import type { ToolOutputStore } from './toolOutputStore.ts'
 
 /**
  * 工具权限等级（与三档批准模式 AutoApproveMode 配合使用）
@@ -16,6 +17,7 @@ export type PermissionLevel = 'safe' | 'normal' | 'dangerous'
 
 export interface ToolContext {
   workspacePath: string
+  outputStore?: ToolOutputStore
   sessionId?: string
   /** 当前 Agent 运行的取消信号；长时间工具必须响应它 */
   signal?: AbortSignal

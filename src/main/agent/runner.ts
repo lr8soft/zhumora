@@ -37,6 +37,7 @@ import { appendCoordinationMessages, type CoordinationMessage } from './runInbox
 import { roundAssistant } from './roundOutput.ts'
 import { AgentCompletionError } from './completionError.ts'
 import { projectReasoningHistory } from '../llm/responseParsing.ts'
+import type { ToolOutputStore } from '../tools/toolOutputStore.ts'
 
 export { MAX_EMPTY_CONTINUATIONS, MAX_TRUNCATION_CONTINUATIONS } from './recoveryPolicy'
 // 回调契约定义在 eventCallbacks；runner 是其主要消费者，从这里再导出以兼容既有引用
@@ -45,6 +46,7 @@ export type { AgentEventCallbacks } from './eventCallbacks'
 export const DEFAULT_MAX_TOOL_ROUNDS = 20
 
 export interface AgentRunOptions {
+  outputStore?: ToolOutputStore
   /** 完整会话历史（无 system，按时间升序） */
   messages: ChatMessage[]
   /** 与 messages 平行对齐的 UI 消息 id（压缩边界定位用） */
@@ -111,6 +113,7 @@ export async function runAgent(
     contextWindow,
     persist: opts.onAutoCompact,
     signal,
+    archiveToolOutput: opts.outputStore && sessionId ? text => opts.outputStore!.save(sessionId, text) : undefined,
     onCompact: (info) => cb.onCompact?.(info)
   }, compaction)
 
@@ -124,7 +127,7 @@ export async function runAgent(
 
   // 复用静态依赖；每轮 hardStop 仍由循环持有并同步。
   const toolPhaseBase: Omit<ToolPhaseOptions, 'hardStop'> = {
-    conversation, toolsRegistry, workspacePath, sessionId, signal,
+    conversation, toolsRegistry, workspacePath, sessionId, signal, outputStore: opts.outputStore,
     permissionCheck: opts.permissionCheck, onSessionTitleUpdate, loopDetector, loopConfig, cb
   }
 

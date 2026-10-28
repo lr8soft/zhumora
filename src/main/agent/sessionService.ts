@@ -30,6 +30,7 @@ import { RunInbox } from './runInbox.ts'
 import { takeRunCoordinationMessages } from './sessionCoordination.ts'
 import { createSessionSubagentHost } from './sessionSubagentHost.ts'
 import { createSessionPermissionCheck } from './sessionPermissionCheck.ts'
+import { SessionDeletionGate } from './sessionDeletion.ts'
 import type { ActiveSessionRun, SessionStore, SessionRunRequest, SessionRunHandle, SessionCompactInfo, SessionServiceDependencies } from './sessionContracts.ts'
 
 export class SessionBusyError extends Error {}
@@ -56,6 +57,7 @@ export class SessionService {
   private readonly deps: SessionServiceDependencies
   private readonly active = new Map<string, ActiveSessionRun>()
   private readonly approveModes = new Map<string, AutoApproveMode>()
+  private readonly deletions = new SessionDeletionGate()
   private readonly executeAgent: typeof runAgent
   private readonly nextMessageId: () => string
   private readonly now: () => number
@@ -71,6 +73,7 @@ export class SessionService {
   async sendMessage(request: SessionRunRequest): Promise<SessionRunHandle> {
     const preferParallel = normalizeParallelPreference(request.preferParallel)
     const { sessionId } = request
+    if (this.deletions.has(sessionId)) throw new SessionBusyError('This session is being deleted.')
     if (this.active.has(sessionId)) throw new SessionBusyError('This session already has a running agent.')
     if (request.signal?.aborted) throw new AgentAbortedError()
 
@@ -141,6 +144,7 @@ export class SessionService {
         maxRounds: settings.maxRounds,
         skillsPrompt: this.deps.getSkillsPrompt(),
         toolRegistry: this.deps.tools,
+        outputStore: this.deps.outputStore,
         sessionNeedsTitle: needsTitle,
         onSessionTitleUpdate: (id, title) => run.events.titleUpdated?.(id, title),
         onAutoCompact: state => {
@@ -234,15 +238,14 @@ export class SessionService {
     return this.deps.store.getOrCreateBotSession(channel, accountId, conversationId, title)
   }
 
-  async deleteSession(sessionId: string): Promise<void> {
-    const run = this.active.get(sessionId)
-    this.forgetSession(sessionId)
-    // 等待 settle 而不是裸 runner promise：runner 若因未响应信号的路径
-    // 卡死，abort 的有界兜底超时（abortRun）会强制清理并 resolve settled，
-    // 删除不会被永久挂起（AGENTS.md：删除活动会话必须先中止并等待
-    // completion settle，再删数据库）。
-    if (run) await run.settled
-    this.deps.store.deleteSession(sessionId)
+  deleteSession(sessionId: string): Promise<void> {
+    return this.deletions.run(sessionId, async () => {
+      const run = this.active.get(sessionId)
+      this.forgetSession(sessionId)
+      if (run) await run.settled
+      await this.deps.outputStore?.deleteSession(sessionId)
+      this.deps.store.deleteSession(sessionId)
+    })
   }
 
   async stopAll(): Promise<void> {

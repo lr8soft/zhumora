@@ -1,6 +1,6 @@
 import { createReadStream, promises as fs } from 'node:fs'
 import * as path from 'node:path'
-import { limitToolOutput, MAX_TOOL_OUTPUT_CHARS } from './outputLimits.ts'
+import { limitToolOutput, MAX_TOOL_OUTPUT_CHARS, utf16Prefix } from './outputLimits.ts'
 
 const UTF8_BOM = Buffer.from([0xef, 0xbb, 0xbf])
 const MAX_READ_LINES = 2_000
@@ -52,107 +52,102 @@ async function readSample(filePath: string): Promise<Buffer> {
   }
 }
 
+/** Only one line window is retained, even when a minified file has a multi-megabyte line. */
+class TextReadPage {
+  readonly output: string[] = []
+  lineNumber = 1
+  hasMore = false
+  private outputBytes = 0
+  private line = ''
+  private lineChars = 0
+  private shortened = false
+  private offset: number
+  private limit: number
+  private charOffset: number
+
+  constructor(offset: number, limit: number, charOffset: number) {
+    this.offset = offset; this.limit = limit; this.charOffset = charOffset
+  }
+
+  append(piece: string): void {
+    if (this.lineNumber < this.offset || this.shortened) { this.lineChars += piece.length; return }
+    let start = Math.min(piece.length, Math.max(0, this.charOffset - this.lineChars))
+    // Normalize a manually supplied offset inside a surrogate pair to its beginning.
+    if (start > 0 && start < piece.length && /[\uDC00-\uDFFF]/.test(piece[start]) && /[\uD800-\uDBFF]/.test(piece[start - 1])) {
+      start--; this.charOffset--
+    }
+    this.lineChars += piece.length
+    const remaining = piece.slice(start)
+    const kept = utf16Prefix(remaining, MAX_LINE_CHARS - this.line.length)
+    this.line += kept
+    this.shortened ||= kept.length < remaining.length
+  }
+
+  consumeLine(): boolean {
+    if (this.lineNumber >= this.offset) {
+      if (this.output.length >= this.limit) { this.hasMore = true; return false }
+      if (this.charOffset > this.lineChars) throw new Error(`char_offset ${this.charOffset} is beyond line ${this.lineNumber} (${this.lineChars} characters)`)
+      const display = this.line.endsWith('\r') ? this.line.slice(0, -1) : this.line
+      const next = this.charOffset + display.length
+      const notice = this.shortened ? `… [line truncated; continue with offset=${this.lineNumber}, char_offset=${next}, limit=1]` : ''
+      const rendered = `${String(this.lineNumber).padStart(6)}: ${display}${notice}`
+      const bytes = Buffer.byteLength(rendered + '\n')
+      if (this.output.length > 0 && this.outputBytes + bytes > MAX_READ_BYTES) { this.hasMore = true; return false }
+      this.output.push(rendered); this.outputBytes += bytes
+    }
+    this.lineNumber++; this.line = ''; this.lineChars = 0; this.shortened = false
+    if (this.lineNumber > this.offset) this.charOffset = 0
+    return true
+  }
+
+  finish(hasContent: boolean): string {
+    if (!this.hasMore && this.lineChars > 0) this.consumeLine()
+    if (!this.output.length && hasContent && this.lineNumber <= this.offset) {
+      throw new Error(`Offset ${this.offset} is beyond the end of the file (${Math.max(0, this.lineNumber - 1)} lines)`)
+    }
+    if (this.hasMore) this.output.push(`... (output limited to ${this.limit} lines / 50KB; continue with offset=${this.offset + this.output.length})`)
+    return this.output.join('\n') || '(empty file)'
+  }
+}
+
+async function readTextPage(filePath: string, size: number, page: TextReadPage, signal?: AbortSignal): Promise<string> {
+  const decoder = new TextDecoder('utf-8', { fatal: true })
+  const stream = createReadStream(filePath)
+  try {
+    outer: for await (const rawChunk of stream) {
+      if (signal?.aborted) throw new Error('Read aborted')
+      const pieces = decoder.decode(rawChunk as Buffer, { stream: true }).split('\n')
+      for (let index = 0; index < pieces.length; index++) {
+        page.append(pieces[index])
+        if (index < pieces.length - 1 && !page.consumeLine()) break outer
+      }
+    }
+    if (!page.hasMore) page.append(decoder.decode())
+    return page.finish(size > 0)
+  } catch (error) {
+    if (error instanceof TypeError) throw new Error(`File is not valid UTF-8 text: ${filePath}`)
+    throw error
+  } finally { stream.destroy() }
+}
+
 export async function readPath(
-  workspacePath: string,
-  requestedPath: string,
-  offsetValue?: unknown,
-  limitValue?: unknown,
-  signal?: AbortSignal
+  workspacePath: string, requestedPath: string, offsetValue?: unknown, limitValue?: unknown,
+  signal?: AbortSignal, charOffsetValue?: unknown
 ): Promise<string> {
   const resolved = resolveToolPath(workspacePath, requestedPath)
   const stat = await fs.stat(resolved)
   const offset = asPositiveInteger(offsetValue, 1)
   const limit = asPositiveInteger(limitValue, MAX_READ_LINES, MAX_READ_LINES)
-
-  if (stat.isDirectory()) return readDirectory(resolved, offset, limit)
+  const charOffset = charOffsetValue === undefined ? 0 : charOffsetValue
+  if (typeof charOffset !== 'number' || !Number.isSafeInteger(charOffset) || charOffset < 0) throw new Error('char_offset must be a non-negative integer')
+  if (signal?.aborted) throw new Error('Read aborted')
+  if (stat.isDirectory()) {
+    if (charOffset) throw new Error('char_offset is only supported for text files')
+    return readDirectory(resolved, offset, limit)
+  }
   if (!stat.isFile()) throw new Error(`Unsupported filesystem entry: ${resolved}`)
-
-  const sample = await readSample(resolved)
-  if (detectBinary(sample, resolved)) {
-    throw new Error(`Cannot read binary file as text: ${resolved}`)
-  }
-
-  const decoder = new TextDecoder('utf-8', { fatal: true })
-  const stream = createReadStream(resolved)
-  const output: string[] = []
-  let outputBytes = 0
-  let lineNumber = 1
-  let currentLine = ''
-  let lineWasTruncated = false
-  let hasMore = false
-  let reachedEof = false
-
-  const consumeLine = (): boolean => {
-    const displayLine = currentLine.endsWith('\r') ? currentLine.slice(0, -1) : currentLine
-    if (lineNumber >= offset) {
-      if (output.length >= limit) {
-        hasMore = true
-        return false
-      }
-      const suffix = lineWasTruncated ? '…' : ''
-      const rendered = `${String(lineNumber).padStart(6)}: ${displayLine}${suffix}`
-      const renderedBytes = Buffer.byteLength(rendered + '\n')
-      if (output.length > 0 && outputBytes + renderedBytes > MAX_READ_BYTES) {
-        hasMore = true
-        return false
-      }
-      output.push(rendered)
-      outputBytes += renderedBytes
-    }
-    lineNumber++
-    currentLine = ''
-    lineWasTruncated = false
-    return true
-  }
-
-  try {
-    outer: for await (const rawChunk of stream) {
-      if (signal?.aborted) throw new Error('Read aborted')
-      const text = decoder.decode(rawChunk as Buffer, { stream: true })
-      const pieces = text.split('\n')
-      for (let index = 0; index < pieces.length; index++) {
-        const piece = pieces[index]
-        if (!lineWasTruncated) {
-          const room = MAX_LINE_CHARS - currentLine.length
-          if (piece.length > room) {
-            currentLine += piece.slice(0, Math.max(0, room))
-            lineWasTruncated = true
-          } else {
-            currentLine += piece
-          }
-        }
-        if (index < pieces.length - 1 && !consumeLine()) break outer
-      }
-    }
-    if (!hasMore) {
-      const tail = decoder.decode()
-      if (tail) {
-        const room = MAX_LINE_CHARS - currentLine.length
-        currentLine += tail.slice(0, Math.max(0, room))
-        if (tail.length > room) lineWasTruncated = true
-      }
-      reachedEof = true
-      // Empty files contain zero lines; non-empty files always have a final logical line.
-      if (stat.size > 0 && currentLine.length > 0) consumeLine()
-    }
-  } catch (error) {
-    if (error instanceof TypeError) throw new Error(`File is not valid UTF-8 text: ${resolved}`)
-    throw error
-  } finally {
-    stream.destroy()
-  }
-
-  if (output.length === 0) {
-    if (stat.size === 0) return '(empty file)'
-    if (reachedEof && lineNumber <= offset) {
-      throw new Error(`Offset ${offset} is beyond the end of the file (${Math.max(0, lineNumber - 1)} lines)`)
-    }
-  }
-
-  if (hasMore) {
-    output.push(`... (output limited to ${limit} lines / 50KB; continue with offset=${offset + output.length})`)
-  }
-  return output.join('\n') || '(empty file)'
+  if (detectBinary(await readSample(resolved), resolved)) throw new Error(`Cannot read binary file as text: ${resolved}`)
+  return readTextPage(resolved, stat.size, new TextReadPage(offset, limit, charOffset), signal)
 }
 
 async function readDirectory(directoryPath: string, offset: number, limit: number): Promise<string> {

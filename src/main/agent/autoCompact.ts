@@ -8,10 +8,11 @@
 // - 摘要失败时本次运行退化为截断（不持久化，避免丢失旧摘要）；
 // - 压缩边界 = 被折叠的最后一条真实历史消息 id（跳过虚拟摘要位 null）。
 // ============================================================
-import { AgentAbortedError, type ProviderConfig, type ToolDefinition } from '../../shared/types'
+import { AgentAbortedError, type ChatMessage, type ProviderConfig, type ToolDefinition } from '../../shared/types'
 import { planAutoCompact, makeSummaryMessage } from './compaction'
 import { assertContextFits, estimateTokens, measureContextBudget } from './contextBudget'
 import { projectToolResultsToBudget } from './toolResultProjection.ts'
+import { recoverProjectedToolResults } from './toolResultRecovery.ts'
 import type { CompactionState } from './history'
 import { log } from '../llm/logger'
 import type { WorkingConversation } from './workingConversation'
@@ -25,6 +26,7 @@ export interface CompactNotice {
 }
 
 export interface AutoCompactorDeps {
+  archiveToolOutput?: (text: string) => Promise<string>
   provider: ProviderConfig
   modelOverride?: string
   contextWindow: number
@@ -70,7 +72,7 @@ export class AutoCompactor {
       log('info', `Auto compact triggered ${trigger}`)
       const notice = await this.apply(conversation)
       this.checkAborted()
-      const projected = projectToolResultsToBudget(conversation.messages, this.deps.contextWindow, tools)
+      const projected = await this.projectWithRecovery(conversation.messages, tools)
       conversation.replaceAfterSystem(projected.slice(1), conversation.effectiveIds())
       const after = measureContextBudget(conversation.messages, this.deps.contextWindow, tools)
       log('info', `Context recheck: request≈${after.estimatedRequestTokens} / input budget ${after.inputBudget}`)
@@ -93,6 +95,20 @@ export class AutoCompactor {
 
   private checkAborted(): void {
     if (this.deps.signal?.aborted) throw new AgentAbortedError()
+  }
+
+  private async projectWithRecovery(messages: ChatMessage[], tools: ToolDefinition[]): Promise<ChatMessage[]> {
+    if (!this.deps.archiveToolOutput) return projectToolResultsToBudget(messages, this.deps.contextWindow, tools)
+    let candidate = messages
+    // Adding references may make another result need projection. Every pass archives
+    // before adopting a cut; no final unprotected projection is allowed.
+    for (let pass = 0; pass < 9; pass++) {
+      const projected = projectToolResultsToBudget(candidate, this.deps.contextWindow, tools)
+      candidate = await recoverProjectedToolResults(candidate, projected, this.deps.archiveToolOutput, this.deps.signal)
+      const usage = measureContextBudget(candidate, this.deps.contextWindow, tools)
+      if (usage.estimatedRequestTokens < usage.threshold) break
+    }
+    return candidate
   }
 
   /**

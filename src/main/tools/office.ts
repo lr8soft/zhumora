@@ -5,9 +5,7 @@
 // 全部纯 JS 库；库按需懒加载，不拖慢主进程启动。
 import { promises as fs } from 'node:fs'
 import * as path from 'node:path'
-
-const MAX_OUTPUT_BYTES = 50 * 1024
-const MAX_READ_PAGES = 200
+import { readOfficeFile, type OfficeReadArgs } from './officeRead.ts'
 
 type OfficeFormat = 'docx' | 'xlsx' | 'pptx' | 'pdf'
 
@@ -27,106 +25,6 @@ function detectFormat(filePath: string, explicit?: string): OfficeFormat {
   const f = FORMAT_BY_EXT[path.extname(filePath).toLowerCase()]
   if (!f) throw new Error(`Unsupported office file extension: ${path.extname(filePath)} (expected .docx/.xlsx/.pptx/.pdf)`)
   return f
-}
-
-function truncateOutput(text: string, hint: string): string {
-  if (Buffer.byteLength(text) <= MAX_OUTPUT_BYTES) return text
-  let cut = text
-  while (Buffer.byteLength(cut) > MAX_OUTPUT_BYTES && cut.length) cut = cut.slice(0, Math.floor(cut.length * 0.95))
-  return cut + `\n[output truncated at ${MAX_OUTPUT_BYTES} bytes — ${hint}]`
-}
-
-// ============================================================
-// 读取
-// ============================================================
-
-async function readOfficeFile(filePath: string, format: OfficeFormat): Promise<string> {
-  await fs.access(filePath)
-  if (format === 'pdf') return readPdf(filePath)
-
-  const { OfficeParser, OfficeGenerator } = await import('officeparser')
-  const ast = await OfficeParser.parseOffice(filePath)
-  const genFormat = format === 'xlsx' ? 'csv' : 'md'
-  const { value } = await OfficeGenerator.generate(ast, genFormat)
-  let text = String(value ?? '')
-  if (format === 'pptx') text = cleanPptxMarkdown(text)
-  return truncateOutput(text, 'narrow your scope instead of re-reading the whole file')
-}
-
-/** 清洗 officeparser 对 pptx 的输出：去掉 front-matter 与 Note 伪影，按 slide 分段 */
-function cleanPptxMarkdown(text: string): string {
-  const lines = text.split('\n')
-
-  // 1) 跳过 front-matter（第一个 --- 到第二个 ---）
-  let start = 0
-  let dashes = 0
-  for (let i = 0; i < lines.length; i++) {
-    if (lines[i].trim() === '---') {
-      dashes++
-      if (dashes === 2) { start = i + 1; break }
-    }
-  }
-
-  // 2) 其余内容按 --- 分段为 slide
-  const slides: string[] = []
-  let current: string[] = []
-  const flush = () => {
-    const body = current
-      .filter(l => !/^>\s*\*\*Note:\*\*/.test(l.trim()))
-      .join('\n')
-      .replace(/\n{3,}/g, '\n\n')
-      .trim()
-    if (body) slides.push(body)
-    current = []
-  }
-  for (const raw of lines.slice(start)) {
-    if (raw.trim() === '---') flush()
-    else current.push(raw)
-  }
-  flush()
-
-  return slides.map((body, i) => `## Slide ${i + 1}\n\n${body}`).join('\n\n')
-}
-
-/** pdf 文本抽取：按行 Y 坐标重排，输出分页文本 */
-async function readPdf(filePath: string): Promise<string> {
-  const pdfjs = await import('pdfjs-dist/legacy/build/pdf.mjs')
-  const data = new Uint8Array(await fs.readFile(filePath))
-  // 文本抽取不依赖字体渲染；base14（Helvetica 等）PDF 会打一条无害的
-  // standardFontDataUrl 警告（Node 下 fetch 不读 file://），不影响结果。
-  const task = pdfjs.getDocument({ data })
-  const pdfDoc = await task.promise
-  const total = pdfDoc.numPages
-  const pageCount = Math.min(total, MAX_READ_PAGES)
-  const pages: string[] = []
-  let totalBytes = 0
-  let stopped = false
-  for (let i = 1; i <= pageCount; i++) {
-    const page = await pdfDoc.getPage(i)
-    const { items } = await page.getTextContent()
-    let text = ''
-    let lastY: number | null = null
-    for (const item of items) {
-      // 仅处理文本项（跳过 marked-content 等）
-      if (!('str' in item) || typeof item.str !== 'string') continue
-      const y = (item as { transform?: number[] }).transform?.[5]
-      if (lastY !== null && y !== undefined && Math.abs(y - lastY) > 2) text += '\n'
-      else if (text && !text.endsWith('\n') && !text.endsWith(' ')) text += ' '
-      text += item.str
-      if (y !== undefined) lastY = y
-    }
-    const pageText = `--- page ${i} ---\n${text.trim()}`
-    pages.push(pageText)
-    totalBytes += Buffer.byteLength(pageText)
-    if (totalBytes > MAX_OUTPUT_BYTES) { stopped = true; break }
-  }
-  ;(pdfDoc as unknown as { destroy?: () => void }).destroy?.()
-  const notes: string[] = []
-  if (total > pageCount) notes.push(`only first ${pageCount} of ${total} pages`)
-  if (stopped && total > pages.length) notes.push(`stopped at ${pages.length}/${total} pages (size limit)`)
-  let output = pages.join('\n\n')
-  if (notes.length) output += `\n[${notes.join('; ')}]`
-  return truncateOutput(output, 'the document is large; read it in parts if supported')
 }
 
 // ============================================================
@@ -849,7 +747,7 @@ async function editPdf(filePath: string, edit: PdfEditOp, fontQuery?: string): P
 // 统一入口
 // ============================================================
 
-export interface OfficeArgs {
+export interface OfficeArgs extends OfficeReadArgs {
   action: string
   file_path: string
   format?: string
@@ -867,7 +765,7 @@ export async function executeOffice(args: OfficeArgs, workspacePath: string, sig
   const filePath = path.resolve(workspacePath, args.file_path)
   const format = detectFormat(filePath, args.format)
 
-  if (action === 'read') return readOfficeFile(filePath, format)
+  if (action === 'read') return readOfficeFile(filePath, format, args, signal)
 
   if (action === 'create') {
     if (!args.content?.trim()) throw new Error('create requires "content"')

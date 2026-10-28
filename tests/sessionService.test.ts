@@ -5,6 +5,8 @@ import { PermissionBroker } from '../src/main/agent/permissionBroker.ts'
 import { SessionBusyError, SessionService } from '../src/main/agent/sessionService.ts'
 import type { AgentEventCallbacks, AgentRunOptions } from '../src/main/agent/runner.ts'
 import { ToolRegistry } from '../src/main/tools/registry.ts'
+import type { ToolOutputStore } from '../src/main/tools/toolOutputStore.ts'
+import { SessionDeletionGate } from '../src/main/agent/sessionDeletion.ts'
 
 const settings = {
   subagentsEnabled: true,
@@ -62,7 +64,10 @@ const executeAgent = async (options: AgentRunOptions, callbacks: AgentEventCallb
 
 let nextId = 0
 const permissions = new PermissionBroker()
+let removeOutputs = async (_id: string) => {}
+const outputStore = { deleteSession: (id: string) => removeOutputs(id) } as unknown as ToolOutputStore
 const service = new SessionService({
+  outputStore,
   store,
   tools: new ToolRegistry(),
   permissions,
@@ -96,6 +101,7 @@ assert.equal(second.userMessage.id, 'm2')
 assert.equal(optionsSeen.get('s1')?.systemPromptExtra, 'avatar:s1')
 assert.equal(optionsSeen.get('s2')?.systemPromptExtra, 'bot-source\n\navatar:s2')
 assert.equal(service.getApproveMode('s1'), 'auto')
+assert.equal(optionsSeen.get('s1')?.outputStore, outputStore, 'all session adapters inject the same artifact store')
 await assert.rejects(service.sendMessage({ sessionId: 's1', message: { text: 'duplicate' } }), SessionBusyError)
 
 assert.equal(service.abort('s1'), true)
@@ -119,7 +125,21 @@ assert.ok(events.includes(`${external.userMessage.sessionId}:user:${external.use
 
 const deleting = await service.sendMessage({ sessionId: 's1', message: { text: 'delete while running' } })
 void deleting.completion.catch(() => {})
-await service.deleteSession('s1')
+let finishRemoval!: () => void
+let removalStarted!: () => void
+const removing = new Promise<void>(resolve => { removalStarted = resolve })
+removeOutputs = async id => {
+  assert.equal(id, 's1')
+  removalStarted()
+  await new Promise<void>(resolve => { finishRemoval = resolve })
+}
+const deletion = service.deleteSession('s1')
+await removing
+assert.equal(service.deleteSession('s1'), deletion, 'concurrent deletion shares cleanup')
+await assert.rejects(service.sendMessage({ sessionId: 's1', message: { text: 'cannot race deletion' } }), SessionBusyError)
+finishRemoval()
+await deletion
+removeOutputs = async () => {}
 assert.equal(service.getSession('s1'), null, 'deletion waits for the active run to abort before removing persisted state')
 assert.equal(service.isRunning('s1'), false)
 
@@ -162,4 +182,11 @@ assert.equal(service.isRunning('s1'), false)
 }
 
 permissions.dispose()
+const gate = new SessionDeletionGate()
+await assert.rejects(gate.run('failed-cleanup', async () => {
+  assert.equal(gate.has('failed-cleanup'), true, 'deletion is blocked before synchronous cleanup callbacks')
+  throw new Error('disk unavailable')
+}), /disk unavailable/)
+assert.equal(gate.has('failed-cleanup'), false, 'failed cleanup releases the deletion gate')
+await gate.run('failed-cleanup', async () => {})
 console.log('Session service concurrency, ownership and event tests passed')

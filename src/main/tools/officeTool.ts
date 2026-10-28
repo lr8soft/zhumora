@@ -4,6 +4,7 @@
 // inside one generic tool.
 import * as path from 'node:path'
 import type { ToolHandler, ToolContext } from './registry.ts'
+import type { ToolExecutionResult } from '../../shared/types'
 import { executeOffice, type OfficeArgs } from './office.ts'
 
 type OfficeFormat = 'docx' | 'xlsx' | 'pptx' | 'pdf'
@@ -23,7 +24,7 @@ async function executeFormatTool(
   args: Record<string, unknown>,
   ctx: ToolContext,
   format: OfficeFormat
-): Promise<string> {
+): Promise<ToolExecutionResult> {
   const filePath = String(args.file_path || '')
   const expectedExtension = EXTENSION_BY_FORMAT[format]
   if (filePath && path.extname(filePath).toLowerCase() !== expectedExtension) {
@@ -33,13 +34,19 @@ async function executeFormatTool(
     ...args,
     action: args.action === 'create_or_replace' ? 'create' : args.action
   } as unknown as OfficeArgs
-  return executeOffice(officeArgs, ctx.workspacePath, ctx.signal)
+  return { content: await executeOffice(officeArgs, ctx.workspacePath, ctx.signal) }
 }
 
 const filePathProperty = (extension: string) => ({
   type: 'string',
   description: `Absolute path or workspace-relative path. Must end in ${extension}.`
 })
+
+const readPageProperties = {
+  offset: { type: 'integer', minimum: 1, description: 'read: one-based line in converted text within the same selected scope. Default 1. Follow the exact next cursor in the result.' },
+  limit: { type: 'integer', minimum: 1, maximum: 2000, description: 'read: maximum converted text lines per response; default 2000. Responses also have a 50 KiB budget.' },
+  char_offset: { type: 'integer', minimum: 0, description: 'read: UTF-16 offset within the first selected line, default 0. Use the returned cursor to continue long lines without losing content.' }
+}
 
 export const wordDocumentTool: ToolHandler = {
   definition: {
@@ -48,7 +55,7 @@ export const wordDocumentTool: ToolHandler = {
       name: 'word_document',
       description: [
         'Read or create/replace a Microsoft Word .docx artifact. Use this for Word-document work, not shell or code tools.',
-        'read extracts document content as Markdown-like text.',
+        'read extracts document content as Markdown-like text. Use offset/limit and the returned cursor to read every part of a large document.',
         'create_or_replace writes content using a Markdown subset: headings, paragraphs, bullets, numbered lists, bold, italic, and tables. Choose a built-in theme for coordinated headings, accents, tables, header, and footer.',
         'Existing complex styling is not preserved when replacing a document. Inspect an existing file before replacing it.'
       ].join('\n'),
@@ -61,6 +68,7 @@ export const wordDocumentTool: ToolHandler = {
             description: 'read extracts content; create_or_replace writes the complete document and overwrites an existing file.'
           },
           file_path: filePathProperty('.docx'),
+          ...readPageProperties,
           content: {
             type: 'string',
             description: 'Required for create_or_replace. Complete document in the supported Markdown subset.'
@@ -94,7 +102,8 @@ export const excelWorkbookTool: ToolHandler = {
       name: 'excel_workbook',
       description: [
         'Read, create/replace, or edit a Microsoft Excel .xlsx artifact. Use this for workbook work, not shell or code tools.',
-        'read returns sheets as CSV. create_or_replace accepts CSV; start a sheet with "# Sheet: Name" for multiple sheets.',
+        'read returns CSV with sheet, used/selected range and sparse row coordinates. Choose sheet and A1 range; offset/limit and returned cursors page through the selected converted text.',
+        'create_or_replace accepts CSV; start a sheet with "# Sheet: Name" for multiple sheets.',
         'edit changes values/formulas or adds/deletes sheets in place and preserves existing formatting. Formula results are not recalculated.'
       ].join('\n'),
       parameters: {
@@ -106,6 +115,9 @@ export const excelWorkbookTool: ToolHandler = {
             description: 'Operation to perform on the workbook.'
           },
           file_path: filePathProperty('.xlsx'),
+          ...readPageProperties,
+          sheet: { type: 'string', description: 'read: exact sheet name; omit to read all sheets. Output includes the sheet count and used range.' },
+          range: { type: 'string', description: 'read: A1 cell or rectangle, for example B3000:F3100. Blank rows are omitted with original row coordinates preserved. Omit for the used range.' },
           content: {
             type: 'string',
             description: 'Required for create_or_replace. CSV content; use "# Sheet: Name" lines to separate sheets.'
@@ -147,7 +159,8 @@ export const powerpointPresentationTool: ToolHandler = {
       name: 'powerpoint_presentation',
       description: [
         'Read or create/replace a Microsoft PowerPoint .pptx artifact. Use this for presentation work, not shell or code tools.',
-        'read extracts slide text and tables. create_or_replace accepts a JSON array of slides.',
+        'read extracts slide text and tables; start_slide/end_slide select an inclusive range with original slide numbers. offset/limit and returned cursors continue within that same range.',
+        'create_or_replace accepts a JSON array of slides.',
         'Each slide supports title, subtitle, bullets, table {header, rows}, and notes. Choose a built-in theme for consistent colors and typography.',
         'Existing complex styling is not preserved when replacing a deck.'
       ].join('\n'),
@@ -160,6 +173,9 @@ export const powerpointPresentationTool: ToolHandler = {
             description: 'read extracts content; create_or_replace writes the complete deck and overwrites an existing file.'
           },
           file_path: filePathProperty('.pptx'),
+          ...readPageProperties,
+          start_slide: { type: 'integer', minimum: 1, description: 'read: first slide (one-based), default 1.' },
+          end_slide: { type: 'integer', minimum: 1, description: 'read: last slide, inclusive; default final slide.' },
           content: {
             type: 'string',
             description: 'Required for create_or_replace. JSON array such as [{"title":"Title","subtitle":"Context","bullets":["Point"],"table":{"header":["A"],"rows":[["B"]]},"notes":"..."}].'
@@ -193,7 +209,8 @@ export const pdfDocumentTool: ToolHandler = {
       name: 'pdf_document',
       description: [
         'Read, create/replace, or edit a PDF .pdf artifact. Use this for PDF work, not shell or code tools.',
-        'read extracts per-page text. create_or_replace creates a styled, auto-paginated PDF from Markdown-like headings, paragraphs, lists, and tables. Choose a built-in visual theme.',
+        'read extracts text from start_page/end_page (inclusive, at most 200 pages per scope). Use offset/limit and returned cursors until the scope ends before advancing to next_page.',
+        'create_or_replace creates a styled, auto-paginated PDF from Markdown-like headings, paragraphs, lists, and tables. Choose a built-in visual theme.',
         'edit fills existing form fields or draws text at page coordinates. It does not reflow or redesign an existing PDF.'
       ].join('\n'),
       parameters: {
@@ -205,6 +222,9 @@ export const pdfDocumentTool: ToolHandler = {
             description: 'Operation to perform on the PDF.'
           },
           file_path: filePathProperty('.pdf'),
+          ...readPageProperties,
+          start_page: { type: 'integer', minimum: 1, description: 'read: first page (one-based), default 1.' },
+          end_page: { type: 'integer', minimum: 1, description: 'read: last page, inclusive; defaults to min(total pages, start_page + 199).' },
           content: {
             type: 'string',
             description: 'Required for create_or_replace. Plain text, one visual row per line.'

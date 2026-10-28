@@ -25,6 +25,7 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
   let isError = false
   let durationMs = 0
   let multimodalContent: ContentPart[] | undefined
+  let toolOutputRef: ChatMessage['toolOutputRef']
 
   if (context.signal?.aborted) {
     resultText = 'Execution skipped: aborted by user'
@@ -66,6 +67,7 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
           const output = normalizeToolOutput(await entry.handler.execute(parsedArgs, context))
           durationMs = Date.now() - start
           resultText = output.content
+          toolOutputRef = output.outputRef
           isError = output.isError === true
           log('info', `Tool ${name} completed in ${durationMs}ms`)
 
@@ -108,6 +110,7 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
       role: 'tool',
       tool_call_id: toolCall.id,
       name,
+      ...(toolOutputRef ? { toolOutputRef } : {}),
       content: multimodalContent ?? resultText
     },
     displayContent,

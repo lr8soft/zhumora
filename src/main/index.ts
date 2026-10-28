@@ -232,7 +232,9 @@ app.on('before-quit', () => {
   panelWindows.dispose()
   void applicationServices?.bots.stopAll()
   void applicationServices?.mcpServer.stop()
-  void applicationServices?.sessions.stopAll()
+  void applicationServices?.sessions.stopAll().then(() => applicationServices?.outputStore.dispose()).catch(error => {
+    log('warn', `Failed to release session tool outputs: ${String(error)}`)
+  })
   applicationServices?.llmRequests.dispose()
   applicationServices?.permissions.dispose()
   applicationServices?.avatar.dispose()

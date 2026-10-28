@@ -4,7 +4,7 @@ export const MAX_TOOL_OUTPUT_LINES = 2_000
 export const MAX_TOOL_LINE_CHARS = 2_000
 export const MAX_COMMAND_OUTPUT_LINES = 500
 
-function prefix(text: string, length: number): string {
+export function utf16Prefix(text: string, length: number): string {
   let end = Math.min(length, text.length)
   if (end > 0 && end < text.length && /[\uD800-\uDBFF]/.test(text[end - 1]) && /[\uDC00-\uDFFF]/.test(text[end])) end--
   return text.slice(0, end)
@@ -31,7 +31,7 @@ function shortenLines(text: string): string {
     if (line.length <= MAX_TOOL_LINE_CHARS) return line
     const marker = ' …[line truncated]… '
     const room = Math.floor((MAX_TOOL_LINE_CHARS - marker.length) / 2)
-    return prefix(line, room) + marker + suffix(line, room)
+    return utf16Prefix(line, room) + marker + suffix(line, room)
   }).join('\n')
 }
 
@@ -62,7 +62,7 @@ export class BoundedToolOutput {
     for (const character of text) if (character === '\n') this.totalNewlines++
     this.endsInNewline = text.endsWith('\n')
     if (!this.headClosed) {
-      const candidate = prefix(text, this.halfChars - this.head.length)
+      const candidate = utf16Prefix(text, this.halfChars - this.head.length)
       let end = 0
       while (end < candidate.length) {
         const newline = candidate.indexOf('\n', end)
@@ -70,7 +70,7 @@ export class BoundedToolOutput {
         end = newline + 1
         if (++this.headNewlines >= this.headLines) { this.headClosed = true; break }
       }
-      this.head += prefix(candidate, end)
+      this.head += utf16Prefix(candidate, end)
       if (candidate.length < text.length || this.head.length >= this.halfChars - 1) this.headClosed = true
     }
     this.tail = lastLines(suffix(this.tail + suffix(text, this.halfChars), this.halfChars), this.tailLines)
@@ -104,6 +104,6 @@ export function browserOutputLength(value: unknown): number {
 
 export function browserTextPreview(text: string, requestedLength: unknown): string {
   const length = browserOutputLength(requestedLength)
-  const preview = text.length > length ? `${prefix(text, length)}\n[Page content truncated; use a narrower selector.]` : text
+  const preview = text.length > length ? `${utf16Prefix(text, length)}\n[Page content truncated; use a narrower selector.]` : text
   return limitToolOutput(preview, 'Use a narrower selector to inspect the omitted page content.')
 }

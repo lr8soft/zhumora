@@ -8,6 +8,7 @@ import type { SessionModelSelection } from '../../shared/sessionModel.ts'
 import type { SubagentAssignment } from './subagentAssignment.ts'
 import type { RunInbox } from './runInbox.ts'
 import type { ProviderRequestLoad } from '../../shared/providerConcurrency.ts'
+import type { ToolOutputStore } from '../tools/toolOutputStore.ts'
 
 type Provider = AppSettings['providers'][number]
 
@@ -84,6 +85,7 @@ export interface ActiveSessionRun {
 }
 
 export interface SessionServiceDependencies {
+  outputStore?: ToolOutputStore
   providerRequestLoads?: () => Record<string, ProviderRequestLoad>
   store: SessionStore
   tools: ToolRegistry

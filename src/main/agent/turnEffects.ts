@@ -128,6 +128,7 @@ function toolContinuationPrompt(cause: IncompleteCause): string {
 }
 
 export interface ToolPhaseOptions {
+  outputStore?: ToolContext['outputStore']
   conversation: WorkingConversation
   toolsRegistry: ToolRegistry
   workspacePath: string
@@ -161,7 +162,7 @@ export async function runToolCallPhase(
   } = opts
   let { hardStop } = opts
 
-  const toolContext: ToolContext = { workspacePath, sessionId, signal, onSessionTitleUpdate }
+  const toolContext: ToolContext = { workspacePath, sessionId, signal, onSessionTitleUpdate, outputStore: opts.outputStore }
 
   for (const tc of toolCalls) {
     cb.onToolCall?.(tc, assistantPersistId)

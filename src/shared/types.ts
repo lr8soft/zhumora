@@ -28,6 +28,8 @@ export type ContentPart = ContentPartText | ContentPartImageUrl
 
 /** 单条对话消息（OpenAI 格式扩展） */
 export interface ChatMessage {
+  /** Model-only recovery reference; never serialized as an OpenAI message field. */
+  toolOutputRef?: { id: string; recoveryPart?: boolean }
   reasoning?: string
   reasoningSource?: { providerId: string; model: string }
   role: Role
@@ -165,6 +167,8 @@ export type ToolAttachment = ToolImageAttachment
  */
 export interface ToolExecutionResult {
   content: string
+  /** Session-owned text artifact; content includes instructions for reading it. */
+  outputRef?: { id: string }
   attachments?: ToolAttachment[]
   /** 预期内的工具失败（例如远端 MCP 返回 isError），无需通过 throw 编码。 */
   isError?: boolean

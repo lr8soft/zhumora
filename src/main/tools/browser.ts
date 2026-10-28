@@ -7,7 +7,7 @@ import { chromium, type BrowserContext, type Page } from 'playwright'
 import { app } from 'electron'
 import * as path from 'node:path'
 import type { ToolHandler, ToolContext } from './registry'
-import { browserTextPreview } from './outputLimits.ts'
+import { readBrowserText } from './browserText.ts'
 import { log } from '../llm/logger'
 import { getSettings } from '../store/db'
 import { browserConfigurationKey, resolveBrowserCandidates } from './browserSelection'
@@ -278,31 +278,19 @@ export const browserGetTextTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_get_text',
-      description: 'Extract visible text content from the page. Lighter than a screenshot — prefer it when you only need text (forms, lists, labels). Use a CSS selector to target a region; omit it for the whole page body.',
+      description: 'Extract visible text content from the page. Prefer it when you only need text (forms, lists, labels). Use a CSS selector to target a region; omit it for the whole page body. Long output is saved as a snapshot; use the returned read_tool_output reference to search or continue reading it.',
       parameters: {
         type: 'object',
         properties: {
           selector: { type: 'string', description: 'CSS 选择器，不填则获取整个页面 body 文本' },
-          max_length: { type: 'integer', minimum: 1, maximum: 48000, description: '返回文本的最大字符数，默认 5000，最多 48000；用 selector 缩小范围' }
+          max_length: { type: 'integer', minimum: 1, maximum: 48000, description: '预览的最大字符数，默认 5000，最多 48000；全文可通过返回的 read_tool_output 引用继续读取' }
         }
       }
     }
   },
   permission: 'safe' as const,
-  async execute(args) {
-    const selector = args.selector as string
-    try {
-      const page = await ensureBrowser()
-      let text: string
-      if (selector) {
-        text = await page.locator(selector).first().innerText({ timeout: 10000 })
-      } else {
-        text = await page.locator('body').innerText()
-      }
-      return browserTextPreview(text || '(no text found)', args.max_length)
-    } catch (err) {
-      return `Error getting text: ${(err as Error).message}`
-    }
+  execute(args, ctx) {
+    return readBrowserText(args, ctx, ensureBrowser)
   }
 }
 
@@ -354,26 +342,19 @@ export const browserGetHtmlTool: ToolHandler = {
     type: 'function',
     function: {
       name: 'browser_get_html',
-      description: 'Get the HTML of a page element. Use this when you need to discover the exact CSS selectors/structure of a section (e.g. to build a selector for click/type). Omit the selector for the whole body.',
+      description: 'Get the HTML of a page element to discover CSS selectors/structure (e.g. for click/type). Omit the selector for the whole body. Long output is saved as a snapshot; use the returned read_tool_output reference to search or continue reading it.',
       parameters: {
         type: 'object',
         properties: {
           selector: { type: 'string', description: 'CSS 选择器，不填则获取 body HTML' },
-          max_length: { type: 'integer', minimum: 1, maximum: 48000, description: '返回 HTML 的最大字符数，默认 5000，最多 48000；用 selector 缩小范围' }
+          max_length: { type: 'integer', minimum: 1, maximum: 48000, description: '预览的最大字符数，默认 5000，最多 48000；全文可通过返回的 read_tool_output 引用继续读取' }
         }
       }
     }
   },
   permission: 'safe' as const,
-  async execute(args) {
-    const selector = args.selector as string
-    try {
-      const page = await ensureBrowser()
-      const html = await page.locator(selector || 'body').first().innerHTML()
-      return browserTextPreview(html || '(no html)', args.max_length)
-    } catch (err) {
-      return `Error getting HTML: ${(err as Error).message}`
-    }
+  execute(args, ctx) {
+    return readBrowserText(args, ctx, ensureBrowser, true)
   }
 }
 
