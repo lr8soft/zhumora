@@ -187,8 +187,10 @@ export async function runToolCallPhase(
       tc.function.name,
       executed.displayContent,
       executed.isError,
-      executed.durationMs
+      executed.durationMs,
+      executed.llmMessage.toolOutputRef
     ) ?? null
+    if (persistId && !executed.llmMessage.toolOutputRef) executed.llmMessage.toolOutputRef = { id: `message:${persistId}` }
     conversation.append(executed.llmMessage, persistId)
   }
 

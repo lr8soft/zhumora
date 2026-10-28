@@ -6,7 +6,7 @@ import { readOutputPage, type ToolOutputReadOptions } from './toolOutputPaging.t
 
 const UUID = '[0-9a-f]{8}-[0-9a-f]{4}-4[0-9a-f]{3}-[89ab][0-9a-f]{3}-[0-9a-f]{12}'
 const OUTPUT_ID = new RegExp(`^${UUID}$`)
-const OUTPUT_FILE = new RegExp(`^${UUID}\\.(?:txt|partial)$`)
+const OUTPUT_FILE = new RegExp(`^${UUID}\\.(?:txt|partial|json)$`)
 const SESSION_DIRECTORY = /^[0-9a-f]{64}$/
 
 export interface ToolOutputStoreOptions {
@@ -22,6 +22,9 @@ export interface ToolOutputWriter {
   discard(): Promise<void>
 }
 
+export interface ToolOutputMetadata { toolName?: string; toolCallId?: string; label?: string }
+export interface StoredToolOutput extends ToolOutputMetadata { id: string; createdAt: number; bytes: number; preview: string }
+
 interface ActiveWriter {
   id: string
   key: string
@@ -36,6 +39,7 @@ interface ActiveWriter {
   error?: unknown
   signal?: AbortSignal
   onAbort?: () => void
+  metadata?: ToolOutputMetadata
 }
 
 /** Owns private, session-scoped artifacts. Quota state exists only while that session has writers. */
@@ -62,13 +66,13 @@ export class ToolOutputStore {
     }
   }
 
-  async save(sessionId: string, text: string): Promise<string> {
-    const writer = await this.createWriter(sessionId)
+  async save(sessionId: string, text: string, metadata?: ToolOutputMetadata): Promise<string> {
+    const writer = await this.createWriter(sessionId, undefined, metadata)
     try { await writer.append(text); return await writer.finish() }
     catch (error) { await writer.discard(); throw error }
   }
 
-  async createWriter(sessionId: string, signal?: AbortSignal): Promise<ToolOutputWriter> {
+  async createWriter(sessionId: string, signal?: AbortSignal, metadata?: ToolOutputMetadata): Promise<ToolOutputWriter> {
     this.assertOpen(); signal?.throwIfAborted()
     const key = this.sessionKey(sessionId)
     this.assertWritableSession(key)
@@ -80,7 +84,7 @@ export class ToolOutputStore {
         await this.cleanDirectory(directory)
         let bytes = 0
         for (const name of await fs.readdir(directory)) {
-          if (OUTPUT_FILE.test(name)) bytes += (await fs.lstat(path.join(directory, name))).size
+          if (OUTPUT_ID.test(name.replace(/\.txt$/, ''))) bytes += (await fs.lstat(path.join(directory, name))).size
         }
         usage = { bytes, writers: 0 }
       }
@@ -92,7 +96,7 @@ export class ToolOutputStore {
         this.assertOpen(); this.assertWritableSession(key); signal?.throwIfAborted()
       }
       const state: ActiveWriter = { id, key, temporary, complete: path.join(directory, `${id}.txt`), handle,
-        bytes: 0, pendingSurrogate: '', tail: Promise.resolve(), closed: false, finished: false, signal }
+        bytes: 0, pendingSurrogate: '', tail: Promise.resolve(), closed: false, finished: false, signal, metadata }
       usage.writers++; this.usage.set(key, usage); this.active.set(id, state)
       state.onAbort = () => {
         state.error = signal?.reason ?? new Error('Tool output operation aborted')
@@ -125,7 +129,17 @@ export class ToolOutputStore {
     await fs.mkdir(this.root, { recursive: true })
     for (const name of await fs.readdir(this.root)) {
       if (!SESSION_DIRECTORY.test(name)) continue
-      await this.lock(name, async () => { await this.cleanDirectory(await this.directory(name, false)) })
+      await this.lock(name, async () => {
+        const directory = path.join(this.root, name)
+        try { await this.cleanDirectory(await this.directory(name, false)) }
+        catch (error) {
+          // A concurrently removed session must not cancel cleanup of other sessions.
+          if (await fs.lstat(directory).then(() => true, failure => {
+            if (failure.code === 'ENOENT') return false
+            throw failure
+          })) throw error
+        }
+      })
     }
   }
 
@@ -225,6 +239,12 @@ export class ToolOutputStore {
       await writer.handle.close(); writer.closed = true
       await fs.rename(writer.temporary, writer.complete)
       const timestamp = new Date(this.now()); await fs.utimes(writer.complete, timestamp, timestamp)
+      if (writer.metadata) {
+        const metadata = Object.fromEntries(Object.entries(writer.metadata).filter(([, value]) => typeof value === 'string')
+          .map(([key, value]) => [key, value!.slice(0, 256)]))
+        // Optional labels never invalidate an already committed text artifact.
+        await fs.writeFile(writer.complete.replace(/\.txt$/, '.json'), JSON.stringify(metadata)).catch(() => undefined)
+      }
       writer.finished = true
       await this.release(writer, false)
       return writer.id
@@ -236,6 +256,7 @@ export class ToolOutputStore {
     if (!writer.closed) { writer.closed = true; await writer.handle.close() }
     await fs.rm(writer.temporary, { force: true })
     await fs.rm(writer.complete, { force: true })
+    await fs.rm(writer.complete.replace(/\.txt$/, '.json'), { force: true })
     await this.release(writer, true)
   }
 
@@ -253,13 +274,45 @@ export class ToolOutputStore {
     for (const name of await fs.readdir(directory)) {
       if (!OUTPUT_FILE.test(name) || this.active.has(name.split('.')[0])) continue
       const target = path.join(directory, name)
-      const stat = await fs.lstat(target)
-      if (!stat.isSymbolicLink() && stat.isFile() && this.now() - stat.mtimeMs >= this.ttlMs) {
+      const stat = await fs.lstat(target).catch(error => { if (error.code === 'ENOENT') return undefined; throw error })
+      if (!stat) continue
+      if (!stat.isSymbolicLink() && stat.isFile() && (name.endsWith('.partial') || this.now() - stat.mtimeMs >= this.ttlMs)) {
         await fs.rm(target, { force: true })
+        if (name.endsWith('.txt')) await fs.rm(target.replace(/\.txt$/, '.json'), { force: true })
         const key = path.basename(directory)
         const usage = this.usage.get(key)
-        if (usage) usage.bytes -= stat.size
+        if (usage && name.endsWith('.txt')) usage.bytes -= stat.size
       }
     }
+  }
+
+  async list(sessionId: string): Promise<StoredToolOutput[]> {
+    this.assertOpen()
+    const key = this.sessionKey(sessionId)
+    const directory = path.join(this.root, key)
+    let names: string[]
+    try { names = await fs.readdir(await this.directory(key, false)) }
+    catch (error) { if (!(await fs.stat(directory).then(() => true, () => false))) return []; throw error }
+    const entries: StoredToolOutput[] = []
+    for (const name of names) {
+      const id = name.replace(/\.txt$/, '')
+      if (!name.endsWith('.txt') || !OUTPUT_ID.test(id)) continue
+      try {
+        const target = path.join(directory, name)
+        const stat = await fs.lstat(target)
+        if (!stat.isFile() || stat.isSymbolicLink() || this.now() - stat.mtimeMs >= this.ttlMs) continue
+        const handle = await fs.open(target, 'r')
+        let preview: string
+        try { const buffer = Buffer.alloc(512); const { bytesRead } = await handle.read(buffer, 0, 512, 0)
+          preview = new TextDecoder().decode(buffer.subarray(0, bytesRead), { stream: true }).slice(0, 160) }
+        finally { await handle.close() }
+        let metadata: ToolOutputMetadata = {}
+        try { const raw = await fs.readFile(target.replace(/\.txt$/, '.json'), 'utf8'); const parsed = JSON.parse(raw)
+          for (const field of ['toolName', 'toolCallId', 'label'] as const) if (typeof parsed[field] === 'string') metadata[field] = parsed[field].slice(0, 256) }
+        catch { /* Legacy artifacts remain discoverable without optional labels. */ }
+        entries.push({ id, createdAt: stat.mtimeMs, bytes: stat.size, preview, ...metadata })
+      } catch (error) { if ((error as NodeJS.ErrnoException).code !== 'ENOENT') throw error }
+    }
+    return entries.sort((a, b) => a.createdAt - b.createdAt || a.id.localeCompare(b.id))
   }
 }

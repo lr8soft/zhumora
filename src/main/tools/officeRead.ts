@@ -1,9 +1,14 @@
 import { promises as fs } from 'node:fs'
 import type { OfficeContentNode, OfficeParserAST } from 'officeparser'
-import { officeInteger, officeTextPage, validateOfficeTextPage, type OfficeTextPageArgs } from './officeReadPage.ts'
+import type { ToolExecutionResult } from '../../shared/types.ts'
+import type { ToolContext } from './registry.ts'
+import { officeInteger, officeTextPageResult, validateOfficeTextPage, type OfficeTextPageArgs } from './officeReadPage.ts'
+import { readStableOfficeScope } from './officeReadSource.ts'
+import { utf16Prefix } from './outputLimits.ts'
 
 export type OfficeReadFormat = 'docx' | 'xlsx' | 'pptx' | 'pdf'
 export interface OfficeReadArgs extends OfficeTextPageArgs {
+  source_revision?: string
   start_page?: number
   end_page?: number
   start_slide?: number
@@ -18,6 +23,9 @@ function assertActive(signal?: AbortSignal): void {
 
 function validateScope(args: OfficeReadArgs, format: OfficeReadFormat): void {
   validateOfficeTextPage(args)
+  if (((args.offset ?? 1) > 1 || (args.char_offset ?? 0) > 0) && !args.source_revision) {
+    throw new Error('Native Office continuation requires source_revision from the previous page; start at offset=1 or use the saved output_id snapshot')
+  }
   for (const key of ['start_page', 'end_page', 'start_slide', 'end_slide'] as const) {
     if (args[key] !== undefined) {
       if (format !== (key.endsWith('page') ? 'pdf' : 'pptx')) throw new Error(`${key} is not supported for ${format}`)
@@ -45,6 +53,16 @@ async function markdown(ast: OfficeParserAST, content: OfficeContentNode[], sign
   return String(value ?? '').trim()
 }
 
+function cleanSlideMarkdown(text: string): string {
+  let lines = text.split('\n')
+  if (lines[0]?.trim() === '---') {
+    const end = lines.findIndex((line, index) => index > 0 && line.trim() === '---')
+    if (end >= 0) lines = lines.slice(end + 1)
+  }
+  // Current officeparser's Markdown generator ignores renderMetadata=false.
+  return lines.filter(line => !/^>\s*\*\*Note:\*\*/.test(line.trim())).join('\n').replace(/\n{3,}/g, '\n\n').trim()
+}
+
 async function readPresentation(ast: OfficeParserAST, args: OfficeReadArgs, signal?: AbortSignal) {
   const slides = ast.content.filter(node => node.type === 'slide')
   if (!slides.length) return { text: '', scope: 'slides=0; total_slides=0' }
@@ -52,7 +70,7 @@ async function readPresentation(ast: OfficeParserAST, args: OfficeReadArgs, sign
   const output: string[] = []
   for (let i = start - 1; i < end; i++) {
     assertActive(signal)
-    const body = await markdown(ast, slides[i].children ?? [], signal)
+    const body = cleanSlideMarkdown(await markdown(ast, slides[i].children ?? [], signal))
     output.push(`## Slide ${i + 1}\n\n${body}`)
   }
   return { text: output.join('\n\n'), scope: `slides=${start}-${end}; total_slides=${slides.length}${end < slides.length ? `; next_slide=${end + 1}` : ''}` }
@@ -167,20 +185,39 @@ async function readPdf(filePath: string, args: OfficeReadArgs, signal?: AbortSig
   }
 }
 
-export async function readOfficeFile(filePath: string, format: OfficeReadFormat, args: OfficeReadArgs, signal?: AbortSignal): Promise<string> {
+async function readSelectedScope(filePath: string, format: OfficeReadFormat, args: OfficeReadArgs, signal?: AbortSignal) {
   validateScope(args, format)
   assertActive(signal)
-  await fs.access(filePath)
-  if (format === 'pdf') {
-    const { text, scope } = await readPdf(filePath, args, signal)
-    return officeTextPage(text, args, scope)
+  return readStableOfficeScope(filePath, args.source_revision, async () => {
+    if (format === 'pdf') return readPdf(filePath, args, signal)
+    const { OfficeParser } = await import('officeparser')
+    const ast = await OfficeParser.parseOffice(filePath, { abortSignal: signal })
+    assertActive(signal)
+    return format === 'pptx' ? readPresentation(ast, args, signal)
+      : format === 'xlsx' ? readWorkbook(ast, args, signal)
+        : { text: await markdown(ast, ast.content, signal), scope: 'document=all; cursor_unit=converted_markdown_line' }
+  }, signal)
+}
+
+export async function readOfficeFile(filePath: string, format: OfficeReadFormat, args: OfficeReadArgs, signal?: AbortSignal): Promise<string> {
+  const result = await readSelectedScope(filePath, format, args, signal)
+  return officeTextPageResult(result.text, args, result.scope, result.sourceRevision).content
+}
+
+/** The model resumes the immutable converted scope, independent of later edits to the Office file. */
+export async function readOfficeResult(filePath: string, format: OfficeReadFormat, args: OfficeReadArgs, ctx: ToolContext): Promise<ToolExecutionResult> {
+  const result = await readSelectedScope(filePath, format, args, ctx.signal)
+  const page = officeTextPageResult(result.text, args, result.scope, result.sourceRevision)
+  if (!page.next && !(args.offset && args.offset > 1) && !args.char_offset) return { content: page.content }
+  try {
+    if (!ctx.outputStore || !ctx.sessionId) throw new Error('No session output storage is available')
+    const id = await ctx.outputStore.save(ctx.sessionId, result.text)
+    assertActive(ctx.signal)
+    const cursor = page.next ?? { offset: args.offset ?? 1, char_offset: args.char_offset ?? 0 }
+    return { content: `${page.content}\n[Immutable selected-scope snapshot saved. Continue with read_tool_output(${JSON.stringify({ output_id: id, ...cursor })}); its raw text uses these same line/UTF-16 cursors. Keep this output_id to read the original result after source edits.]`, outputRef: { id } }
+  } catch (error) {
+    if (ctx.signal?.aborted) throw error
+    const warning = utf16Prefix(error instanceof Error ? error.message : String(error), 256)
+    return { content: `${page.content}\n[Storage warning: ${warning}. The page above is valid. Continue with the same scope and returned source_revision; if the source changes, restart reading instead of reusing this cursor.]` }
   }
-  const { OfficeParser } = await import('officeparser')
-  const ast = await OfficeParser.parseOffice(filePath, { abortSignal: signal })
-  assertActive(signal)
-  const document = format === 'pptx' ? await readPresentation(ast, args, signal)
-    : format === 'xlsx' ? readWorkbook(ast, args, signal)
-      : { text: await markdown(ast, ast.content, signal), scope: 'document=all; cursor_unit=converted_markdown_line' }
-  assertActive(signal)
-  return officeTextPage(document.text, args, document.scope)
 }

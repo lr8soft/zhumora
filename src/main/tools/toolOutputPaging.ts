@@ -1,5 +1,6 @@
 import { createReadStream } from 'node:fs'
 import { createInterface } from 'node:readline'
+import { Readable } from 'node:stream'
 import { MAX_TOOL_LINE_CHARS, MAX_TOOL_OUTPUT_CHARS, MAX_TOOL_OUTPUT_LINES } from './outputLimits.ts'
 
 export interface ToolOutputReadOptions {
@@ -26,6 +27,14 @@ function safeEnd(text: string, start: number, length: number): number {
 
 /** Cursors address the original lines, including unfinished long lines; previews never skip text. */
 export async function readOutputPage(filePath: string, options: ToolOutputReadOptions): Promise<string> {
+  return readPage(() => createReadStream(filePath, { encoding: 'utf8', signal: options.signal }), options)
+}
+
+export async function readOutputTextPage(text: string, options: ToolOutputReadOptions): Promise<string> {
+  return readPage(() => Readable.from([text]), options)
+}
+
+async function readPage(createStream: () => Readable, options: ToolOutputReadOptions): Promise<string> {
   const offset = integer(options.offset, 1, 1)
   const limit = Math.min(integer(options.limit, 200, 1, MAX_TOOL_OUTPUT_LINES), MAX_TOOL_OUTPUT_LINES - 3)
   const charOffset = integer(options.char_offset, 0, 0)
@@ -33,7 +42,7 @@ export async function readOutputPage(filePath: string, options: ToolOutputReadOp
     throw new Error('pattern must be a nonempty literal string of at most 2000 characters')
   }
   options.signal?.throwIfAborted()
-  const stream = createReadStream(filePath, { encoding: 'utf8', signal: options.signal })
+  const stream = createStream()
   const reader = createInterface({ input: stream, crlfDelay: Infinity })
   const lines: string[] = []
   let lineNumber = 0

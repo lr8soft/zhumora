@@ -3,7 +3,7 @@
 // 通过 contextBridge 暴露最小化 API surface
 // ============================================================
 import { contextBridge, ipcRenderer } from 'electron'
-import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, AgentRequestOptions } from '../shared/types'
+import type { AppSettings, Session, UIMessage, UserMessageInput, AutoApproveMode, ReasoningCapability, AgentRequestOptions, AgentToolResultEvent } from '../shared/types'
 import type { BbsConfig } from '../shared/bbs'
 import type { SessionModelSelection } from '../shared/sessionModel'
 import type { AvatarAnimationConfig, AvatarModelConfig, AvatarSessionUpdate } from '../shared/avatar'
@@ -144,8 +144,8 @@ const api = {
       ipcRenderer.on('agent:tool_call', handler)
       return () => ipcRenderer.removeListener('agent:tool_call', handler)
     },
-    onToolResult: (cb: (data: { sessionId: string; messageId: string; toolCallId: string; toolName: string; result: string; isError: boolean; durationMs: number }) => void) => {
-      const handler = (_e: any, data: any) => cb(data)
+    onToolResult: (cb: (data: AgentToolResultEvent) => void) => {
+      const handler = (_e: Electron.IpcRendererEvent, data: AgentToolResultEvent) => cb(data)
       ipcRenderer.on('agent:tool_result', handler)
       return () => ipcRenderer.removeListener('agent:tool_result', handler)
     },

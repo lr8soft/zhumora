@@ -12,6 +12,8 @@ const prompt = buildSystemPrompt('D:\\workspace', '', '', {
 })
 
 assert.match(prompt, /## Visual Output/)
+assert.match(prompt, /After compaction, a later turn, or restart, use list_tool_outputs/)
+assert.match(prompt, /Never repeat a side-effecting operation just to recover logs/)
 assert.match(prompt, /language identifier is exactly mermaid/)
 assert.match(prompt, /presentation capability, not a tool/)
 assert.match(prompt, /Do not use HTML labels, click directives, hyperlinks/)

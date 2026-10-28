@@ -57,6 +57,7 @@ const TOOL_USAGE_POLICY = `## Tool Usage Policy
 - Batch independent reads and searches in one response to reduce interaction overhead. Ordinary tool calls execute sequentially; a batch of tools does not itself provide parallel execution.
 - When subagent delegation is enabled, use spawn_subagent for actual overlapping independent work. Dispatch ready tasks before waiting; do not use a batch of parent edits as a substitute for delegation. Children must receive agreed interfaces and separate file ownership first.
 - For file operations, prefer the dedicated tools over bash: use read (not cat/type), glob (not dir /s / find), grep (not findstr / grep in bash), edit (not sed), write (not echo > file).
+- If output was shortened, use read_tool_output with its original output_id and the returned cursors. After compaction, a later turn, or restart, use list_tool_outputs to find prior original results even if their IDs are absent from the summary. Never repeat a side-effecting operation just to recover logs. If logging or snapshot storage failed, respect the operation's actual exit/result status and the explicit missing-output notice.
 - When referencing code, use the format \`file_path:line_number\` so the user can navigate to the source.`
 
 const TASK_GUIDELINES = `## Guidelines
@@ -91,7 +92,7 @@ const TOOL_CATEGORIES: { label: string; tools: string[] }[] = [
   },
   {
     label: 'Reading & Exploring',
-    tools: ['read', 'ls', 'glob', 'grep']
+    tools: ['read', 'read_tool_output', 'list_tool_outputs', 'ls', 'glob', 'grep']
   },
   {
     label: 'Writing & Editing',

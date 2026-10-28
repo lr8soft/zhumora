@@ -69,6 +69,26 @@ try {
   assert.match(captured.join(''), /B-ERROR/)
   assert.match(timed, /Full output saved/)
 
+  const business = path.join(root, 'business.cjs')
+  const completed = path.join(root, 'completed.txt')
+  await fs.writeFile(business, `process.stdout.write('LOG'.repeat(10000));require('node:fs').writeFileSync(${JSON.stringify(completed)},'business completed')`)
+  for (const failure of ['open', 'append', 'finish', 'blocked'] as const) {
+    let discards = 0
+    const failingStore = { createWriter: async () => {
+      if (failure === 'open') throw new Error('permission denied')
+      return { append: async () => { if (failure === 'append') throw new Error('quota exceeded'); if (failure === 'blocked') await new Promise(() => {}) },
+        finish: async () => { if (failure === 'finish') throw new Error('disk full'); return id }, discard: async () => { discards++ } }
+    } } as unknown as ToolOutputStore
+    const result = await executeShellCommand({ workspacePath: root, sessionId: 'one', outputStore: failingStore,
+      command: `"${process.execPath}" "${business}"`, timeoutSeconds: 1 })
+    assert.match(result, /exit code: 0/)
+    assert.match(result, /Log storage failed/)
+    assert.doesNotMatch(result, /Full output saved|timed out/)
+    assert.equal(await fs.readFile(completed, 'utf8'), 'business completed')
+    await fs.unlink(completed)
+    if (failure !== 'open') assert.ok(discards > 0)
+  }
+
   // The last indivisible tool group forces the actual AutoCompactor projection path.
   const json = JSON.stringify({ task_id: 'immutable-task', reply: 'head\n' + 'payload'.repeat(60000) + '\ntail' })
   const call = { id: 'call', type: 'function' as const, function: { name: 'external', arguments: '{}' } }

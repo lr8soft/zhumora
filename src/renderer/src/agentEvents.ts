@@ -166,7 +166,7 @@ export function applyToolCallEvent(sessionId: string, messageId: string, toolCal
 }
 
 /** tool_result 事件：以 main 的持久化 id 追加一条 tool 消息 */
-export function applyToolResultEvent(sessionId: string, messageId: string, toolCallId: string, toolName: string, result: string, isError: boolean, messages: UIMessage[], now: number): UIMessage[] {
+export function applyToolResultEvent(sessionId: string, messageId: string, toolCallId: string, toolName: string, result: string, isError: boolean, messages: UIMessage[], now: number, outputRef?: UIMessage['outputRef']): UIMessage[] {
   return applyPersistedMessage({
     id: messageId,
     sessionId,
@@ -174,6 +174,7 @@ export function applyToolResultEvent(sessionId: string, messageId: string, toolC
     content: result,
     toolCallId,
     toolName,
+    ...(outputRef ? { outputRef } : {}),
     timestamp: now,
     status: isError ? 'error' : 'done'
   }, messages)

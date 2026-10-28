@@ -4,6 +4,7 @@ import { mkdtempSync, unlinkSync, rmdirSync } from 'node:fs'
 import { tmpdir } from 'node:os'
 import { join } from 'node:path'
 import { DATABASE_SCHEMA_VERSION, runDatabaseMigrations } from '../src/main/store/migrations.ts'
+import { insertMessage, selectMessages } from '../src/main/store/messageRepository.ts'
 
 const fresh = new Database(':memory:')
 runDatabaseMigrations(fresh)
@@ -17,7 +18,21 @@ for (const name of ['subagent_parent_id', 'subagent_provider_id', 'subagent_mode
   assert.ok((fresh.prepare('PRAGMA table_info(sessions)').all() as { name: string }[]).some(column => column.name === name))
 }
 runDatabaseMigrations(fresh)
+assert.ok((fresh.prepare('PRAGMA table_info(messages)').all() as { name: string }[]).some(column => column.name === 'output_ref'))
+fresh.prepare('INSERT INTO sessions (id, created_at, updated_at) VALUES (?, 1, 1)').run('output-session')
+insertMessage(fresh, { id: 'output-message', sessionId: 'output-session', role: 'tool', content: 'unchanged result',
+  toolCallId: 'call', toolName: 'read', timestamp: 1, outputRef: { id: 'message:original' } })
+assert.deepEqual(selectMessages(fresh, 'output-session')[0].outputRef, { id: 'message:original' })
 fresh.close()
+
+const v9 = new Database(':memory:')
+v9.exec(`CREATE TABLE messages (id TEXT PRIMARY KEY, session_id TEXT, role TEXT, content TEXT, tool_call_id TEXT, generation TEXT);
+  INSERT INTO messages VALUES ('m', 's', 'tool', 'original full result', 'call', '{"version":1,"status":"complete"}'); PRAGMA user_version=9;`)
+runDatabaseMigrations(v9); runDatabaseMigrations(v9)
+assert.deepEqual(v9.prepare('SELECT content, tool_call_id, generation, output_ref FROM messages').get(), {
+  content: 'original full result', tool_call_id: 'call', generation: '{"version":1,"status":"complete"}', output_ref: null
+})
+v9.close()
 
 // Previous production schema (v5): upgrade keeps all existing messages/settings.
 const v5 = new Database(':memory:')

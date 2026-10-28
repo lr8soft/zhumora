@@ -4,7 +4,7 @@
 // 独立于 runner：runner 触发这些回调，turnEffects 消费它们执行副作用，
 // IPC 层（agentCallbacks.ts）实现它们 —— 三方依赖契约而非 runner 本身。
 // ============================================================
-import type { ToolCall } from '../../shared/types'
+import type { ToolCall, ToolOutputReference } from '../../shared/types'
 import type { TokenUsage } from '../llm/provider'
 import type { GenerationMetadata } from '../../shared/generation.ts'
 
@@ -16,7 +16,7 @@ export interface AgentEventCallbacks {
   /** LLM 请求了工具调用 */
   onToolCall?: (toolCall: ToolCall, assistantMessageId: string | null) => void
   /** 工具执行完成。返回该 tool 消息落库后的 id（供压缩边界定位），未落库返回 null */
-  onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number) => string | null
+  onToolResult?: (toolCallId: string, toolName: string, result: string, isError: boolean, durationMs: number, outputRef?: ToolOutputReference) => string | null
   /** 一轮 LLM 调用完成（可能继续循环或结束）。返回该 assistant 消息落库后的 id，未落库返回 null */
   onAssistantMessage?: (content: string, toolCalls: ToolCall[], reasoning?: string, generation?: GenerationMetadata) => string | null
   onAssistantGeneration?: (messageId: string, generation: GenerationMetadata) => void

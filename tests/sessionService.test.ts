@@ -181,6 +181,11 @@ assert.equal(service.isRunning('s1'), false)
   releases.get('s3')?.()
 }
 
+const closing = service.beginShutdown()
+assert.equal(service.beginShutdown(), closing, 'repeated shutdown waits on the same stop operation')
+await assert.rejects(service.sendMessage({ sessionId: 's2', message: { text: 'late shutdown input' } }), AgentAbortedError)
+await assert.rejects(service.compact('s2'), AgentAbortedError)
+await closing
 permissions.dispose()
 const gate = new SessionDeletionGate()
 await assert.rejects(gate.run('failed-cleanup', async () => {

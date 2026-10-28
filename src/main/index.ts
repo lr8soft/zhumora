@@ -21,6 +21,7 @@ import { shouldCloseInsteadOfHide } from './backgroundPolicy'
 import { decideNavigation } from './navigationPolicy'
 import { PanelWindowManager } from './panels/windowManager'
 import { registerPanelIpc } from './ipc/registerPanelIpc'
+import { ApplicationShutdown } from './shutdown'
 
 export let mainWindow: BrowserWindow | null = null
 let applicationServices: ApplicationServices | null = null
@@ -138,6 +139,7 @@ function createWindow(): BrowserWindow {
 }
 
 app.whenReady().then(async () => {
+  if (quitting) return
   // 设置应用信息
   electronApp.setAppUserModelId('com.zhumora.app')
 
@@ -226,21 +228,23 @@ app.on('window-all-closed', () => {
   }
 })
 
-app.on('before-quit', () => {
-  quitting = true
-  background?.dispose()
-  panelWindows.dispose()
-  void applicationServices?.bots.stopAll()
-  void applicationServices?.mcpServer.stop()
-  void applicationServices?.sessions.stopAll().then(() => applicationServices?.outputStore.dispose()).catch(error => {
-    log('warn', `Failed to release session tool outputs: ${String(error)}`)
-  })
-  applicationServices?.llmRequests.dispose()
-  applicationServices?.permissions.dispose()
-  applicationServices?.avatar.dispose()
-  applicationServices?.tts.dispose()
-  applicationServices?.desktopControl.dispose()
-  void disposeDesktopAdapter().catch(error => {
-    log('warn', `Failed to stop desktop automation process: ${String(error)}`)
-  })
+const shutdown = new ApplicationShutdown({
+  begin: () => {
+    quitting = true
+    void applicationServices?.sessions.beginShutdown().catch(error => log('warn', `Failed to stop sessions at shutdown: ${String(error)}`))
+    background?.dispose(); panelWindows.dispose()
+  },
+  steps: [
+    { name: 'Bot inputs', run: () => applicationServices?.bots.stopAll() },
+    { name: 'MCP input', run: () => applicationServices?.mcpServer.stop() },
+    { name: 'sessions', run: () => applicationServices?.sessions.beginShutdown(), timeoutMs: 3000 },
+    { name: 'tool output writers', run: () => applicationServices?.outputStore.dispose() },
+    { name: 'presentation services', run: () => {
+      applicationServices?.llmRequests.dispose(); applicationServices?.permissions.dispose()
+      applicationServices?.avatar.dispose(); applicationServices?.tts.dispose(); applicationServices?.desktopControl.dispose()
+    } },
+    { name: 'desktop automation', run: () => disposeDesktopAdapter() }
+  ],
+  quit: () => app.quit(), report: message => log('warn', message)
 })
+app.on('before-quit', event => shutdown.beforeQuit(event))

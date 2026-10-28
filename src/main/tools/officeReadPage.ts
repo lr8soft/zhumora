@@ -21,8 +21,14 @@ export function validateOfficeTextPage(args: OfficeTextPageArgs): void {
 }
 
 export function officeTextPage(text: string, args: OfficeTextPageArgs, scope: string): string {
+  return officeTextPageResult(text, args, scope).content
+}
+
+export function officeTextPageResult(text: string, args: OfficeTextPageArgs, scope: string, sourceRevision?: string): {
+  content: string; next?: { offset: number; char_offset: number }
+} {
   validateOfficeTextPage(args)
-  const lines = text.replace(/\r\n/g, '\n').split('\n')
+  const lines = text.replace(/\r\n?/g, '\n').split('\n')
   const offset = officeInteger(args.offset, 'offset', 1)
   const limit = officeInteger(args.limit, 'limit', 2000)
   const charOffset = officeInteger(args.char_offset, 'char_offset', 0, 0)
@@ -30,8 +36,8 @@ export function officeTextPage(text: string, args: OfficeTextPageArgs, scope: st
   const first = lines[offset - 1]
   if (charOffset > first.length || (charOffset > 0 && /[\uDC00-\uDFFF]/.test(first[charOffset] ?? '')
     && /[\uD800-\uDBFF]/.test(first[charOffset - 1]))) throw new Error('char_offset is outside the line or splits a Unicode character')
-  const header = `[Office scope: ${scope}; converted_text_lines=${lines.length}; offset=${offset}; char_offset=${charOffset}]\n`
-  const budget = OFFICE_READ_BYTES - Buffer.byteLength(header) - 640
+  const header = `[Office scope: ${scope}; converted_text_lines=${lines.length}; offset=${offset}; char_offset=${charOffset}${sourceRevision ? `; source_revision=${sourceRevision}` : ''}]\n`
+  const budget = OFFICE_READ_BYTES - Buffer.byteLength(header) - 1536
   if (budget <= 0) throw new Error('Office scope metadata exceeds output budget')
   let bytes = 0
   let body = ''
@@ -56,7 +62,7 @@ export function officeTextPage(text: string, args: OfficeTextPageArgs, scope: st
     if (i + 1 < offset - 1 + limit) next = undefined
   }
   const end = next
-    ? `[More converted text. Repeat the same scope with ${JSON.stringify(next)}; char_offset counts UTF-16 code units.]`
+    ? `[More converted text. Repeat the same scope with ${JSON.stringify({ ...next, ...(sourceRevision ? { source_revision: sourceRevision } : {}) })}; char_offset counts UTF-16 code units.]`
     : '[End of selected scope.]'
-  return `${header}${body}\n${end}`
+  return { content: `${header}${body}\n${end}`, ...(next ? { next } : {}) }
 }

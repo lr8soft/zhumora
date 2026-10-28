@@ -1,4 +1,4 @@
-import type { ToolCall, UIMessage } from '../../shared/types'
+import type { ToolCall, UIMessage, ToolOutputReference } from '../../shared/types'
 import type { AgentEventCallbacks } from './eventCallbacks'
 import type { GenerationMetadata } from '../../shared/generation.ts'
 import { ProviderHttpError, ProviderStreamError } from '../llm/streamErrors.ts'
@@ -66,8 +66,8 @@ export function createPersistedAgentCallbacks(
     onToolCall: (toolCall, assistantMessageId) => {
       if (isCurrent()) events.toolCall?.(sessionId, assistantMessageId, toolCall)
     },
-    onToolResult: (toolCallId, toolName, result, isError, durationMs) => isCurrent()
-      ? messages.toolResult(toolCallId, toolName, result, isError, durationMs) : null,
+    onToolResult: (toolCallId, toolName, result, isError, durationMs, outputRef) => isCurrent()
+      ? messages.toolResult(toolCallId, toolName, result, isError, durationMs, outputRef) : null,
     onAssistantMessage: (content, toolCalls, reasoning, generation) => isCurrent() ? messages.assistant(content, toolCalls, reasoning, generation) : null,
     onAssistantGeneration: (messageId, generation) => { if (isCurrent()) messages.generation(messageId, generation) },
     onTokenUsage: (usage, model) => {
@@ -116,9 +116,11 @@ class PersistedAgentMessages {
     this.context.events.reasoning?.(this.context.sessionId, id, token)
   }
 
-  toolResult(toolCallId: string, toolName: string, content: string, isError: boolean, durationMs: number): string {
+  toolResult(toolCallId: string, toolName: string, content: string, isError: boolean, durationMs: number, outputRef?: ToolOutputReference): string {
+    const id = this.context.generateId()
     const message: UIMessage = {
-      id: this.context.generateId(), sessionId: this.context.sessionId, role: 'tool', content, toolCallId, toolName,
+      id, sessionId: this.context.sessionId, role: 'tool', content, toolCallId, toolName,
+      outputRef: { id: outputRef?.id ?? `message:${id}` },
       timestamp: Date.now(), status: isError ? 'error' : 'done'
     }
     this.context.persistence.addMessage(message)

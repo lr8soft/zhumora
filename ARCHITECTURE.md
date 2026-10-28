@@ -306,7 +306,7 @@ stateDiagram-v2
 
 主窗口关闭默认收进系统托盘（`backgroundClose` 设置，默认开启；macOS 红点关闭本就走该语义，dev 模式关窗即退出）：`mainWindow.on('close')` 拦截事件只 `hide()`，不销毁。main 进程继续持有 `SessionService.active`、Bot 连接与对外 MCP 服务器，会话在后台**实时**运行；`renderer` 重新打开（托盘/任务栏/`second-instance`）后靠 `session:list` + `agent:running` + 事件流归并恢复完整状态，不依赖任何 renderer 内存中的运行态。
 
-- **真退出唯一入口**：托盘菜单"退出"或系统关机 → `app.quit()` → `before-quit`（原有清理链，`stopAll()` 有界 settle 后进程结束）。`before-quit` 置 `quitting` 标志，此后窗口 `close` 不再被拦截为 hide。`window-all-closed` 不再作为退出触发源（窗口销毁只发生在真退出或用户显式关闭后台模式时）。
+- **真退出唯一入口**：托盘菜单"退出"或系统关机 → `app.quit()` → `before-quit`。main 构造的 `ApplicationShutdown` 首次阻止默认退出并同步置 `quitting`、调用 SessionService.beginShutdown 停止接收新运行；随后有界等待 Bot/MCP 输入停止、SessionService.stopAll settle、输出 writer dispose 和展示/桌面适配器释放，最后再次 app.quit 放行退出。重复退出只等待同一次清理，不重复构造运行或清理链；某个步骤失败/超时仍继续其它清理并记录诊断。窗口 close 只消费 main 的 quitting 判定，不复制清理。window-all-closed 保留原后台/开发模式策略。
 - **单实例**：`app.requestSingleInstanceLock()` 在 main 入口最早处调用；第二个实例直接退出，`second-instance` 事件聚焦/恢复已有窗口。它防止"窗口隐藏期间用户再启一个"造成双 main 抢同一 SQLite/MCP 端口/Bot 连接。
 - **隐藏期权限请求不自动批准、不加超时**：UI presenter 是"人在场"的呈现面，窗口不可见时请求按既有语义保持挂起（`PermissionBroker` 的 first-response-wins 与 cancelSession 不变）。`BackgroundManager` 订阅 `PermissionBroker` 挂起状态与 `SessionEventHub` 的 `complete`/`error`，在窗口不可见时弹系统通知（点击回窗口），裁决仍只能由人在桌面 UI 做出——与外部编排器"无法裁决则保持挂起、不得伪造拒绝"同一原则。`aborted` 不通知（用户/外部主动行为）。
 - **隐藏期 TTS 音频丢弃**：TTS 输出是 renderer 投影（§3），窗口不可见时合成继续、音频事件无人消费；无持久化损失，不为此新增 main 侧 playback。
@@ -351,6 +351,9 @@ stateDiagram-v2
 ## 9. 历史与压缩流程
 
 - `messages` 表保存用户能看到的完整历史。
+- SQLite migration v10 为 messages 增加 output_ref JSON，随工具结果首次落库保存稳定的 ToolOutputReference。磁盘快照使用 UUID；未被工具适配器裁剪的完整结果直接使用 message:<权威消息ID>，从同会话历史读取，无需为大 MCP 结果反复复制磁盘副本。onToolResult、持久化回调、messageRows/messageRepository、messageMapper 和强类型 IPC/renderer 投影传递该引用；旧消息在唯一映射边界补 message: 引用，不解析输出正文私有标记。压缩不得修改消息正文或回写该字段。
+- read_tool_output 与 list_tool_outputs 均为 safe 输入适配器。组合根通过 SessionService.getMessages 注入历史来源；两者只访问当前 ToolContext.sessionId。读取工具返回原 outputRef，页号与行内 UTF-16 游标始终对应原始文本，不把一页输出再次归档为全文。结果列表合并持久化历史引用与磁盘快照，可按来源/预览字面检索并分页；过期/缺失快照显式 available=false，不自动重跑业务。结果列表本身不加入目录，避免分页查询不断制造新的目录项。
+- 摘要可以省略 output_id，包括摘要请求的首尾摘录本身不含该 ID；恢复能力依赖摘要外的会话结果查询 API，不依赖摘要模型记忆引用。通用工具提示词明确说明压缩、下一轮与重启后用 list_tool_outputs 重新发现原结果；手动与自动压缩共用此持久化恢复来源。
 - `mapPersistedHistory` 同时生成 LLM messages 与平行 message IDs。
 - `sanitizeHistoryWithIds` 只在 assistant 后紧邻的连续 tool 结果中闭合调用，消息与 ID 同步增删；不跨 user/system/assistant 边界借用结果。完整组可在后续轮次复用调用 ID，悬空/非法组原子排除，重复或孤儿结果只从 effective 历史移除。
 - compaction 只保存 `{upToMessageId, summary}`。
@@ -402,11 +405,11 @@ stateDiagram-v2
 
 ### 内置工具文本输出边界
 
-- 限制放在产生文本的工具适配器，由 `tools/outputLimits.ts` 提供纯预览策略。每次命令独立创建 `BoundedToolOutput`，有界保留开头和滚动结尾；stdout/stderr 独立 UTF-8 decoder，达到预览上限仍继续排空输出，不因此终止命令。命令正文最多 500 行、48,000 字符、单行 2,000 字符，退出码和超时状态另附。首次发生预览截断时把此前完整输出写入会话产物，后续输出带背压继续追加，返回 `read_tool_output` 引用；普通短输出不创建产物。保存失败/资源上限明确报错，不能要求重跑有副作用的命令来恢复日志。用户中止清理未完成产物；超时返回可恢复的已捕获输出和真实超时状态。
+- 限制放在产生文本的工具适配器，由 tools/outputLimits.ts 提供纯预览策略。每次命令独立创建 BoundedToolOutput，有界保留开头和滚动结尾；stdout/stderr 独立 UTF-8 decoder，达到预览上限仍继续排空输出，不因此终止命令。命令正文最多 500 行、48,000 字符、单行 2,000 字符，退出码和超时状态另附。首次发生预览截断才把此前完整输出转入磁盘产物；业务进程排空与有界归档队列解耦，待归档文本最多 8 MiB，单次磁盘等待最多 2 秒。创建、追加、提交、配额或归档积压失败只停止归档并附明示警告，不杀业务进程、不把真实成功退出变为业务失败、不声称缺失日志已保存。命令关闭后存储等待不再消耗执行超时；用户中止仍立即取消进程，未完成 writer 异步清理，超时保留真实执行状态与已成功保存日志。
 - `grep`、`glob`、`ls` 及搜索错误诊断仍受 48,000 字符 / 2,000 行 / 单行 2,000 字符限制；匹配数量只限制预览，已捕获的完整命中集先于预览裁剪保存。搜索进程捕获的 8 MiB 资源上限耗尽时明确返回不完整错误，不能伪造为无匹配或完整结果。文件 `read` 保留原有 2,000 行 / 50 KiB / 单行 2,000 字符与 offset/limit，新增起始行内的 UTF-16 `char_offset`，续读游标不得跳过超长行尾部或拆开 Unicode 代理对。目录 `read` 另受 48,000 字符限制，续读 offset 按实际返回条目推进。`edit` 仅限制返回的修改预览，不裁剪实际写入。
 - 浏览器正文/HTML 默认预览 5,000 字符，`max_length` 可缩小但不能超过 48,000 字符硬上限，另受行数与单行长度限制。`recoverableOutput.ts` 对发生截断的完整正文快照、搜索和列表文本保存一次，返回结构化 `outputRef` 与可持久化的读取提示；未截断不归档。后续导航不会改变已保存的文本快照。
-- `ToolOutputStore` 是组合根创建并注入 SessionService → runner → ToolContext 的基础设施实例，只拥有产物与磁盘写入生命周期，不拥有运行、控制器或权限。产物位于 userData/tool-output，以 sessionId 的 SHA-256 目录和严格 UUID 隔离，不接收模型指定路径。`read_tool_output` 是 safe 读取工具，仅可读当前 session 的产物，支持行分页、行内字符游标和字面量搜索，每页仍受原预览上限保护。产物可在应用重启后读取，固定保留 7 天；启动/写入清理过期产物。单结果最多 64 MiB、单会话最多 256 MiB，超额明确失败，不静默删除仍有效结果。删除会话由 SessionService 持有的 SessionDeletionGate 阻止新输入并复用同一删除 Promise，先中止并等待 settle，再清理产物和数据库；退出停止会话后 dispose 未完成 writer，保留已完成产物供重启读取。失效引用明确返回错误，不自动重复原工具动作。
-- Office 读取在 `officeRead.ts`，转换文本分页在 `officeReadPage.ts`；四格式统一接受 offset/limit/char_offset，在 50 KiB / 2,000 行预算内给精确下一游标。PDF 的 start_page/end_page 每范围至多 200 页，可读取第 201 页以后；PPT start_slide/end_slide 保留原始页号；Excel sheet/range 使用真实工作表坐标并报告使用范围，稀疏行不实体化整张表。Word 按转换后的 Markdown 文本行分页。游标始终对应相同源文件和选择范围；范围内长行可继续，不丢弃尾部。源文件仍是 Office 全文读取来源，不把文档全文写入消息历史。
+- ToolOutputStore 是组合根创建并注入 SessionService → runner → ToolContext 的基础设施实例，只拥有产物与磁盘生命周期，不拥有运行、控制器或权限。产物位于 userData/tool-output，以 sessionId 的 SHA-256 目录和严格 UUID 隔离，不接收模型指定路径。完整产物固定保留 7 天，原始文本单结果最多 64 MiB、单会话最多 256 MiB；可选小型来源标签不影响已提交文本有效性。重启时无活动 owner 的 .partial 立即回收，不占下一轮配额；完整产物继续遵循 TTL，并发删除一个目录不会中断其它目录清理。保存失败由调用者单独报告日志/快照状态，保留正常业务结果。删除会话仍由 SessionDeletionGate 禁止新输入，先中止并等待 settle，再清理产物和数据库；退出清理由 ApplicationShutdown 等待，完成产物留供重启读取。所有失效引用明确返回错误，不自动重放原动作。
+- Office 读取在 officeRead.ts，转换文本分页在 officeReadPage.ts；四格式统一接受 offset/limit/char_offset，在 50 KiB / 2,000 行预算内给精确下一游标。PDF start_page/end_page 每范围最多 200 页，可读取第 201 页以后；PPT start_slide/end_slide 保留原始页号，并清理重复 YAML frontmatter 和 Note 伪影；Excel sheet/range 使用真实坐标、保留稀疏行信息，Word 按转换后的 Markdown 行分页。模型 read 截断时保存整个选定范围的不可变转换文本快照，返回同源行/UTF-16 游标及 outputRef，源文件变化后仍用原 ID 续读。原生 Office 续读必须携带上一页 source_revision；officeReadSource.ts 流式校验转换前后 SHA-256 与文件身份/状态，防止修改后的旧游标静默错页。快照保存失败仅警告并保留有效页面，此时只能对相同 revision 原生续读；文档全文不写入消息历史，create/edit 行为不变。
 - 这是工具返回前的文本边界，不是 token 计数或整个请求预算，也不删除/重写已持久化历史。不得将字符串截断器无差别用于子 Agent / MCP 的结构化协议或二进制附件。权限、消息 ID、tool_call_id、中止和 Agent 工具快照规则不变。
 
 ### LLM Provider 请求配置

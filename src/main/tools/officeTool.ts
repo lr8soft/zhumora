@@ -6,6 +6,7 @@ import * as path from 'node:path'
 import type { ToolHandler, ToolContext } from './registry.ts'
 import type { ToolExecutionResult } from '../../shared/types'
 import { executeOffice, type OfficeArgs } from './office.ts'
+import { readOfficeResult } from './officeRead.ts'
 
 type OfficeFormat = 'docx' | 'xlsx' | 'pptx' | 'pdf'
 
@@ -34,6 +35,7 @@ async function executeFormatTool(
     ...args,
     action: args.action === 'create_or_replace' ? 'create' : args.action
   } as unknown as OfficeArgs
+  if (officeArgs.action === 'read') return readOfficeResult(path.resolve(ctx.workspacePath, officeArgs.file_path), format, officeArgs, ctx)
   return { content: await executeOffice(officeArgs, ctx.workspacePath, ctx.signal) }
 }
 
@@ -43,9 +45,10 @@ const filePathProperty = (extension: string) => ({
 })
 
 const readPageProperties = {
-  offset: { type: 'integer', minimum: 1, description: 'read: one-based line in converted text within the same selected scope. Default 1. Follow the exact next cursor in the result.' },
+  offset: { type: 'integer', minimum: 1, description: 'read: one-based line in converted text within the same selected scope. Default 1. Continuing beyond line 1 requires the returned source_revision. Prefer read_tool_output with the saved output_id and exact next cursor.' },
   limit: { type: 'integer', minimum: 1, maximum: 2000, description: 'read: maximum converted text lines per response; default 2000. Responses also have a 50 KiB budget.' },
-  char_offset: { type: 'integer', minimum: 0, description: 'read: UTF-16 offset within the first selected line, default 0. Use the returned cursor to continue long lines without losing content.' }
+  char_offset: { type: 'integer', minimum: 0, description: 'read: zero-based UTF-16 offset within the first selected line, default 0. Native continuation requires source_revision. Saved output_id snapshots use the same cursor.' },
+  source_revision: { type: 'string', pattern: '^[a-f0-9]{64}$', description: 'read: revision returned by the preceding page. Pass it for native continuation in the same scope; changed files are rejected. Prefer read_tool_output with the saved output_id for an immutable snapshot.' }
 }
 
 export const wordDocumentTool: ToolHandler = {

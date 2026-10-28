@@ -171,6 +171,12 @@ const migrations: Migration[] = [
     up(database) {
       database.exec('ALTER TABLE messages ADD COLUMN generation TEXT')
     }
+  },
+  {
+    version: 10,
+    up(database) {
+      database.exec('ALTER TABLE messages ADD COLUMN output_ref TEXT')
+    }
   }
 ]
 

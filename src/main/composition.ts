@@ -38,6 +38,7 @@ import { app } from 'electron'
 import * as path from 'node:path'
 import { ToolOutputStore } from './tools/toolOutputStore'
 import { createToolOutputReader } from './tools/toolOutputReader'
+import { createToolOutputLister } from './tools/toolOutputLister'
 
 const builtinGroups: ReadonlyArray<ReadonlyArray<{ name: string; handler: ToolHandler }>> = [
   builtinTools,
@@ -65,7 +66,6 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
   toolRegistry.clear()
   const outputStore = new ToolOutputStore(path.join(app.getPath('userData'), 'tool-output'))
   void outputStore.cleanup().catch(error => log('warn', `Failed to clean expired tool outputs: ${String(error)}`))
-  toolRegistry.register('read_tool_output', createToolOutputReader(outputStore), 'builtin')
   const desktopControl = new DesktopControlCoordinator(new DesktopControlOverlay(id => db.getSession(id)?.title || '当前会话'))
   // BBS 工具无自身生命周期：配置（token/开关/地址）与 fetch 每次调用时现读
   // （settings 保存即生效；系统证书开关切换也即时生效），无需重连或重启。
@@ -98,6 +98,9 @@ export function createApplicationServices(avatar: AvatarWindowManager): Applicat
     providerRequestLoads: () => providerRequests.snapshot(),
     log
   })
+  const outputSource = { getMessages: (sessionId: string) => sessions.getMessages(sessionId) }
+  toolRegistry.register('read_tool_output', createToolOutputReader(outputStore, outputSource), 'builtin')
+  toolRegistry.register('list_tool_outputs', createToolOutputLister(outputStore, outputSource), 'builtin')
   const botSessions = new BotSessionAdapter({ sessions })
   for (const { name, handler } of createSubagentTools(sessions)) toolRegistry.register(name, handler, 'builtin')
   const mcpServer = new McpServerManager(sessions, botSessions, permissions, toolRegistry, db.getSettings().mcpServer)

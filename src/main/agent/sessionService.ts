@@ -58,6 +58,8 @@ export class SessionService {
   private readonly active = new Map<string, ActiveSessionRun>()
   private readonly approveModes = new Map<string, AutoApproveMode>()
   private readonly deletions = new SessionDeletionGate()
+  private shuttingDown = false
+  private shutdownCompletion?: Promise<void>
   private readonly executeAgent: typeof runAgent
   private readonly nextMessageId: () => string
   private readonly now: () => number
@@ -73,6 +75,7 @@ export class SessionService {
   async sendMessage(request: SessionRunRequest): Promise<SessionRunHandle> {
     const preferParallel = normalizeParallelPreference(request.preferParallel)
     const { sessionId } = request
+    if (this.shuttingDown) throw new AgentAbortedError()
     if (this.deletions.has(sessionId)) throw new SessionBusyError('This session is being deleted.')
     if (this.active.has(sessionId)) throw new SessionBusyError('This session already has a running agent.')
     if (request.signal?.aborted) throw new AgentAbortedError()
@@ -106,7 +109,7 @@ export class SessionService {
 
     try {
       const commonPrompt = await awaitWithSignal(this.deps.getSystemPromptExtra?.(sessionId) ?? Promise.resolve(undefined), run.controller.signal)
-      if (run.controller.signal.aborted) throw new AgentAbortedError()
+      if (this.shuttingDown || run.controller.signal.aborted) throw new AgentAbortedError()
       if (parentRun) assertSubagentsEnabled(this.deps.store.getSettings().subagentsEnabled)
       if (session.subagent) assertSubagentProvider(this.deps.store.getSettings().providers, provider.id)
 
@@ -254,6 +257,11 @@ export class SessionService {
     await Promise.allSettled(runs.map(([, run]) => run.settled))
   }
 
+  beginShutdown(): Promise<void> {
+    this.shuttingDown = true
+    return this.shutdownCompletion ??= this.stopAll()
+  }
+
   abort(sessionId: string): boolean {
     const run = this.active.get(sessionId)
     if (!run) return false
@@ -276,6 +284,7 @@ export class SessionService {
   }
 
   async compact(sessionId: string): Promise<SessionCompactInfo> {
+    if (this.shuttingDown) throw new AgentAbortedError()
     if (this.isRunning(sessionId)) throw new SessionBusyError('Agent is running. Wait for it to finish before compacting.')
     const settings = this.deps.store.getSettings()
     const session = this.deps.store.getSession(sessionId)

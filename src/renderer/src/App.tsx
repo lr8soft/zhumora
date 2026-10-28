@@ -247,10 +247,10 @@ export default function App() {
       }),
 
       // 工具结果 → 以 main 持久化 id 追加
-      window.api.agent.onToolResult(({ sessionId, messageId, toolCallId, toolName, result, isError }) => {
+      window.api.agent.onToolResult(({ sessionId, messageId, toolCallId, toolName, result, isError, outputRef }) => {
         flushPending()
         const now = Date.now()
-        pushMessage(sessionId, (m) => applyToolResultEvent(sessionId, messageId, toolCallId, toolName, result, isError, m, now))
+        pushMessage(sessionId, (m) => applyToolResultEvent(sessionId, messageId, toolCallId, toolName, result, isError, m, now, outputRef))
       }),
 
       // 对话完成 → 强制从 DB 校准；后台会话也刷新，避免缓存命中后长期停留在旧历史。

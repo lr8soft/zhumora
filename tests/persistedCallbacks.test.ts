@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
 import type { UIMessage } from '../src/shared/types.ts'
 import { createPersistedAgentCallbacks } from '../src/main/agent/persistedCallbacks.ts'
+import { mapPersistedHistory } from '../src/main/agent/messageMapper.ts'
 
 const messages: UIMessage[] = []
 const events: string[] = []
@@ -28,7 +29,13 @@ assert.equal(messages[0].content, 'hello')
 
 const toolId = callbacks.onToolResult?.('call1', 'read', 'result', false, 3)
 assert.equal(toolId, 'm2')
-assert.equal(events.at(-1), 'tool:m2')
+assert.deepEqual(messages[1].outputRef, { id: 'message:m2' })
+callbacks.onToolResult?.('call2', 'bash', 'preview', false, 3, { id: 'original-snapshot' })
+const reloaded = mapPersistedHistory(JSON.parse(JSON.stringify(messages)))
+assert.deepEqual(reloaded.messages[1].toolOutputRef, { id: 'message:m2' })
+assert.deepEqual(reloaded.messages[2].toolOutputRef, { id: 'original-snapshot' })
+assert.equal(reloaded.messages[0].toolOutputRef, undefined)
+assert.equal(events.at(-1), 'tool:m3')
 callbacks.onComplete?.()
 assert.equal(events.at(-1), 'complete:m1')
 

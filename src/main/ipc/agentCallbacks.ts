@@ -28,7 +28,8 @@ export function createIpcAgentEventSink(sender: Electron.WebContents): AgentEven
         toolName,
         result,
         isError,
-        durationMs
+        durationMs,
+        ...(message.outputRef ? { outputRef: message.outputRef } : {})
       })
     },
     assistantEnd: (sessionId, messageId, content, toolCalls, reasoning, generation) => {

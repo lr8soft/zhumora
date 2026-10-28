@@ -12,6 +12,7 @@ export function mapPersistedHistory(history: UIMessage[]): { messages: ChatMessa
       tool_calls: message.toolCalls,
       tool_call_id: message.toolCallId,
       name: message.toolName,
+      ...(message.role === 'tool' ? { toolOutputRef: message.outputRef ?? { id: `message:${message.id}` } } : {}),
       ...(message.reasoning ? { reasoning: message.reasoning } : {}),
       ...(message.generation?.providerId && message.generation.model ? { reasoningSource: {
         providerId: message.generation.providerId, model: message.generation.model } } : {})

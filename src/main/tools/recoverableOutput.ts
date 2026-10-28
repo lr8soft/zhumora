@@ -17,9 +17,15 @@ export async function recoverableToolOutput(
     return { content: preview.text }
   }
   if (context.signal?.aborted) throw new Error('Tool output saving aborted')
-  const id = await context.outputStore.save(context.sessionId, text)
-  return {
-    content: `${preview.text}\n[Full output saved. Use read_tool_output with output_id="${id}"; use offset/limit to page, char_offset for long lines, or pattern to search.]`,
-    outputRef: { id }
+  try {
+    const id = await context.outputStore.save(context.sessionId, text, context.outputMetadata)
+    context.signal?.throwIfAborted()
+    return {
+      content: `${preview.text}\n[Full output saved. Use read_tool_output with output_id="${id}"; use offset/limit to page, char_offset for long lines, or pattern to search.]`,
+      outputRef: { id }
+    }
+  } catch (error) {
+    if (context.signal?.aborted) throw error
+    return { content: `${preview.text}\n[Full output could not be saved: ${String((error as Error).message).slice(0, 256)}. Omitted text is unavailable. The operation result is unchanged; do not repeat side-effecting actions to recover output.]` }
   }
 }

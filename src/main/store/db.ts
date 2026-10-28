@@ -8,7 +8,7 @@ import type { Session, UIMessage, AppSettings, MemoryEntry, MemoryCategory, Sess
 import { runDatabaseMigrations } from './migrations'
 import { generateId } from '../id'
 import { defaultSettings, normalizeSettings } from './settingsNormalization'
-import { messageFromRow, type MessageRow } from './messageRows.ts'
+import { insertMessage, selectMessages } from './messageRepository.ts'
 import { validateSessionModelSelection, type SessionModelSelection } from '../../shared/sessionModel'
 
 let db: Database.Database | null = null
@@ -195,24 +195,12 @@ export function getOrCreateBotSession(
 // ============================================================
 
 export function addMessage(msg: UIMessage): void {
-  db!.prepare(`
-    INSERT INTO messages (id, session_id, role, content, reasoning, tool_calls, tool_call_id, tool_name, images, timestamp, status, coordination_parent_id, coordination_task_id, generation)
-    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-  `).run(
-    msg.id, msg.sessionId, msg.role, msg.content,
-    msg.reasoning || null,
-    msg.toolCalls ? JSON.stringify(msg.toolCalls) : null,
-    msg.toolCallId, msg.toolName,
-    msg.images && msg.images.length > 0 ? JSON.stringify(msg.images) : null,
-    msg.timestamp, msg.status || null, msg.coordination?.parentSessionId ?? null, msg.coordination?.taskId ?? null,
-    msg.generation ? JSON.stringify(msg.generation) : null
-  )
+  insertMessage(db!, msg)
   touchSession(msg.sessionId)
 }
 
 export function getMessages(sessionId: string): UIMessage[] {
-  const rows = db!.prepare('SELECT * FROM messages WHERE session_id = ? ORDER BY timestamp ASC, rowid ASC').all(sessionId) as MessageRow[]
-  return rows.map(messageFromRow)
+  return selectMessages(db!, sessionId)
 }
 
 /** Update assessment only; message text, identity and tool history stay immutable. */

@@ -3,7 +3,7 @@ import * as path from 'node:path'
 import { StringDecoder } from 'node:string_decoder'
 import { BoundedToolOutput, MAX_COMMAND_OUTPUT_LINES } from './outputLimits.ts'
 import type { Readable } from 'node:stream'
-import type { ToolOutputStore, ToolOutputWriter } from './toolOutputStore.ts'
+import type { ToolOutputStore, ToolOutputWriter, ToolOutputMetadata } from './toolOutputStore.ts'
 
 const DEFAULT_TIMEOUT_MS = 120_000
 const MAX_TIMEOUT_MS = 600_000
@@ -36,6 +36,7 @@ interface ShellOptions {
   outputStore?: ToolOutputStore
   sessionId?: string
   onOutputRef?: (id: string) => void
+  outputMetadata?: ToolOutputMetadata
 }
 
 export async function executeShellCommand(options: ShellOptions): Promise<string> {
@@ -98,7 +99,7 @@ function runCommand(options: ShellOptions, cwd: string, timeoutMs: number, outpu
     const timeout = setTimeout(() => {
       if (settled) return
       timedOut = true; exitCode = null; disconnect()
-      savingDeadline = setTimeout(() => fail(new Error('Command timed out while saving output; the result is incomplete')), 1000)
+      savingDeadline = setTimeout(() => fail(new Error('Command timed out while saving output; the result is incomplete')), 4500)
       savingDeadline.unref()
       void finish(null)
     }, timeoutMs)
@@ -107,11 +108,11 @@ function runCommand(options: ShellOptions, cwd: string, timeoutMs: number, outpu
     if (options.signal?.aborted) stop()
     void drains.catch(fail)
     child.once('error', fail)
-    child.once('close', code => { void finish(code) })
+    child.once('close', code => { clearTimeout(timeout); void finish(code) })
   })
 }
 
-/** Each pipe waits for its disk append, so a verbose process cannot grow an unbounded write queue. */
+/** Drain the business process independently; a bounded archival queue may fail without stopping it. */
 class ShellOutput {
   private readonly preview = new BoundedToolOutput('Use the saved output_id with read_tool_output to inspect omitted logs.', MAX_COMMAND_OUTPUT_LINES)
   private stopped = false
@@ -120,22 +121,36 @@ class ShellOutput {
   private buffered = ''
   private pending = Promise.resolve()
   private readonly options: ShellOptions
+  private storageFailure?: string
+  private queuedBytes = 0
   constructor(options: ShellOptions) { this.options = options }
   stop(discard = false): void { this.stopped = true; this.discarded ||= discard }
   private append(text: string): Promise<void> {
     this.preview.append(text)
+    if (this.discarded || this.storageFailure || !this.options.outputStore || !this.options.sessionId) return Promise.resolve()
+    const bytes = Buffer.byteLength(text)
+    if (this.queuedBytes + bytes > 8 * 1024 * 1024) {
+      this.disableStorage(new Error('Log archival backlog exceeded 8 MiB'))
+      return Promise.resolve()
+    }
+    this.queuedBytes += bytes
     this.pending = this.pending.then(async () => {
-      if (this.discarded) return
-      if (this.writer) { await this.writer.append(text); return }
-      if (!this.options.outputStore || !this.options.sessionId) return
-      this.buffered += text
-      if (!this.preview.snapshot().truncated) return
-      this.writer = await this.options.outputStore.createWriter(this.options.sessionId, this.options.signal)
-      if (this.discarded) { await this.writer.discard(); return }
-      await this.writer.append(this.buffered)
-      this.buffered = ''
+      try {
+        if (this.discarded || this.storageFailure) return
+        await storageDeadline(async () => {
+          if (this.writer) { await this.writer.append(text); return }
+          if (!this.options.outputStore || !this.options.sessionId) return
+          this.buffered += text
+          if (!this.preview.snapshot().truncated) return
+          this.writer = await this.options.outputStore.createWriter(this.options.sessionId, this.options.signal, this.options.outputMetadata)
+          if (this.discarded || this.storageFailure) { await this.writer.discard(); return }
+          await this.writer.append(this.buffered)
+          this.buffered = ''
+        })
+      } catch (error) { this.disableStorage(error) }
+      finally { this.queuedBytes -= bytes }
     })
-    return this.pending
+    return Promise.resolve()
   }
   async drain(stream: Readable): Promise<void> {
     const decoder = new StringDecoder('utf8')
@@ -152,16 +167,32 @@ class ShellOutput {
     }
   }
   async finish(code: number | null, timeoutSeconds?: number): Promise<string> {
+    try { await storageDeadline(() => this.pending) } catch (error) { this.disableStorage(error) }
     const snapshot = this.preview.snapshot()
     const metadata = [`[exit code: ${code ?? -1}]`, ...(timeoutSeconds ? [`[timed out after ${timeoutSeconds}s]`] : [])]
-    if (snapshot.truncated && this.writer) {
-      const id = await this.writer.finish()
-      this.options.onOutputRef?.(id)
-      metadata.push(`Full output saved. Continue with read_tool_output({"output_id":"${id}","offset":1,"limit":200}); use pattern for literal text search.`)
-    } else await this.writer?.discard()
+    if (snapshot.truncated && this.writer && !this.storageFailure) {
+      try {
+        const id = await storageDeadline(() => this.writer!.finish())
+        this.options.onOutputRef?.(id)
+        metadata.push(`Full output saved. Continue with read_tool_output({"output_id":"${id}","offset":1,"limit":200}); use pattern for literal text search.`)
+      } catch (error) { this.disableStorage(error) }
+    } else if (this.writer) void this.writer.discard().catch(() => undefined)
+    if (this.storageFailure) metadata.push(`[Log storage failed: ${this.storageFailure}. Omitted logs may be unavailable. The command's exit status above is authoritative; do not rerun side-effecting commands to recover logs.]`)
     return `${snapshot.text.trimEnd() || '(no output)'}\n${metadata.join('\n')}`
   }
   async discard(): Promise<void> { await this.writer?.discard() }
+  private disableStorage(error: unknown): void {
+    this.storageFailure = String((error as Error).message || error).slice(0, 256)
+    this.buffered = ''
+    if (this.writer) void this.writer.discard().catch(() => undefined)
+  }
+}
+
+async function storageDeadline<T>(action: () => Promise<T>): Promise<T> {
+  let timer: ReturnType<typeof setTimeout> | undefined
+  try { return await Promise.race([action(), new Promise<never>((_, reject) => {
+    timer = setTimeout(() => reject(new Error('Log storage did not respond')), 2000)
+  })]) } finally { clearTimeout(timer) }
 }
 
 function resolveTimeout(value: unknown): number {

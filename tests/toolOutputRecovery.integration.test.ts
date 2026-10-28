@@ -92,6 +92,12 @@ try {
 
   const abort = new AbortController(); abort.abort()
   await assert.rejects(recoverableToolOutput(pageText, { ...context, signal: abort.signal }, 'Read more.'), /aborted/)
+  const failedStorage = { save: async () => { throw new Error('quota reached') } } as unknown as ToolOutputStore
+  const readable = await recoverableToolOutput(pageText, { ...context, outputStore: failedStorage }, 'Read more.')
+  assert.equal(readable.isError, undefined)
+  assert.equal(readable.outputRef, undefined)
+  assert.match(readable.content, /Full output could not be saved.*quota reached/)
+  assert.doesNotMatch(readable.content, /Full output saved/)
   console.log('Tool output recovery: saved browser/search snapshots, later matches/files, wide JSON records, character paging and explicit capture exhaustion passed')
 } finally {
   await store.dispose()

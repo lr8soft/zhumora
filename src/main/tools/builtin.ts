@@ -141,6 +141,7 @@ export const bashTool: ToolHandler = {
       signal: ctx.signal,
       outputStore: ctx.outputStore,
       sessionId: ctx.sessionId,
+      outputMetadata: ctx.outputMetadata,
       onOutputRef: id => { outputRef = { id } }
     })
     return { content, ...(outputRef ? { outputRef } : {}) }

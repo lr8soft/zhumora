@@ -64,7 +64,9 @@ export async function executeToolCall(options: ToolExecutionOptions): Promise<Ex
         const start = Date.now()
         try {
           log('info', `Executing tool: ${name}(${JSON.stringify(parsedArgs).slice(0, 200)})`)
-          const output = normalizeToolOutput(await entry.handler.execute(parsedArgs, context))
+          const callContext: ToolContext = { ...context, outputMetadata: { toolName: name, toolCallId: toolCall.id,
+            label: `${name} ${toolCall.function.arguments || '{}'}`.slice(0, 256) } }
+          const output = normalizeToolOutput(await entry.handler.execute(parsedArgs, callContext))
           durationMs = Date.now() - start
           resultText = output.content
           toolOutputRef = output.outputRef

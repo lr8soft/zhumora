@@ -26,10 +26,24 @@ export interface ContentPartImageUrl {
 }
 export type ContentPart = ContentPartText | ContentPartImageUrl
 
+/** Opaque session-scoped artifact UUID or message:<authoritative message ID>. */
+export interface ToolOutputReference { id: string }
+
+export interface AgentToolResultEvent {
+  sessionId: string
+  messageId: string
+  toolCallId: string
+  toolName: string
+  result: string
+  isError: boolean
+  durationMs: number
+  outputRef?: ToolOutputReference
+}
+
 /** 单条对话消息（OpenAI 格式扩展） */
 export interface ChatMessage {
   /** Model-only recovery reference; never serialized as an OpenAI message field. */
-  toolOutputRef?: { id: string; recoveryPart?: boolean }
+  toolOutputRef?: ToolOutputReference & { recoveryPart?: boolean }
   reasoning?: string
   reasoningSource?: { providerId: string; model: string }
   role: Role
@@ -74,6 +88,7 @@ export interface ProviderConfig extends ProviderResponseOptions {
 
 /** 单条渲染消息（UI 专用，含元数据） */
 export interface UIMessage {
+  outputRef?: ToolOutputReference
   generation?: GenerationMetadata
   /** Parent guidance delivered inside an existing child turn; not a new user conversation turn. */
   coordination?: { parentSessionId: string; taskId: string }
@@ -168,7 +183,7 @@ export type ToolAttachment = ToolImageAttachment
 export interface ToolExecutionResult {
   content: string
   /** Session-owned text artifact; content includes instructions for reading it. */
-  outputRef?: { id: string }
+  outputRef?: ToolOutputReference
   attachments?: ToolAttachment[]
   /** 预期内的工具失败（例如远端 MCP 返回 isError），无需通过 throw 编码。 */
   isError?: boolean
