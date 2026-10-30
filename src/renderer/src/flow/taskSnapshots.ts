@@ -1,10 +1,31 @@
 import type { UIMessage } from '../../../shared/types.ts'
 import { decodeTaskReferences, indexToolResults, toolNodeId, type Delegation, type TaskReference } from './history.ts'
+import { hashStrings, memoize, messageDigest } from './memoize.ts'
 
 const terminal = (task: TaskReference) => ['completed', 'failed', 'aborted'].includes(task.status)
 
 /** Only matching built-in task observations may update a delegated task's historical status. */
 export function withTaskSnapshots(parentId: string, messages: readonly UIMessage[], delegations: ReadonlyMap<string, Delegation>): Map<string, Delegation> {
+  // The scan decodes every wait/list_subagents tool result, so it only reruns when the
+  // message array structure or the tracked task statuses change. Treat the result as read-only.
+  return memoize(
+    `withTaskSnapshots:${parentId}`,
+    [
+      messageDigest(messages),
+      String(delegations.size),
+      hashStrings([...delegations.values()].map(delegation => [
+        delegation.nodeId,
+        delegation.task.task_id,
+        delegation.task.status,
+        delegation.task.diagnostics?.failure?.stage ?? '',
+        delegation.turn ? `${delegation.turn.id}#${messageDigest(delegation.turn.messages)}` : '-',
+      ].join(':')))
+    ].join('|'),
+    () => computeTaskSnapshots(parentId, messages, delegations)
+  )
+}
+
+function computeTaskSnapshots(parentId: string, messages: readonly UIMessage[], delegations: ReadonlyMap<string, Delegation>): Map<string, Delegation> {
   const tasks = new Map([...delegations.values()].map(delegation => [delegation.task.task_id, delegation.task]))
   const { results } = indexToolResults(messages)
   for (const message of messages) {

@@ -4,6 +4,7 @@ import type { UIMessage } from '../../../shared/types'
 import { useAppStore } from '../store'
 import { buildConversationGraph } from './buildGraph'
 import { collectDelegations, splitConversationTurns, toolNodeId } from './history'
+import { hashStrings, memoize, messageDigest } from './memoize'
 import { DEFAULT_SPEECH_SIZE, type SpeechSizing } from './speechSizing'
 
 const EMPTY_MESSAGES: UIMessage[] = []
@@ -16,14 +17,15 @@ export function useFlowGraph(sessionId: string, foldHistory: boolean, expandedTu
   const collapsedTurns = useMemo(() => new Set(foldHistory
     ? turns.slice(0, -1).filter(turn => !expandedTurns.has(turn.id)).map(turn => turn.id) : []), [turns, foldHistory, expandedTurns])
   const sessions = useMemo(() => {
-    const visibleCalls = new Set(turns.filter(turn => !collapsedTurns.has(turn.id))
-      .flatMap(turn => turn.messages.flatMap(message => message.toolCalls?.map(call => toolNodeId(sessionId, call.id, message.id)) ?? [])))
+    // Building visibleCalls scans every message; cache it until the message structure or the fold set changes.
+    const visibleCalls = memoize(`visibleCalls:${sessionId}`, [messageDigest(messages), hashStrings(collapsedTurns)].join('|'),
+      () => new Set(turns.filter(turn => !collapsedTurns.has(turn.id))
+        .flatMap(turn => turn.messages.flatMap(message => message.toolCalls?.map(call => toolNodeId(sessionId, call.id, message.id)) ?? []))))
     const referenced = collectDelegations(sessionId, messages, family, {})
     const children = new Set([...referenced.values()].filter(item => visibleCalls.has(item.nodeId)).map(item => item.session.id))
     return family.filter(session => session.id === sessionId || children.has(session.id))
   }, [family, turns, collapsedTurns, sessionId, messages])
-  const idKey = JSON.stringify([sessionId, ...sessions.filter(session => session.id !== sessionId).map(session => session.id)])
-  const ids = useMemo<string[]>(() => JSON.parse(idKey), [idKey])
+  const ids = useMemo<string[]>(() => sessions.map(session => session.id), [sessions])
   // Shallow selections subscribe only to this visible graph's authoritative message references.
   const histories = useAppStore(useShallow(state => Object.fromEntries(ids.map(id => [id, state.messages[id] ?? EMPTY_MESSAGES]))))
   const running = useAppStore(useShallow(state => ids.filter(id => state.runningIds.has(id))))

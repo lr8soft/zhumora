@@ -1,4 +1,4 @@
-import { FLOW_SIZE, type ConversationGraph } from './types.ts'
+import { FLOW_SIZE, type ConversationGraph, type FlowNode } from './types.ts'
 import { estimateSpeechHeight } from './speechSizing.ts'
 
 /** Named inner ports retain exact tool provenance even when both dispatch and wait belong to one speech. */
@@ -21,11 +21,20 @@ export function finishGraphLayout(graph: ConversationGraph, heights?: ReadonlyMa
   }
   const rootHeight = Math.max(FLOW_SIZE.height, ...graph.nodes.filter(node => !node.data.taskId).map(node => node.height))
   const lanes = graph.nodes.filter(node => node.data.kind === 'lane')
+  // Single pass: group task members once so lane sizing/positioning never rescans all nodes per lane.
+  const membersByTask = new Map<string, FlowNode[]>()
+  for (const node of graph.nodes) {
+    if (node.data.kind === 'lane' || !node.data.taskId) continue
+    const group = membersByTask.get(node.data.taskId)
+    if (group) group.push(node)
+    else membersByTask.set(node.data.taskId, [node])
+  }
+  const laneMembers = (lane: FlowNode) => (lane.data.taskId ? membersByTask.get(lane.data.taskId) ?? [] : [])
+  const maxHeight = (nodes: FlowNode[]) => nodes.reduce<number>((max, node) => Math.max(max, node.height), FLOW_SIZE.height)
   const heightsByRow = new Map<number, number>()
   for (const lane of lanes) {
-    const members = graph.nodes.filter(node => node.data.taskId === lane.data.taskId && node.data.kind !== 'lane')
     const index = lane.data.laneIndex ?? 0
-    heightsByRow.set(index, Math.max(heightsByRow.get(index) ?? FLOW_SIZE.height, ...members.map(node => node.height)))
+    heightsByRow.set(index, Math.max(heightsByRow.get(index) ?? FLOW_SIZE.height, maxHeight(laneMembers(lane))))
   }
   const starts = new Map<number, number>()
   let cursor = FLOW_SIZE.top + rootHeight + 80
@@ -34,10 +43,10 @@ export function finishGraphLayout(graph: ConversationGraph, heights?: ReadonlyMa
     cursor += height + 80
   }
   for (const lane of lanes) {
-    const members = graph.nodes.filter(node => node.data.taskId === lane.data.taskId && node.data.kind !== 'lane')
+    const members = laneMembers(lane)
     const y = starts.get(lane.data.laneIndex ?? 0)!
     members.forEach(node => { node.position.y = y })
     lane.position.y = y - 40
-    lane.height = Math.max(FLOW_SIZE.height, ...members.map(node => node.height)) + 60
+    lane.height = maxHeight(members) + 60
   }
 }

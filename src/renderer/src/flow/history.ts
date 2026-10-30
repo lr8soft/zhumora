@@ -1,4 +1,5 @@
 import { COMPACT_SUMMARY_PREFIX, type Session, type UIMessage } from '../../../shared/types.ts'
+import { hashStrings, memoize, messageDigest } from './memoize.ts'
 
 export interface ConversationTurn { id: string; messages: UIMessage[] }
 export interface TaskReference {
@@ -16,8 +17,12 @@ export interface Delegation {
   turn?: ConversationTurn
 }
 
-/** The original message order and objects remain authoritative; folding is a projection only. */
+/** The original message order and objects remain authoritative; folding is a projection only. Cached until the array's structure (ids/order) changes; the result is read-only. */
 export function splitConversationTurns(messages: readonly UIMessage[]): ConversationTurn[] {
+  return memoize('splitConversationTurns', messageDigest(messages), () => computeTurns(messages))
+}
+
+function computeTurns(messages: readonly UIMessage[]): ConversationTurn[] {
   const turns: ConversationTurn[] = []
   for (const message of messages) {
     const userInput = message.role === 'user' && !message.coordination && !message.content.startsWith(COMPACT_SUMMARY_PREFIX)
@@ -44,7 +49,20 @@ export function decodeTaskReferences(content: string): TaskReference[] {
   } catch { return [] }
 }
 
+/** Session-boundary decode of the delegation protocol. Cached per structural identity of messages/sessions; the returned Map is read-only. */
 export function collectDelegations(
+  parentId: string, messages: readonly UIMessage[], sessions: readonly Session[],
+  histories: Readonly<Record<string, readonly UIMessage[]>>
+): Map<string, Delegation> {
+  const key = [
+    messageDigest(messages),
+    hashStrings(sessions.map(session => `${session.id}:${session.title}:${session.subagent?.model ?? ''}`)),
+    hashStrings(Object.keys(histories).sort().map(id => `${id}:${messageDigest(histories[id] ?? [])}`))
+  ].join('|')
+  return memoize(`collectDelegations:${parentId}`, key, () => computeDelegations(parentId, messages, sessions, histories))
+}
+
+function computeDelegations(
   parentId: string, messages: readonly UIMessage[], sessions: readonly Session[],
   histories: Readonly<Record<string, readonly UIMessage[]>>
 ): Map<string, Delegation> {
@@ -82,8 +100,15 @@ export function toolNodeId(sessionId: string, callId: string, assistantMessageId
 }
 
 /** React Flow's dynamic port lookup interpolates node IDs into CSS selectors. Encode only the disposable graph key. */
+const graphNodeIdCache = new Map<string, string>()
 export function graphNodeId(...parts: string[]): string {
-  return encodeURIComponent(JSON.stringify(parts))
+  const joined = parts.join('\u0000')
+  const cached = graphNodeIdCache.get(joined)
+  if (cached !== undefined) return cached
+  const encoded = encodeURIComponent(JSON.stringify(parts))
+  if (graphNodeIdCache.size > 50000) graphNodeIdCache.clear()
+  graphNodeIdCache.set(joined, encoded)
+  return encoded
 }
 
 /** Tool IDs can repeat in later rounds. Associate exact IDs only inside their declared assistant/tool group. */

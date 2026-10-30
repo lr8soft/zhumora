@@ -2,7 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from 'react'
 import { useAppStore } from '../store'
 import { DEFAULT_SPEECH_SIZE, responsiveSpeechWidth } from './speechSizing'
 import { finishGraphLayout } from './graphLayout'
-import type { ConversationGraph } from './types'
+import type { ConversationGraph, FlowNode } from './types'
 import { previewSteps } from './nestedSteps'
 
 export function useFlowSizing() {
@@ -32,19 +32,25 @@ function layoutKey(node: ConversationGraph['nodes'][number]) {
 export function useMeasuredFlowGraph(source: ConversationGraph, fontSize: number) {
   const cache = useRef(new Map<string, Measured>())
   const mounted = useRef(new Set<string>())
-  const current = useRef({ source, fontSize })
-  current.current = { source, fontSize }
+  const current = useRef<{ source: ConversationGraph; fontSize: number; byId: Map<string, FlowNode> }>(
+    { source, fontSize, byId: new Map() })
+  current.current = { source, fontSize, byId: new Map(source.nodes.map(node => [node.id, node])) }
   const [revision, setRevision] = useState(0)
   const onMount = useCallback((id: string, active: boolean) => {
     if (active) mounted.current.add(id)
     else mounted.current.delete(id)
   }, [])
   const onMeasure = useCallback((id: string, width: number, height: number) => {
-    const { source, fontSize } = current.current
-    const node = source.nodes.find(node => node.id === id)
+    const { fontSize, byId } = current.current
+    const node = byId.get(id)
     if (!node || !height || Math.abs(width - node.width) > 1) return
-    const previous = cache.current.get(id)
     const next = { width, height, fontSize, content: node.data.message?.content, layout: layoutKey(node) }
+    const previous = cache.current.get(id)
+    // An unchanged measurement must not touch the cache or schedule work: ResizeObserver
+    // and layout effects re-fire on every remount, and re-reporting the same size used to
+    // keep invalidating the layout during session switches.
+    if (previous && previous.width === width && previous.height === height && previous.fontSize === fontSize
+      && previous.content === next.content && previous.layout === next.layout) return
     cache.current.set(id, next)
     if (!previous || previous.width !== width || previous.height !== height || previous.fontSize !== fontSize
       || (!mounted.current.has(id) && (previous.content !== next.content || previous.layout !== next.layout))) setRevision(value => value + 1)
