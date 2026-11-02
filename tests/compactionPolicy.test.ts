@@ -1,8 +1,9 @@
 import assert from 'node:assert/strict'
-import type { ChatMessage, ToolDefinition } from '../src/shared/types.ts'
+import type { ChatMessage, ContentPart, ToolDefinition } from '../src/shared/types.ts'
 import { assertContextFits, ContextBudgetExceededError, estimateMessageTokens, measureContextBudget } from '../src/main/agent/contextBudget.ts'
 import { planCompactByTokens, sanitizeHistory } from '../src/main/agent/history.ts'
 import { projectToolResultsToBudget } from '../src/main/agent/toolResultProjection.ts'
+import { recoverProjectedToolResults, RECOVERY_NOTICE_TOKENS } from '../src/main/agent/toolResultRecovery.ts'
 import { buildSummaryMessages, SUMMARY_OUTPUT_TOKENS } from '../src/main/agent/summaryInput.ts'
 
 const call = { id: 'call-1', type: 'function' as const, function: { name: 'bash', arguments: '{"command":"build"}' } }
@@ -115,8 +116,76 @@ const brokenGroup: ChatMessage[] = [{ role: 'system', content: 'rules' }, { role
 assert.equal(projectToolResultsToBudget(brokenGroup, 16000)[2].tool_calls![0].function.arguments, brokenArgs,
   'non-JSON arguments stay byte-exact')
 
+// Regression: the projection cap was sized per message without regard to how many
+// messages had to share the room, so a fan-out of parallel calls floored at
+// `unitCount × floor` and no cap fit — 52+ results over a 16k window ended in a
+// terminal rejection. Recovery pointers were then appended *after* projection chose
+// its caps, pushing an already-fitting request back over the line.
+const fanOut = (count: number, content: (index: number) => string = () => '汉'.repeat(30_000)): ChatMessage[] => {
+  const calls = Array.from({ length: count }, (_, index) => ({
+    id: `fan-${index}`, type: 'function' as const, function: { name: 'bash', arguments: '{"command":"x"}' }
+  }))
+  return [{ role: 'system', content: 'rules' }, { role: 'user', content: 'run all' },
+    { role: 'assistant', content: null, tool_calls: calls },
+    ...calls.map((call, index) => ({ role: 'tool' as const, tool_call_id: call.id, name: 'bash', content: content(index) }))] as unknown as ChatMessage[]
+}
+/** The shipped sequence: reserve pointer room, project, attach pointers, then the gate. */
+const ship = async (base: ChatMessage[], window: number, definitions: ToolDefinition[] = []) => {
+  const archived = new Set<string>()
+  const notices = base.filter(message => message.role === 'tool').length * RECOVERY_NOTICE_TOKENS
+  const projected = projectToolResultsToBudget(base, window, definitions, notices)
+  const view = await recoverProjectedToolResults(base, projected, async () => {
+    const id = `out-${archived.size}`; archived.add(id); return id
+  })
+  return { view, archived }
+}
+for (const count of [50, 52, 60, 100, 200]) {
+  const { view, archived } = await ship(fanOut(count), 16_000)
+  try { assertContextFits(view, 16_000) } catch (error) {
+    assert.fail(`a fan-out of ${count} parallel results must stay sendable: ${(error as Error).message}`)
+  }
+  assert.equal(sanitizeHistory(view).length, view.length, `every one of ${count} results keeps its call association`)
+  assert.equal(archived.size, count, 'every shortened result has its own archived original')
+  for (const message of view.filter(result => result.role === 'tool')) {
+    const parts = message.content as ContentPart[]
+    assert.match(parts[parts.length - 1].text!, /read_tool_output\(\{"output_id":"out-\d+"\}\)/,
+      'a recovery pointer survives projection intact')
+  }
+}
+
+// Regression: that room was spent in raw message tokens while the gate judges the
+// *request*, which also carries the estimator factor and every tool schema. CJK content
+// had slack left to hide it; ASCII content beside 30 tool schemas did not, and a request
+// the projection had declared finished was rejected by the very check it sized itself to.
+const schemas = (count: number) => Array.from({ length: count }, (_, index) => ({
+  type: 'function', function: { name: `tool_${index}`, description: 'a description long enough to cost real tokens '.repeat(10), parameters: { type: 'object' } }
+})) as unknown as ToolDefinition[]
+for (const definitions of [[], schemas(30), schemas(60)] as ToolDefinition[][]) {
+  const base = fanOut(20, index => `payload ${index} ${'result row '.repeat(3_000)}`)
+  const { view } = await ship(base, 16_000, definitions)
+  try { assertContextFits(view, 16_000, definitions) } catch (error) {
+    assert.fail(`an ASCII fan-out beside ${definitions.length} tool schemas must stay sendable: ${(error as Error).message}`)
+  }
+}
+
+// A JSON result whose every field is already shorter than its share cannot answer a cap
+// at all, so it has to reach the omit level; otherwise the fan-out it belongs to could
+// never be sent no matter how small the cap got.
+const shortLeaves = JSON.stringify(Array.from({ length: 4_000 }, (_, index) => `/etc/paths/file_${index}.ts`))
+const { view: leafView, archived: leafArchived } = await ship(fanOut(30, () => shortLeaves), 16_000)
+assertContextFits(leafView, 16_000)
+assert.equal(leafArchived.size, 30, 'unshrinkable JSON is archived and pointed to, not left in the request')
+
+// With no output store there is nothing to point back to, so projection may shorten an
+// excerpt but may never leave a result empty.
+const withoutArchive = projectToolResultsToBudget(fanOut(60), 16_000)
+assert.ok(withoutArchive.filter(message => message.role === 'tool')
+  .every(message => typeof message.content === 'string' && message.content.trim().length > 0),
+'tool results are never emptied when no recovery pointer can follow')
+assertContextFits(withoutArchive, 16_000)
+
 // Rejections name the largest contributor instead of failing opaquely.
 try { assertContextFits(tooLargeUser, 16000); assert.fail('expected rejection') } catch (error) {
   assert.match((error as Error).message, /Largest parts: user≈\d+ tokens/)
 }
-console.log('Compaction policies: whole-request budgets, atomic tool projections, JSON/Unicode/images, short histories and aggregate summary bounds passed')
+console.log('Compaction policies: whole-request budgets, atomic tool projections, parallel fan-out room sharing, JSON/Unicode/images, short histories and aggregate summary bounds passed')

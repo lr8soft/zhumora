@@ -12,7 +12,7 @@ import { AgentAbortedError, type ChatMessage, type ProviderConfig, type ToolDefi
 import { planAutoCompact, makeSummaryMessage } from './compaction'
 import { assertContextFits, estimateTokens, measureContextBudget } from './contextBudget'
 import { projectToolResultsToBudget } from './toolResultProjection.ts'
-import { recoverProjectedToolResults } from './toolResultRecovery.ts'
+import { recoverProjectedToolResults, RECOVERY_NOTICE_TOKENS } from './toolResultRecovery.ts'
 import type { CompactionState } from './history'
 import { log } from '../llm/logger'
 import type { WorkingConversation } from './workingConversation'
@@ -100,16 +100,29 @@ export class AutoCompactor {
     if (this.deps.signal?.aborted) throw new AgentAbortedError()
   }
 
+  /**
+   * Project, then attach a recovery pointer to every shortened result, until the
+   * request actually fits. The target is the input budget that assertContextFits
+   * enforces — stopping at the lower compaction threshold declares victory over a
+   * request the gate then rejects, which is how a fan-out of parallel results used to
+   * end in a terminal error. Pointer cost is handed to projection up front because
+   * they are appended after it chooses its caps.
+   */
   private async projectWithRecovery(messages: ChatMessage[], tools: ToolDefinition[]): Promise<ChatMessage[]> {
-    if (!this.deps.archiveToolOutput) return projectToolResultsToBudget(messages, this.deps.contextWindow, tools)
+    const cw = this.deps.contextWindow
+    if (!this.deps.archiveToolOutput) return projectToolResultsToBudget(messages, cw, tools)
+    const reserved = messages.reduce((total, message) => total + (message.role === 'tool' ? 1 : 0), 0) * RECOVERY_NOTICE_TOKENS
     let candidate = messages
-    // Adding references may make another result need projection. Every pass archives
-    // before adopting a cut; no final unprotected projection is allowed.
+    let previous = Number.POSITIVE_INFINITY
     for (let pass = 0; pass < 9; pass++) {
-      const projected = projectToolResultsToBudget(candidate, this.deps.contextWindow, tools)
+      const projected = projectToolResultsToBudget(candidate, cw, tools, reserved)
       candidate = await recoverProjectedToolResults(candidate, projected, this.deps.archiveToolOutput, this.deps.signal)
-      const usage = measureContextBudget(candidate, this.deps.contextWindow, tools)
-      if (usage.estimatedRequestTokens < usage.threshold) break
+      const usage = measureContextBudget(candidate, cw, tools)
+      if (usage.estimatedRequestTokens <= usage.inputBudget) break
+      // A pass that changed nothing cannot change anything later either; the gate
+      // below reports what is left instead of paying for nine identical rewrites.
+      if (usage.estimatedRequestTokens >= previous) break
+      previous = usage.estimatedRequestTokens
     }
     return candidate
   }

@@ -98,6 +98,17 @@ export function measureContextBudget(
   }
 }
 
+/**
+ * Message tokens the gate will actually accept, expressed in the unit
+ * `estimateMessageTokens` returns. A projection sizes its caps in message tokens but
+ * the gate judges the *request*, which carries the estimator factor and every tool
+ * schema, so comparing a message-token target against `threshold` directly spends the
+ * same room twice and silently overshoots the check by that factor.
+ */
+export function rawMessageAllowance(usage: ContextBudgetUsage): number {
+  return Math.max(0, Math.floor(usage.threshold / TOKEN_ESTIMATE_SAFETY_FACTOR) - usage.toolDefinitionTokens)
+}
+
 /** 拒发时点名最大的 token 贡献者，让"压缩后仍超限"能被定位而不是猜。 */
 function largestContributors(messages: ChatMessage[]): string {
   const labeled = messages.map(message => {

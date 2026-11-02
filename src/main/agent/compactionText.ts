@@ -9,3 +9,9 @@ export function compactText(text: string, maxChars: number): string {
   if (/[\uDC00-\uDFFF]/.test(text[text.length - tail] || '')) tail--
   return text.slice(0, head) + notice + (tail > 0 ? text.slice(-tail) : '')
 }
+
+/**
+ * Measured rather than retyped: an excerpt can never be shorter than the notice it
+ * carries, and anything sizing an excerpt floor has to know that exact number.
+ */
+export const COMPACT_NOTICE_CHARS = compactText('x'.repeat(10_000), 0).length
