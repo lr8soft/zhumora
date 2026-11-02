@@ -101,10 +101,15 @@ try {
   await assert.rejects(run(history, { toolRegistry: schemaRegistry }), ContextBudgetExceededError)
   assert.equal(requests.length, 0, 'a large tool snapshot is rejected, never filtered to make it fit')
 
-  // Even a model violating the summary output limit cannot persist an unusable oversized summary or send the next request.
+  // A model violating the summary output limit can never persist an unusable oversized summary;
+  // the oversized record is discarded and the run proceeds on the truncated history instead of
+  // rejecting a conversation that now fits.
   reset(); summaryResult = '汉'.repeat(300000)
-  await assert.rejects(run(history), ContextBudgetExceededError)
-  assert.equal(requests.length, 1); assert.equal(requests[0].stream, false); assert.equal(persisted.length, 0)
+  await run(history)
+  assert.equal(requests.filter(request => request.stream).length, 1, 'generation proceeds after discarding the oversized summary')
+  assert.ok(requests[0].messages.some(message => message.role === 'system'))
+  assert.ok(!requests.some(request => request.messages.some(message => typeof message.content === 'string' && message.content.includes('汉'.repeat(2000)))), 'the oversized summary is never sent')
+  assert.equal(persisted.length, 0, 'an oversized summary is never persisted')
 
   reset(); abortSummary = new AbortController()
   await assert.rejects(run(history, { signal: abortSummary.signal }), AgentAbortedError)

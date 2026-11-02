@@ -86,4 +86,37 @@ assert.ok((summary[1].content as string).isWellFormed())
 assert.match(summary[1].content as string, /START_GOAL/); assert.match(summary[1].content as string, /LATEST_FINDING/)
 assert.match(summary[1].content as string, /history excerpts omitted/)
 assert.throws(() => buildSummaryMessages(history, 128), ContextBudgetExceededError)
+
+// Regression: screenshots were budgeted by base64 length (a 2MB capture ≈83k tokens),
+// so image-heavy sessions were rejected as over budget even after compaction.
+const bigImage = (chars: number) => ({ type: 'image_url' as const, image_url: { url: `data:image/png;base64,${'A'.repeat(chars)}` } })
+const twoScreens: ChatMessage = { role: 'user', content: [{ type: 'text', text: '来修bug' }, bigImage(2_000_000), bigImage(200_000)] }
+const screenTokens = estimateMessageTokens(twoScreens)
+assert.ok(screenTokens < 6_000, `screenshots cost vision tokens, not base64 length; got ${screenTokens}`)
+
+// Regression: giant tool_call arguments were re-sent every round and no projection
+// or compaction could shrink them, so "still too large after compaction" was terminal.
+const writeArgs = JSON.stringify({ file_path: 'src/heavy.ts', content: '汉'.repeat(300_000) })
+const writeCall = { id: 'write-1', type: 'function' as const, function: { name: 'write', arguments: writeArgs } }
+const writeGroup: ChatMessage[] = [{ role: 'system', content: 'rules' }, { role: 'user', content: 'rewrite the file' },
+  { role: 'assistant', content: null, tool_calls: [writeCall] }, { role: 'tool', tool_call_id: 'write-1', name: 'write', content: 'ok' }]
+assert.ok(measureContextBudget(writeGroup, 16000).estimatedRequestTokens > measureContextBudget(writeGroup, 16000).inputBudget,
+  'the giant call argument must overflow before projection')
+const writeView = projectToolResultsToBudget(writeGroup, 16000)
+assertContextFits(writeView, 16000)
+const projectedArgs = JSON.parse(writeView[2].tool_calls![0].function.arguments)
+assert.equal(projectedArgs.file_path, 'src/heavy.ts', 'correlation fields survive argument projection')
+assert.match(projectedArgs.content, /Context preview/, 'payload is previewed, not silently deleted')
+assert.equal(sanitizeHistory(writeView).length, writeView.length, 'projected call groups stay protocol-legal')
+assert.equal(writeGroup[2].tool_calls![0].function.arguments, writeArgs, 'projection never rewrites the stored call')
+const brokenArgs = '{not json' + '汉'.repeat(40_000)
+const brokenGroup: ChatMessage[] = [{ role: 'system', content: 'rules' }, { role: 'user', content: 'go' },
+  { role: 'assistant', content: null, tool_calls: [{ id: 'x', type: 'function' as const, function: { name: 'write', arguments: brokenArgs } }] }]
+assert.equal(projectToolResultsToBudget(brokenGroup, 16000)[2].tool_calls![0].function.arguments, brokenArgs,
+  'non-JSON arguments stay byte-exact')
+
+// Rejections name the largest contributor instead of failing opaquely.
+try { assertContextFits(tooLargeUser, 16000); assert.fail('expected rejection') } catch (error) {
+  assert.match((error as Error).message, /Largest parts: user≈\d+ tokens/)
+}
 console.log('Compaction policies: whole-request budgets, atomic tool projections, JSON/Unicode/images, short histories and aggregate summary bounds passed')

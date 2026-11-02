@@ -7,10 +7,16 @@ const COMPACTION_TRIGGER_RATIO = 0.9
 /** 本地估算无法完全复现各模型 tokenizer，给代码/JSON/模板开销留余量。 */
 const TOKEN_ESTIMATE_SAFETY_FACTOR = 1.2
 const DEFAULT_PRESERVE_RECENT_TOKENS = 20_000
+/**
+ * 视觉模型对每张图的真实花费（OpenAI high-detail ≈765-1105、Qwen-VL ≈1k、
+ * Claude ≈1.5k），取保守定额。绝不能按 base64 长度折算：一张 1MB 截图真实
+ * 只花 ~1-2k tokens，按长度折会高估两个数量级，把本可发送的请求误判成超限。
+ */
+const VISION_TOKENS_PER_IMAGE = 2000
 
 const CJK_REGEX = /[\u2e80-\u9fff\uf900-\ufaff\u3040-\u30ff\uac00-\ud7af\u3000-\u303f]/g
 
-function estimateTextTokens(text: string): number {
+export function estimateTextTokens(text: string): number {
   const cjkCount = text.match(CJK_REGEX)?.length ?? 0
   const nonCjkChars = text.length - cjkCount
   return cjkCount + Math.ceil(nonCjkChars / 4)
@@ -33,10 +39,7 @@ export function estimateMessageTokens(msg: ChatMessage): number {
         if (part.type === 'text') {
           tokens += estimateTextTokens(part.text)
         } else if (part.type === 'image_url') {
-          const url = part.image_url?.url || ''
-          const b64Start = url.indexOf('base64,')
-          const b64 = b64Start >= 0 ? url.length - b64Start - 7 : url.length
-          tokens += Math.ceil(b64 / 24)
+          tokens += VISION_TOKENS_PER_IMAGE
         }
       }
     } else {
@@ -95,11 +98,23 @@ export function measureContextBudget(
   }
 }
 
+/** 拒发时点名最大的 token 贡献者，让"压缩后仍超限"能被定位而不是猜。 */
+function largestContributors(messages: ChatMessage[]): string {
+  const labeled = messages.map(message => {
+    const label = message.role === 'tool' ? `tool(${message.name ?? message.tool_call_id ?? '?'})`
+      : message.role === 'assistant' && message.tool_calls?.length ? `assistant(${message.tool_calls.map(call => call.function.name).join('+')})`
+        : message.role === 'user' && Array.isArray(message.content) ? `user(${message.content.filter(part => part.type === 'image_url').length} image(s))`
+          : message.role
+    return { label, tokens: estimateMessageTokens(message) }
+  }).filter(item => item.tokens > 512).sort((a, b) => b.tokens - a.tokens).slice(0, 3)
+  return labeled.length ? ` Largest parts: ${labeled.map(item => `${item.label}≈${item.tokens} tokens`).join(', ')}.` : ''
+}
+
 export class ContextBudgetExceededError extends Error {
   readonly usage: ContextBudgetUsage
 
-  constructor(usage: ContextBudgetUsage) {
-    super(`Context remains too large after compaction: estimated input ${usage.estimatedRequestTokens} tokens exceeds input budget ${usage.inputBudget} (window ${usage.contextWindow}, output reserve ${usage.outputReserve}). Request was not sent. Reduce the input, system prompt or tool definitions, or start a new conversation.`)
+  constructor(usage: ContextBudgetUsage, details = '') {
+    super(`Context remains too large after compaction: estimated input ${usage.estimatedRequestTokens} tokens exceeds input budget ${usage.inputBudget} (window ${usage.contextWindow}, output reserve ${usage.outputReserve}). Request was not sent. Reduce the input, system prompt or tool definitions, or start a new conversation.${details}`)
     this.name = 'ContextBudgetExceededError'
     this.usage = usage
   }
@@ -108,7 +123,12 @@ export class ContextBudgetExceededError extends Error {
 /** Every conversation request, including summaries and finalization, must pass this last check. */
 export function assertContextFits(messages: ChatMessage[], contextWindow: number, tools: ToolDefinition[] = [], reservedOutputTokens?: number): ContextBudgetUsage {
   const usage = measureContextBudget(messages, contextWindow, tools, reservedOutputTokens)
-  if (usage.estimatedRequestTokens > usage.inputBudget) throw new ContextBudgetExceededError(usage)
+  if (usage.estimatedRequestTokens > usage.inputBudget) {
+    const details = tools.length > 0 && usage.toolDefinitionTokens * TOKEN_ESTIMATE_SAFETY_FACTOR > usage.inputBudget / 2
+      ? ` Tool definitions alone consume ≈${usage.toolDefinitionTokens} tokens.`
+      : largestContributors(messages)
+    throw new ContextBudgetExceededError(usage, details)
+  }
   return usage
 }
 

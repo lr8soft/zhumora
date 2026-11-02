@@ -37,12 +37,34 @@ function projectText(text: string, cap: number): string {
   }
 }
 
+/**
+ * Call arguments (a write/edit payload can exceed the whole window) are re-sent on
+ * every round and were the largest unprojectable contributor. Correlation rides on
+ * tool_call_id, so shrinking valid JSON argument values keeps the protocol legal.
+ * Non-JSON arguments stay byte-exact: sanitizeHistory already rejects broken ones.
+ */
+function projectArguments(message: ChatMessage, cap: number): ChatMessage {
+  if (!message.tool_calls?.length) return message
+  let changed = false
+  const calls = message.tool_calls.map(call => {
+    const args = call.function.arguments
+    if (args.length <= cap) return call
+    try { JSON.parse(args) } catch { return call }
+    const projected = projectText(args, cap)
+    if (projected.length >= args.length) return call
+    changed = true
+    return { ...call, function: { ...call.function, arguments: projected } }
+  })
+  return changed ? { ...message, tool_calls: calls } : message
+}
+
 function projectMessage(message: ChatMessage, cap: number): ChatMessage {
-  if (message.role !== 'tool') return message
-  const content = typeof message.content === 'string' ? projectText(message.content, cap)
-    : Array.isArray(message.content) ? message.content.map(part => part.type === 'text'
-      ? { ...part, text: projectText(part.text, cap) } : part) : message.content
-  return { ...message, content }
+  const withArgs = projectArguments(message, cap)
+  if (withArgs.role !== 'tool') return withArgs
+  const content = typeof withArgs.content === 'string' ? projectText(withArgs.content, cap)
+    : Array.isArray(withArgs.content) ? withArgs.content.map(part => part.type === 'text'
+      ? { ...part, text: projectText(part.text, cap) } : part) : withArgs.content
+  return { ...withArgs, content }
 }
 
 /** No message is removed; tool_call_id, order, call arguments and image attachments remain untouched. */

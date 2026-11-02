@@ -2,7 +2,7 @@ import { AgentAbortedError, COMPACT_SUMMARY_PREFIX, type ChatMessage, type Provi
 import { complete } from '../llm/provider'
 import { log } from '../llm/logger'
 import { getContextWindow } from './context'
-import { estimateMessageTokens, estimateTokens, getPreserveTokenBudget } from './contextBudget.ts'
+import { estimateMessageTokens, estimateTextTokens, estimateTokens, getPreserveTokenBudget } from './contextBudget.ts'
 import { planCompactByTokens } from './history.ts'
 import { buildSummaryMessages, SUMMARY_OUTPUT_TOKENS } from './summaryInput.ts'
 
@@ -23,6 +23,12 @@ async function generateSummary(messages: ChatMessage[], provider: ProviderConfig
     const prompt = buildSummaryMessages(messages, contextWindow)
     const summary = (await complete(provider, prompt, model, SUMMARY_OUTPUT_TOKENS, signal)).trim()
     if (signal?.aborted) throw new AgentAbortedError()
+    // A model exceeding its output cap produces an unusable record; treat it as a
+    // failed summary so it is never persisted or sent, instead of poisoning the session.
+    if (estimateTextTokens(summary) > SUMMARY_OUTPUT_TOKENS * 2) {
+      log('error', `Auto compact: summary ignored (${summary.length} chars exceeds the output budget)`)
+      return null
+    }
     log('info', `Auto compact: summary generated (${summary.length} chars)`)
     return summary || null
   } catch (error) {

@@ -72,6 +72,13 @@ export class AutoCompactor {
       log('info', `Auto compact triggered ${trigger}`)
       const notice = await this.apply(conversation)
       this.checkAborted()
+      // A successful summary must persist even if the retained tail still cannot fit.
+      // Discarding it re-summarizes (and re-pays) the same boundary on every round,
+      // and the session never converges below the budget.
+      if (notice?.state) {
+        this.deps.persist?.(notice.state)
+        this.compactionState = notice.state
+      }
       const projected = await this.projectWithRecovery(conversation.messages, tools)
       conversation.replaceAfterSystem(projected.slice(1), conversation.effectiveIds())
       const after = measureContextBudget(conversation.messages, this.deps.contextWindow, tools)
@@ -79,10 +86,6 @@ export class AutoCompactor {
       // A successful summary alone is not evidence that the full request fits.
       assertContextFits(conversation.messages, this.deps.contextWindow, tools)
       this.checkAborted()
-      if (notice?.state) {
-        this.deps.persist?.(notice.state)
-        this.compactionState = notice.state
-      }
       if (notice || after.estimatedRequestTokens < usage.estimatedRequestTokens) {
         this.deps.onCompact?.({ beforeTokens, afterTokens: estimateTokens(conversation.effective()),
           compressedCount: notice?.compressedCount ?? 0, keptCount: conversation.effective().length,
