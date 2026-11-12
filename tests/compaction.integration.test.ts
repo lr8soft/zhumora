@@ -9,7 +9,7 @@ register('./helpers/compactionLoader.mjs', import.meta.url)
 const { runAgent } = await import('../src/main/agent/runner.ts')
 const { AutoCompactor } = await import('../src/main/agent/autoCompact.ts')
 const { finalizeRun } = await import('../src/main/agent/finalizeRun.ts')
-const { planAutoCompact } = await import('../src/main/agent/compaction.ts')
+const { planAutoCompact, COMPACT_TRUNCATION_NOTICE } = await import('../src/main/agent/compaction.ts')
 const previousFetch = globalThis.fetch
 const provider = { id: 'compaction', name: 'test', baseUrl: 'https://fixture.invalid/v1', apiKey: '', defaultModel: 'test', enabled: true, contextWindow: 262144 }
 const call = { id: 'read-1', type: 'function' as const, function: { name: 'read', arguments: '{}' } }
@@ -26,12 +26,16 @@ let summaryResult = 'Previous work, decisions and file paths summarized.'
 let summaryFails = false
 let abortSummary: AbortController | undefined
 let nextStream: ((request: Request) => Response) | undefined
+// Production runs always persist a user message first, so every outgoing completion
+// carries a user turn; the atomic-group-only scenario below runs an artificial
+// user-less history slice and opts out.
+let requireUserTurn = true
 const sse = (delta: object, finish = 'stop') => new Response([
   `data: ${JSON.stringify({ choices: [{ delta, finish_reason: null }] })}\n\n`,
   `data: ${JSON.stringify({ choices: [{ delta: {}, finish_reason: finish }] })}\n\n`, 'data: [DONE]\n\n'
 ].join(''), { headers: { 'content-type': 'text/event-stream' } })
 const reset = () => { requests.length = 0; persisted.length = 0; summaryFails = false; abortSummary = undefined;
-  summaryResult = 'Previous work, decisions and file paths summarized.'; nextStream = undefined }
+  requireUserTurn = true; summaryResult = 'Previous work, decisions and file paths summarized.'; nextStream = undefined }
 const run = (messages: ChatMessage[], extra: Partial<Parameters<typeof runAgent>[0]> = {}, callbacks: Parameters<typeof runAgent>[1] = {}) => runAgent({
   provider, workspacePath: 'D:/fixture', messages, messageIds: messages.map((_, index) => `id-${index}`), compaction: null,
   memoryEnabled: false, maxRounds: 4, toolRegistry: new ToolRegistry(), onAutoCompact: state => persisted.push(state), ...extra
@@ -42,6 +46,10 @@ try {
     const body: Request = JSON.parse(init!.body as string)
     // Inspect the real outgoing payload: a too-large request must never reach this adapter.
     assertContextFits(body.messages, provider.contextWindow, body.tools, body.stream ? undefined : body.max_tokens)
+    // Qwen-style chat templates rendered by vLLM answer "No user query found in messages."
+    // (HTTP 400) for a conversation without any user turn; no scenario may send one.
+    if (requireUserTurn) assert.ok(body.messages.some(message => message.role === 'user'),
+      'every completion request keeps at least one user turn')
     requests.push(body)
     if (body.stream) return nextStream?.(body) ?? sse({ content: 'finished' })
     abortSummary?.abort()
@@ -62,7 +70,7 @@ try {
   assert.deepEqual(history, original, 'complete stored history was not rewritten by compaction/projection')
 
   // An indivisible two-message tool group has no historical prefix but must still be bounded.
-  reset()
+  reset(); requireUserTurn = false
   await run(history.slice(-2))
   assert.equal(requests.length, 1); assert.ok(requests[0].stream)
   assert.equal(persisted.length, 0)
@@ -81,6 +89,9 @@ try {
     await run(history)
     assert.equal(persisted.length, 0)
     assert.equal(requests.filter(request => request.stream).length, 1)
+    const sent = requests.find(request => request.stream)!.messages
+    assert.ok(sent.some(message => message.role === 'user' && message.content === COMPACT_TRUNCATION_NOTICE),
+      `summary-less truncation (${failure}) announces the cut with a user turn the provider template accepts`)
     assert.deepEqual(history, original)
   }
   reset(); summaryFails = true
@@ -127,6 +138,18 @@ try {
   const summaryCalls = requests.length
   await compactor.applyIfOverThreshold(working, 'again')
   assert.equal(requests.length, summaryCalls)
+
+  // A summary-less truncation must still leave a user turn and parallel ids behind.
+  reset(); summaryFails = true
+  const failedWorking = new WorkingConversation('rules')
+  history.forEach((message, index) => failedWorking.append(message, `id-${index}`))
+  const failedCompactor = new AutoCompactor({ provider, contextWindow: provider.contextWindow, persist: state => persisted.push(state) }, null)
+  await failedCompactor.applyIfOverThreshold(failedWorking, 'summary failure')
+  assert.equal(persisted.length, 0, 'a failed summary persists nothing')
+  assert.equal(failedWorking.ids.length, failedWorking.messages.length, 'the notice keeps ids and messages parallel')
+  assert.equal(failedWorking.messages[1].role, 'user')
+  assert.equal(failedWorking.messages[1].content, COMPACT_TRUNCATION_NOTICE)
+  assert.equal(failedWorking.ids[1], null, 'the truncation notice is virtual and never carries a persisted id')
 
   // The last compressed message may be synthetic: choose the last actual ID in the prefix.
   reset()

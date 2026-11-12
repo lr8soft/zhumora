@@ -9,7 +9,7 @@
 // - 压缩边界 = 被折叠的最后一条真实历史消息 id（跳过虚拟摘要位 null）。
 // ============================================================
 import { AgentAbortedError, type ChatMessage, type ProviderConfig, type ToolDefinition } from '../../shared/types'
-import { planAutoCompact, makeSummaryMessage } from './compaction'
+import { planAutoCompact, makeSummaryMessage, makeTruncationNoticeMessage } from './compaction'
 import { assertContextFits, estimateTokens, measureContextBudget } from './contextBudget'
 import { projectToolResultsToBudget } from './toolResultProjection.ts'
 import { recoverProjectedToolResults, RECOVERY_NOTICE_TOKENS } from './toolResultRecovery.ts'
@@ -144,17 +144,18 @@ export class AutoCompactor {
     const boundaryId = effectiveIds.slice(0, plan.keptOffset).reverse().find(id => id !== null)
       || this.compactionState?.upToMessageId || null
     const state = plan.summary && boundaryId ? { upToMessageId: boundaryId, summary: plan.summary } : null
-    // 重建工作上下文：保留 system + (新摘要 + toKeep) 或 (仅 toKeep)
+    // 重建工作上下文：保留 system + (新摘要 + toKeep) 或 (截断提示 + toKeep)。
+    // 摘要失败也必须以虚拟 user 轮开头：保留段可能只剩 assistant/tool（唯一的
+    // user 轮被折叠进前缀），部分 OpenAI 兼容后端（vLLM 的 Qwen 聊天模板）对无
+    // user 消息的请求直接 400 "No user query found in messages."，整个 run 随即失败。
     const tail = plan.summary
       ? [makeSummaryMessage(plan.summary), ...plan.toKeep]
-      : plan.toKeep
-    const tailIds = plan.summary
-      ? [null, ...effectiveIds.slice(plan.keptOffset)]
-      : effectiveIds.slice(plan.keptOffset)
+      : [makeTruncationNoticeMessage(), ...plan.toKeep]
+    const tailIds = [null, ...effectiveIds.slice(plan.keptOffset)]
     conversation.replaceAfterSystem(tail, tailIds)
     log('warn', plan.summary
       ? `Auto compact: boundary candidate "${boundaryId}", awaiting request-budget recheck`
-      : 'Auto compact: summary failed, truncated for this run only (state not persisted)')
+      : 'Auto compact: summary failed, truncated for this run only with a user-turn notice (state not persisted)')
     return {
       beforeTokens: plan.beforeTokens,
       afterTokens: plan.afterTokens,

@@ -51,6 +51,7 @@
 - OpenAI 消息序列中，带 `tool_calls` 的 assistant 后必须紧邻对应的全部 tool 结果。中止、拒绝、解析失败和 hard stop 也必须生成占位 tool 结果。
 - `sanitizeHistoryWithIds` 后的消息与 ID 必须平行对齐。任何增删消息操作同时更新两者；不要在不同模块复制这套映射。
 - 压缩只改变发给 LLM 的 effective conversation。不得删除或改写 `messages` 表；持久化内容只有 `{upToMessageId, summary}`。
+- 发给 provider 的有效会话必须至少包含一条 user 消息；摘要失败的降级截断以虚拟 user 截断提示开头（id=null，不落库），禁止发出无 user 轮次的请求（vLLM Qwen 模板会 400 "No user query found in messages."）。
 - `finish_reason=length`、空响应、循环检测、最大轮次和用户中止是不同终止原因。各自有独立预算/信号，不得把恢复逻辑改成无上限重试。
 - 用户中止后不执行新的工具。provider 返回部分内容时，runner 仍需在工具执行前再次检查 signal。
 - Agent 每轮使用运行时注册表的完整工具快照。内置工具与 MCP 工具必须独立注册、平等组合；任何领域工具不得筛选、禁用、改写或影响其他工具的可见性和执行。

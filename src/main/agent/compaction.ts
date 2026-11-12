@@ -48,7 +48,8 @@ export async function planAutoCompact(effective: ChatMessage[], provider: Provid
   if (!toCompress.length) return { summary: null, toKeep: effective, keptOffset: 0, beforeTokens,
     afterTokens: beforeTokens, compressedCount: 0, keptCount: effective.length }
   const summary = await generateSummary(toCompress, provider, modelOverride, cw, signal)
-  const afterTokens = estimateTokens(summary ? [makeSummaryMessage(summary), ...toKeep] : toKeep)
+  const afterTokens = estimateTokens(summary ? [makeSummaryMessage(summary), ...toKeep]
+    : [makeTruncationNoticeMessage(), ...toKeep])
   log('info', `Auto compact: ${beforeTokens} → ${afterTokens} tokens; retained groups require request-budget recheck`)
   return { summary, toKeep, keptOffset: toCompress.length, beforeTokens, afterTokens,
     compressedCount: toCompress.length, keptCount: toKeep.length }
@@ -56,4 +57,17 @@ export async function planAutoCompact(effective: ChatMessage[], provider: Provid
 
 export function makeSummaryMessage(summary: string): ChatMessage {
   return { role: 'user', content: `${COMPACT_SUMMARY_PREFIX}\n${summary}` }
+}
+
+// Some OpenAI-compatible backends validate the conversation itself: the Qwen chat
+// templates vLLM renders throw "No user query found in messages." (HTTP 400) when no
+// message carries role "user". Mid-run agent loops are exactly where truncation can
+// fold the only user turn into the discarded prefix, so a summary-less truncation
+// must keep the effective conversation sendable with a synthetic user turn.
+export const COMPACT_TRUNCATION_NOTICE =
+  '[Auto Compact] Earlier conversation turns were truncated to fit the context window, but the summary request failed, so their content is unavailable here. The full history remains available in the session.'
+
+/** Virtual user turn heading a summary-less truncation; never persisted, id = null. */
+export function makeTruncationNoticeMessage(): ChatMessage {
+  return { role: 'user', content: COMPACT_TRUNCATION_NOTICE }
 }
