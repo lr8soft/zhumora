@@ -1,6 +1,6 @@
 {
   "name": "zhumora",
-  "version": "0.5.3",
+  "version": "0.5.4",
   "description": "An open source AI agent that can code, automate tasks, and operate your computer.",
   "main": "./out/main/index.js",
   "author": "zhumora, LT_lrsoft",
@@ -70,15 +70,15 @@
     "@types/react-dom": "^19.2.4",
     "@types/three": "^0.185.4",
     "@vitejs/plugin-react": "^5.2.0",
-    "electron": "45.0.0-alpha.5",
+    "electron": "45.0.0",
     "electron-builder": "^26.15.3",
-    "electron-vite": "^5.0.0",
+    "electron-vite": "^6.0.0",
     "react": "^19.2.8",
     "react-dom": "^19.2.8",
     "react-markdown": "^10.1.0",
     "remark-gfm": "^4.0.1",
     "typescript": "^5.9.3",
-    "vite": "^7.0.0",
+    "vite": "^8.3.3",
     "zustand": "^5.0.15"
   },
   "build": {
